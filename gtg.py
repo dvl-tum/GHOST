@@ -20,7 +20,7 @@ class NonLinearSimilarity(nn.Module):
 
 
 class GTG(nn.Module):
-    def __init__(self, total_classes, tol=-1., max_iter=5, sim='correlation', set_negative='hard', mode='replicator', ):
+    def __init__(self, total_classes, tol=-1., max_iter=5, sim='correlation', set_negative='hard', mode='replicator', device='cuda:0'):
         super(GTG, self).__init__()
         self.m = total_classes
         self.tol = tol
@@ -28,10 +28,11 @@ class GTG(nn.Module):
         self.mode = mode
         self.sim = sim
         self.set_negative = set_negative
+        self.device = device
 
     def _init_probs(self, labs, L, U):
         n = len(L) + len(U)
-        ps = torch.zeros(n, self.m)
+        ps = torch.zeros(n, self.m).to(self.device)
         ps[U, :] = 1. / self.m
         ps[L, labs] = 1.
 
@@ -41,7 +42,7 @@ class GTG(nn.Module):
 
     def _init_probs_prior(self, probs, labs, L, U):
         n = len(L) + len(U)
-        ps = torch.zeros(n, self.m).cuda()
+        ps = torch.zeros(n, self.m).to(self.device)
         ps[U, :] = probs[U, :]
         ps[L, labs] = 1.
 
@@ -51,7 +52,7 @@ class GTG(nn.Module):
 
     def _init_probs_prior_only_classes(self, probs, labs, L, U, classes_to_use):
         n = len(L) + len(U)
-        ps = torch.zeros(n, self.m).cuda()
+        ps = torch.zeros(n, self.m).to(self.device)
         ps[U, :] = probs[torch.meshgrid(torch.tensor(U), torch.from_numpy(classes_to_use))]
         ps[L, labs] = 1.
         ps /= ps.sum(dim=ps.dim() - 1).unsqueeze(ps.dim() - 1)
@@ -73,7 +74,7 @@ class GTG(nn.Module):
         n = W.shape[0]
         minimum = torch.min(W)
         W = W - minimum
-        W = W * (torch.ones((n, n)).cuda() - torch.eye(n).cuda())
+        W = W * (torch.ones((n, n)).to(self.device) - torch.eye(n).to(self.device))
         return W
 
     def _get_W(self, x):

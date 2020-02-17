@@ -25,9 +25,11 @@ print()
 # create a salt and name files with it
 ALPHABET = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
 file_name = ''.join(random.choice(ALPHABET) for i in range(16))
-file_name = args.dataset_name + '_' + str(args.num_classes_iter) + '_' + str(args.num_elements_class) + '_' + str(args.num_labeled_points_class)
+file_name = args.dataset_name + '_' + str(args.lr_net) + '_' + str(args.weight_decay) + '_' + str(
+    args.num_classes_iter) + '_' + str(args.num_elements_class) + '_' + str(args.num_labeled_points_class)
 batch_size = args.num_classes_iter * args.num_elements_class
 device = 'cuda:0'
+save_folder = 'cub_embedding'
 
 
 if args.net_type == 'bn_inception':
@@ -43,7 +45,7 @@ else:
 # put the net, gtg and criterion to cuda
 model = model.to(device)
 gtg = gtg.GTG(args.nb_classes, max_iter=args.num_iter_gtg, sim=args.sim_type,
-              set_negative=args.set_negative).to(device)
+              set_negative=args.set_negative, device=device).to(device)
 opt = RAdam([{'params': list(set(model.parameters())), 'lr': args.lr_net}], weight_decay=args.weight_decay)
 criterion = nn.NLLLoss().to(device)
 criterion2 = nn.CrossEntropyLoss().to(device)
@@ -74,7 +76,7 @@ if args.evaluate_beginning:
 best_accuracy = 0
 for e in range(1, args.nb_epochs + 1):
     if e == 31:
-        model.load_state_dict(torch.load(os.path.join('nets_cars_ablation', 'scaling.pth')))
+        model.load_state_dict(torch.load(os.path.join(save_folder, file_name + '.pth')))
         for g in opt.param_groups:
             g['lr'] = args.lr_net / 10.
 
@@ -129,7 +131,7 @@ for e in range(1, args.nb_epochs + 1):
         model.current_epoch = e
         if recall[0] > best_accuracy:
             best_accuracy = recall[0]
-            torch.save(model.state_dict(), os.path.join('cub_nets', 'scaling.pth'))
+            torch.save(model.state_dict(), os.path.join(save_folder, file_name + '.pth'))
 
 
 with open(os.path.join('new_results_embedding/', file_name + '.txt'), 'a+') as fp:

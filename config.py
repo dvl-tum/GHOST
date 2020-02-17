@@ -45,7 +45,7 @@ class Hyperparameters():
         return rnd(5, 15)
 
     def get_epochs(self):
-        return 1
+        return 3
 
     def get_num_gtg_iterations(self):
         return random.randint(1, 3)
