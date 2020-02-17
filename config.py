@@ -93,3 +93,5 @@ parser.add_argument('--temperature', default=hyperparams.get_softmax_temperature
 parser.add_argument('--decrease_learning_rate', default=10., type=float,
                     help='Number of iterations we want to do for GTG')
 parser.add_argument('--evaluate_beginning', default=False, type=bool, help='if True evaluate at the beginning')
+parser.add_argument('--revert_best_accuracy', default=True, type=bool,
+                    help='if True, at the end of each epoch revert the net to the checkpoint with the best accuracy')

@@ -20,11 +20,7 @@ warnings.filterwarnings("ignore")
 
 
 args = parser.parse_args()
-print()
 
-# create a salt and name files with it
-ALPHABET = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
-file_name = ''.join(random.choice(ALPHABET) for i in range(16))
 file_name = args.dataset_name + '_' + str(args.lr_net) + '_' + str(args.weight_decay) + '_' + str(
     args.num_classes_iter) + '_' + str(args.num_elements_class) + '_' + str(args.num_labeled_points_class)
 batch_size = args.num_classes_iter * args.num_elements_class
@@ -132,6 +128,8 @@ for e in range(1, args.nb_epochs + 1):
         if recall[0] > best_accuracy:
             best_accuracy = recall[0]
             torch.save(model.state_dict(), os.path.join(save_folder, file_name + '.pth'))
+        elif args.revert_best_accuracy:
+            model.load_state_dict(torch.load(os.path.join(save_folder, file_name + '.pth')))
 
 
 with open(os.path.join('new_results_embedding/', file_name + '.txt'), 'a+') as fp:
