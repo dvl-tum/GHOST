@@ -1,28 +1,18 @@
 
 # About
 
-This repository contains a PyTorch implementation of [`No Fuss Distance Metric Learning using Proxies`](https://arxiv.org/pdf/1703.07464.pdf) as introduced by Google Research.
+This repository contains a PyTorch implementation of [`The Group Loss for Deep Metric Learning`](https://arxiv.org/abs/1912.00385).
 
-The same parameters were used as described in the paper, except for the optimizer. In particular, the size of the embedding and batches equals 64 and 32 respectively. Also, [BN-Inception](http://arxiv.org/abs/1502.03167) is used and trained with random resized crop and horizontal flip and evaluated with resized center crop. 
+The same parameters were used as described in the paper. 
 
-I have ported the [PyTorch BN-Inception model from PyTorch 0.2](https://github.com/Cadene/pretrained-models.pytorch) to 0.4. It's weights are stored inside the repository in the directory `net`.
+# PyTorch version
 
-# Reproducing Results with CUB 200
+We use torch 1.1 and torchvision 0.2. While the training and inference should be able to be done correctly with the newer versions of the libraries, be aware that at times the network trained with torch > 1.2 might diverge or reach lower results.
 
-You need Python3 and minimum PyTorch 0.4.1 to run the code.
+We also support half-precision training via Nvidia Apex. 
 
-If you want to reproduce the results in the table below, then the only thing you have to do is to execute: `python3 train.py`.
+# Reproducing Results
 
-In this case, the CUB dataset will be automatically downloaded to the directory `cub200` (default) and verified with the corresponding md5 hash. If you train the model for the first time, then the images file will be extracted automatically in the same folder. After that you can use the argument `--cub-is-extracted` to avoid extracting the dataset over and over again.
+As in the paper we support training in 3 datasets: CUB-200-2011, CARS 196 and Stanford Online Products. Simply provide the path to the dataset in train.py and declare what dataset you want to use for the training. Training on some other dataset should be straightforwars as long as you structure the dataset in the same way as those three datasets.
 
-Training takes about 10 minutes with one Titan X (Pascal).
-
-| Metric | This Implementation  | [Google's Implementation](https://arxiv.org/pdf/1703.07464.pdf) |
-| ------ | -------------------- | ------------- |
-|  R@1   |       **49.26**      |     49.21     |
-|  R@2   |         60.99        |   **61.90**   |
-|  R@4   |       **71.31**      |     67.90     |
-|  R@8   |       **80.78**      |     72.40     |
-|  NMI   |         58.12        |   **59.53**   |
-
-An example training log file can be found in the log dir, see [`example.log`](https://github.com/dichotomies/proxy-nca/raw/master/log/example.log).
+The majority of experiments are done in inception with batch normalization. We provide support for the entire family of resnet and densenets. Simply define the type of the network you want to use in train.py
