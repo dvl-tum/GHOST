@@ -1,7 +1,7 @@
 
 # About
 
-This repository contains a PyTorch implementation of [`The Group Loss for Deep Metric Learning`](https://arxiv.org/abs/1912.00385).
+This repository contains a PyTorch implementation of [`The Group Loss for Deep Metric Learning`] https://arxiv.org/abs/1912.00385.
 
 The same parameters were used as described in the paper. 
 
