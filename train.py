@@ -1,4 +1,4 @@
-from apex import amp
+# from apex import amp
 import logging, imp
 import random
 import os
@@ -69,7 +69,7 @@ class Hyperparameters():
         return self.weight_decay[self.dataset_name]
 
     def get_epochs(self):
-        return 2
+        return 30
 
     def get_num_gtg_iterations(self):
         return 1
@@ -118,7 +118,7 @@ parser.add_argument('--decrease_learning_rate', default=10., type=float,
                     help='Number to divide the learnign rate with')
 parser.add_argument('--id', default=1, type=int,
                     help='id, in case you run multiple independent nets, for example if you want an ensemble of nets')
-parser.add_argument('--is_apex', default=1, type=int,
+parser.add_argument('--is_apex', default=0, type=int,
                     help='if 1 use apex to do mixed precision training')
 
 args = parser.parse_args()
