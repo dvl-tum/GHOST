@@ -69,7 +69,7 @@ class Hyperparameters():
         return self.weight_decay[self.dataset_name]
 
     def get_epochs(self):
-        return 30
+        return 60
 
     def get_num_gtg_iterations(self):
         return 1
@@ -102,7 +102,7 @@ parser.add_argument('--lr-net', default=hyperparams.get_learning_rate(), type=fl
 parser.add_argument('--weight-decay', default=hyperparams.get_weight_decay(), type=float, help='The l2 regularization strength')
 parser.add_argument('--nb_epochs', default=hyperparams.get_epochs(), type=int, help='Number of training epochs.')
 parser.add_argument('--nb_workers', default=4, type=int, help='Number of workers for dataloader.')
-parser.add_argument('--net_type', default='bn_inception', type=str, choices=['bn_inception', 'densenet121', 'densenet161', 'densenet169', 'densenet201',
+parser.add_argument('--net_type', default='densenet121', type=str, choices=['bn_inception', 'densenet121', 'densenet161', 'densenet169', 'densenet201',
                                                                             'resnet18', 'resnet34', 'resenet50', 'resnet101', 'resnet152'],
                                                                             help='The type of net we want to use')
 parser.add_argument('--sim_type', default='correlation', type=str, help='type of similarity we want to use')
