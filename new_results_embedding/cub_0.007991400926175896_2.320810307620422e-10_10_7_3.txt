@@ -1,7 +1,0 @@
-cub_0.007991400926175896_2.320810307620422e-10_10_7_3
-Namespace(cub_is_extracted=True, cub_root='../gtg_embedding/CUB_200_2011', dataset_name='cub', decrease_learning_rate=10.0, embed=True, evaluate_beginning=False, lr_net=0.007991400926175896, nb_classes=100, nb_epochs=3, nb_workers=8, net_type='bn_inception', num_classes_iter=10, num_elements_class=7, num_iter_gtg=1, num_labeled_points_class=3, scaling_loss=1, set_negative='soft', sim_type='correlation', sz_embedding=512, temperature=54, use_double_loss=True, use_prior=True, weight_decay=2.320810307620422e-10)
-0.3844680448391564 [0.23919648885887915, 0.3425050641458474, 0.4599932478055368, 0.5952059419311276]
-0.3864903216981218 [0.237508440243079, 0.33811613774476706, 0.4576299797434166, 0.5860904794058069]
-0.4015937675687221 [0.21168129642133693, 0.3077312626603646, 0.425050641458474, 0.5653274814314653]
-
-
