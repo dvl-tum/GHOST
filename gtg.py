@@ -30,7 +30,8 @@ class GTG(nn.Module):
         self.set_negative = set_negative
         self.device = device
 
-    def _init_probs(self, labs, L, U):
+    def _init_probs_uniform(self, labs, L, U):
+        """ Initialized the probabilities of GTG from uniform distribution """
         n = len(L) + len(U)
         ps = torch.zeros(n, self.m).to(self.device)
         ps[U, :] = 1. / self.m
@@ -41,6 +42,7 @@ class GTG(nn.Module):
         return ps
 
     def _init_probs_prior(self, probs, labs, L, U):
+        """ Initiallized probabilities from the softmax layer of the CNN """
         n = len(L) + len(U)
         ps = torch.zeros(n, self.m).to(self.device)
         ps[U, :] = probs[U, :]
@@ -51,6 +53,8 @@ class GTG(nn.Module):
         return ps
 
     def _init_probs_prior_only_classes(self, probs, labs, L, U, classes_to_use):
+        """ Different version of the previous version when it considers only classes in the minibatch,
+            surprisingly it works worse than the version that considers all classes """
         n = len(L) + len(U)
         ps = torch.zeros(n, self.m).to(self.device)
         ps[U, :] = probs[torch.meshgrid(torch.tensor(U), torch.from_numpy(classes_to_use))]
@@ -58,19 +62,11 @@ class GTG(nn.Module):
         ps /= ps.sum(dim=ps.dim() - 1).unsqueeze(ps.dim() - 1)
         return ps
 
-    def set_negative_to_zero_old(self, W):
-        n = W.shape[0]
-        mask = torch.zeros((n, n), requires_grad=False).cuda()
-        for i in range(n):
-            for j in range(i + 1, n):
-                if W[i, j] > 0:
-                    mask[i, j] = mask[j, i] = 1.
-        return W * mask
-
     def set_negative_to_zero(self, W):
         return F.relu(W)
 
     def set_negative_to_zero_soft(self, W):
+        """ It shifts the negative probabilities towards the positive regime """
         n = W.shape[0]
         minimum = torch.min(W)
         W = W - minimum
@@ -85,15 +81,12 @@ class GTG(nn.Module):
             W = torch.mm(x, x.t()) / torch.ger(norms, norms)
         elif self.sim == 'cosine':
             W = torch.mm(x, x.t())
-        else:
+        elif self.sim == 'learnt':
             n = x.shape[0]
             W = torch.zeros(n, n)
             for i, xi in enumerate(x):
                 for j, xj in enumerate(x[(i + 1):], i + 1):
-                    if self.sim == 'learnt':
-                        W[i, j] = W[j, i] = self.sim(xi, xj) + 1e-8
-                    elif self.sim == 'icc':
-                        W[i, j] = W[j, i] = self.compute_icc(xi, xj)
+                    W[i, j] = W[j, i] = self.sim(xi, xj) + 1e-8
             W = W.cuda()
 
         if self.set_negative == 'hard':
