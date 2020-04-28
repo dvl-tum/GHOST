@@ -1,4 +1,4 @@
-# from apex import amp
+from apex import amp
 import logging, imp
 import random
 import os
@@ -43,7 +43,8 @@ class Hyperparameters():
         self.num_classes_iteration = {'cub': 6, 'cars': 5, 'Stanford': 10}
         self.num_elemens_class = {'cub': 9, 'cars': 7, 'Stanford': 6}
         self.get_num_labeled_class = {'cub': 2, 'cars': 3, 'Stanford': 2}
-        self.learning_rate = 0.0002
+        # self.learning_rate = 0.0002
+        self.learning_rate = {'cub': 0.0001563663718906821, 'cars': 0.0002, 'Stanford': 0.0006077651100709081}
         self.weight_decay = {'cub': 6.059722614369727e-06, 'cars': 4.863656728256105e-07, 'Stanford': 5.2724883734490575e-12}
         self.softmax_temperature = {'cub': 24, 'cars': 79, 'Stanford': 54}
 
@@ -63,13 +64,13 @@ class Hyperparameters():
         return self.get_num_labeled_class[self.dataset_name]
 
     def get_learning_rate(self):
-        return self.learning_rate
+        return self.learning_rate[self.dataset_name]
 
     def get_weight_decay(self):
         return self.weight_decay[self.dataset_name]
 
     def get_epochs(self):
-        return 60
+        return 70
 
     def get_num_gtg_iterations(self):
         return 1
@@ -102,11 +103,11 @@ parser.add_argument('--lr-net', default=hyperparams.get_learning_rate(), type=fl
 parser.add_argument('--weight-decay', default=hyperparams.get_weight_decay(), type=float, help='The l2 regularization strength')
 parser.add_argument('--nb_epochs', default=hyperparams.get_epochs(), type=int, help='Number of training epochs.')
 parser.add_argument('--nb_workers', default=4, type=int, help='Number of workers for dataloader.')
-parser.add_argument('--net_type', default='densenet121', type=str, choices=['bn_inception', 'densenet121', 'densenet161', 'densenet169', 'densenet201',
+parser.add_argument('--net_type', default='bn_inception', type=str, choices=['bn_inception', 'densenet121', 'densenet161', 'densenet169', 'densenet201',
                                                                             'resnet18', 'resnet34', 'resenet50', 'resnet101', 'resnet152'],
                                                                             help='The type of net we want to use')
 parser.add_argument('--sim_type', default='correlation', type=str, help='type of similarity we want to use')
-parser.add_argument('--set_negative', default='soft', type=str,
+parser.add_argument('--set_negative', default='hard', type=str,
                     help='type of threshold we want to do'
                          'hard - put all negative similarities to 0'
                          'soft - subtract minus (-) negative from each entry')
@@ -158,6 +159,9 @@ dl_tr, dl_ev, _, _ = data_utility.create_loaders(args.cub_root, args.nb_classes,
                                                                  args.nb_workers,
                                                                  args.num_classes_iter, args.num_elements_class,
                                                                  batch_size)
+# evaluate at the beginning
+# nmi, recall = utils.evaluate(model, dl_ev, args.nb_classes, args.net_type, dataroot=args.dataset_name)
+# print(recall)
 
 # train and evaluate the net
 best_accuracy = 0
@@ -167,6 +171,16 @@ for e in range(1, args.nb_epochs + 1):
         model.load_state_dict(torch.load(os.path.join(save_folder_nets, file_name + '.pth')))
         for g in opt.param_groups:
             g['lr'] = args.lr_net / 10.
+
+    if e == 51:
+        model.load_state_dict(torch.load(os.path.join(save_folder_nets, file_name + '.pth')))
+        for g in opt.param_groups:
+            g['lr'] = args.lr_net / 10.
+
+    # turn batch norm off -> same as model.eval() ?
+    # for m in model.modules():
+    #     if isinstance(m, nn.BatchNorm2d):
+    #         m.eval()
 
     i = 0
     for x, Y in dl_tr:
