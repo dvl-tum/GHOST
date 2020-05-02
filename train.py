@@ -1,4 +1,4 @@
-from apex import amp
+# from apex import amp
 import logging, imp
 import random
 import os
@@ -16,6 +16,7 @@ import net
 import data_utility
 import utils
 from RAdam import RAdam
+import dataset.extract_market as extract_market
 
 import argparse
 import random
@@ -37,16 +38,18 @@ class Hyperparameters():
             self.dataset_path = '../../datasets/CUB_200_2011'
         elif dataset_name == 'cars':
             self.dataset_path = '../../datasets/CARS'
+        elif dataset_name == 'market':
+            self.dataset_path = '../../datasets/Market'
         else:
             self.dataset_path = '../../datasets/Stanford'
-        self.num_classes = {'cub': 100, 'cars': 98, 'Stanford': 11318}
-        self.num_classes_iteration = {'cub': 6, 'cars': 5, 'Stanford': 10}
-        self.num_elemens_class = {'cub': 9, 'cars': 7, 'Stanford': 6}
-        self.get_num_labeled_class = {'cub': 2, 'cars': 3, 'Stanford': 2}
+        self.num_classes = {'cub': 100, 'cars': 98, 'Stanford': 11318, 'Market': 1502}
+        self.num_classes_iteration = {'cub': 6, 'cars': 5, 'Stanford': 10, 'Market': 5}
+        self.num_elemens_class = {'cub': 9, 'cars': 7, 'Stanford': 6, 'Market': 7}
+        self.get_num_labeled_class = {'cub': 2, 'cars': 3, 'Stanford': 2, 'Market': 2}
         # self.learning_rate = 0.0002
-        self.learning_rate = {'cub': 0.0001563663718906821, 'cars': 0.0002, 'Stanford': 0.0006077651100709081}
-        self.weight_decay = {'cub': 6.059722614369727e-06, 'cars': 4.863656728256105e-07, 'Stanford': 5.2724883734490575e-12}
-        self.softmax_temperature = {'cub': 24, 'cars': 79, 'Stanford': 54}
+        self.learning_rate = {'cub': 0.0001563663718906821, 'cars': 0.0002, 'Stanford': 0.0006077651100709081, 'Market': 0.0002}
+        self.weight_decay = {'cub': 6.059722614369727e-06, 'cars': 4.863656728256105e-07, 'Stanford': 5.2724883734490575e-12, 'Market': 4.863656728256105e-07}
+        self.softmax_temperature = {'cub': 24, 'cars': 79, 'Stanford': 54, 'Market': 79}
 
     def get_path(self):
         return self.dataset_path
@@ -82,7 +85,7 @@ class Hyperparameters():
 parser = argparse.ArgumentParser(description='Training inception V2' +
                                              ' (BNInception) on CUB-200-2011 (cub), CARS 196 (cars) and Stanford Online Products (Stanford) with The Group Loss as described in ' +
                                              '`The Group Loss for Deep Metric Learning.`')
-dataset_name = 'cars'  # cub, cars or Stanford
+dataset_name = 'Market'  # cub, cars or Stanford
 parser.add_argument('--dataset_name', default=dataset_name, type=str, help='The name of the dataset')
 hyperparams = Hyperparameters(dataset_name)
 parser.add_argument('--cub-root', default=hyperparams.get_path(), help='Path to dataset folder')
