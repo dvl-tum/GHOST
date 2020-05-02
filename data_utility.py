@@ -7,9 +7,16 @@ import pickle
 
 
 def create_loaders(data_root, num_classes, is_extracted, num_workers, num_classes_iter, num_elements_class, size_batch):
+
+    if data_root.split('/')[-1] == 'Market':
+        dataset = extract_market.Market1501(root=data_root)
+        labels = dataset.train
+    else:
+        labels = list(range(0, num_classes))
+
     Dataset = dataset.Birds(
         root=data_root,
-        labels=list(range(0, num_classes)),
+        labels=labels,
         is_extracted=is_extracted,
         transform=dataset.utils.make_transform())
 
