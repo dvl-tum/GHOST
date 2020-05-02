@@ -38,7 +38,7 @@ class CombineSampler(Sampler):
                 split_list_of_indices.append(inds[:self.n_cl])
                 inds = inds[self.n_cl:]
 
-        # shuffle the order of classes
+        # shuffle the order of classes --> Could it be that same class appears twice in one batch?
         random.shuffle(split_list_of_indices)
         self.flat_list = [item for sublist in split_list_of_indices for item in sublist]
 
