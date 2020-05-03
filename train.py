@@ -16,7 +16,6 @@ import net
 import data_utility
 import utils
 from RAdam import RAdam
-import dataset.extract_market as extract_market
 
 import argparse
 import random
@@ -38,18 +37,20 @@ class Hyperparameters():
             self.dataset_path = '../../datasets/CUB_200_2011'
         elif dataset_name == 'cars':
             self.dataset_path = '../../datasets/CARS'
-        elif dataset_name == 'market':
+        elif dataset_name == 'Market':
             self.dataset_path = '../../datasets/Market'
+        elif dataset_name == 'cuhk03':
+            self.dataset_path = '../../datasets/cuhk03'
         else:
             self.dataset_path = '../../datasets/Stanford'
-        self.num_classes = {'cub': 100, 'cars': 98, 'Stanford': 11318, 'Market': 1502}
-        self.num_classes_iteration = {'cub': 6, 'cars': 5, 'Stanford': 10, 'Market': 5}
-        self.num_elemens_class = {'cub': 9, 'cars': 7, 'Stanford': 6, 'Market': 7}
-        self.get_num_labeled_class = {'cub': 2, 'cars': 3, 'Stanford': 2, 'Market': 2}
+        self.num_classes = {'cub': 100, 'cars': 98, 'Stanford': 11318, 'Market': 651, 'cuhk03': 1267}
+        self.num_classes_iteration = {'cub': 6, 'cars': 5, 'Stanford': 10, 'Market': 5, 'cuhk03': 5}
+        self.num_elemens_class = {'cub': 9, 'cars': 7, 'Stanford': 6, 'Market': 7, 'cuhk03': 7}
+        self.get_num_labeled_class = {'cub': 2, 'cars': 3, 'Stanford': 2, 'Market': 2, 'cuhk03': 2}
         # self.learning_rate = 0.0002
-        self.learning_rate = {'cub': 0.0001563663718906821, 'cars': 0.0002, 'Stanford': 0.0006077651100709081, 'Market': 0.0002}
-        self.weight_decay = {'cub': 6.059722614369727e-06, 'cars': 4.863656728256105e-07, 'Stanford': 5.2724883734490575e-12, 'Market': 4.863656728256105e-07}
-        self.softmax_temperature = {'cub': 24, 'cars': 79, 'Stanford': 54, 'Market': 79}
+        self.learning_rate = {'cub': 0.0001563663718906821, 'cars': 0.0002, 'Stanford': 0.0006077651100709081, 'Market': 0.0002, 'cuhk03': 0.00002}
+        self.weight_decay = {'cub': 6.059722614369727e-06, 'cars': 4.863656728256105e-07, 'Stanford': 5.2724883734490575e-12, 'Market': 4.863656728256105e-07, 'cuhk03': 4.863656728256105e-07}
+        self.softmax_temperature = {'cub': 24, 'cars': 79, 'Stanford': 54, 'Market': 79, 'cuhk03': 79}
 
     def get_path(self):
         return self.dataset_path
@@ -85,7 +86,7 @@ class Hyperparameters():
 parser = argparse.ArgumentParser(description='Training inception V2' +
                                              ' (BNInception) on CUB-200-2011 (cub), CARS 196 (cars) and Stanford Online Products (Stanford) with The Group Loss as described in ' +
                                              '`The Group Loss for Deep Metric Learning.`')
-dataset_name = 'Market'  # cub, cars or Stanford
+dataset_name = 'cuhk03'  # cub, cars or Stanford
 parser.add_argument('--dataset_name', default=dataset_name, type=str, help='The name of the dataset')
 hyperparams = Hyperparameters(dataset_name)
 parser.add_argument('--cub-root', default=hyperparams.get_path(), help='Path to dataset folder')
@@ -141,7 +142,7 @@ if not os.path.exists(save_folder_nets):
 if not os.path.exists(save_folder_results):
     os.makedirs(save_folder_results)
 
-
+"""
 # load the pre-trained 
 model = net.load_net(dataset=args.dataset_name, net_type=args.net_type, nb_classes=args.nb_classes, embed=args.embed, sz_embedding=args.sz_embedding)
 
@@ -156,12 +157,13 @@ criterion2 = nn.CrossEntropyLoss().to(device)
 # do training in mixed precision
 if args.is_apex:
     model, opt = amp.initialize(model, opt, opt_level="O1")
-
+"""
 # create loaders
 dl_tr, dl_ev, _, _ = data_utility.create_loaders(args.cub_root, args.nb_classes, args.cub_is_extracted,
                                                                  args.nb_workers,
                                                                  args.num_classes_iter, args.num_elements_class,
                                                                  batch_size)
+
 # evaluate at the beginning
 # nmi, recall = utils.evaluate(model, dl_ev, args.nb_classes, args.net_type, dataroot=args.dataset_name)
 # print(recall)
