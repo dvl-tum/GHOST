@@ -4,19 +4,31 @@ from collections import defaultdict
 from combine_sampler import CombineSampler, CombineSamplerAdvanced, CombineSamplerSuperclass, CombineSamplerSuperclass2
 import numpy as np
 import pickle
+import dataset.extract_market as extract_market
+import dataset.extract_cuhk03 as extract_cuhk03
 
 
 def create_loaders(data_root, num_classes, is_extracted, num_workers, num_classes_iter, num_elements_class, size_batch):
-
     if data_root.split('/')[-1] == 'Market':
-        dataset = extract_market.Market1501(root=data_root)
-        labels = dataset.train
+        preprocessor = extract_market.Market1501(root=data_root, num_train=num_classes)
+        labels_train = preprocessor.split['train']
+        labels_val = preprocessor.split['val']
+    elif data_root.split('/')[-1] == 'cuhk03':
+        preprocessor = extract_cuhk03.CUHK03(root=data_root, num_train=num_classes)
+        labels_train = preprocessor.split['train']
+        labels_val = preprocessor.split['val']
     else:
-        labels = list(range(0, num_classes))
+        if data_root == 'Stanford':
+            class_end = 2 * num_classes - 2
+        else:
+            class_end = 2 * num_classes
+
+        labels_train = list(range(0, num_classes))
+        labels_val = list(range(num_classes, class_end))
 
     Dataset = dataset.Birds(
         root=data_root,
-        labels=labels,
+        labels=labels_train,
         is_extracted=is_extracted,
         transform=dataset.utils.make_transform())
 
@@ -38,15 +50,10 @@ def create_loaders(data_root, num_classes, is_extracted, num_workers, num_classe
         pin_memory=True
     )
 
-    if data_root == 'Stanford':
-        class_end = 2 * num_classes - 2
-    else:
-        class_end = 2 * num_classes
-
     dl_ev = torch.utils.data.DataLoader(
         dataset.Birds(
             root=data_root,
-            labels=list(range(num_classes, class_end)),
+            labels=labels_val,
             is_extracted=is_extracted,
             transform=dataset.utils.make_transform(is_train=False)
         ),
@@ -59,7 +66,7 @@ def create_loaders(data_root, num_classes, is_extracted, num_workers, num_classe
     dl_finetune = torch.utils.data.DataLoader(
         dataset.Birds(
             root=data_root,
-            labels=list(range(num_classes)),
+            labels=labels_train,
             is_extracted=is_extracted,
             transform=dataset.utils.make_transform(is_train=False)
         ),
@@ -72,7 +79,7 @@ def create_loaders(data_root, num_classes, is_extracted, num_workers, num_classe
     dl_train_evaluate = torch.utils.data.DataLoader(
         dataset.Birds(
             root=data_root,
-            labels=list(range(num_classes)),
+            labels=labels_val,
             is_extracted=is_extracted,
             transform=dataset.utils.make_transform(is_train=False)
         ),

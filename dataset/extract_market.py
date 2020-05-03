@@ -57,25 +57,26 @@ class DataPreprocessor(object):
     def images_dir(self):
         return osp.join(self.root, 'images')
 
-    def load(self, num_val=0.3, verbose=True):
+    def load(self, num_train=0.3, verbose=True):
         splits = read_json(osp.join(self.root, 'splits.json'))
         if self.split_id >= len(splits):
             raise ValueError("split_id exceeds total splits {}"
                              .format(len(splits)))
         self.split = splits[self.split_id]
-
         # Randomly split train / val
         trainval_pids = np.asarray(self.split['trainval'])
         np.random.shuffle(trainval_pids)
         num = len(trainval_pids)
-        if isinstance(num_val, float):
-            num_val = int(round(num * num_val))
-        if num_val >= num or num_val < 0:
-            raise ValueError("num_val exceeds total identities {}"
+        if isinstance(num_train, float):
+            num_train = int(round(num * num_train))
+        if num_train >= num or num_train < 0:
+            raise ValueError("num_train exceeds total identities {}"
                              .format(num))
 
-        train_pids = sorted(trainval_pids[:-num_val])
-        val_pids = sorted(trainval_pids[-num_val:])
+        train_pids = sorted(trainval_pids[:num_train])
+        val_pids = sorted(trainval_pids[num_train:])
+        self.split['train'] = train_pids
+        self.split['val'] = val_pids
 
         self.meta = read_json(osp.join(self.root, 'meta.json'))
         identities = self.meta['identities']
@@ -113,7 +114,7 @@ class Market1501(DataPreprocessor):
     url = 'https://drive.google.com/file/d/0B8-rUzbwVRk0c054eEozWG9COHM/view'
     md5 = '65005ab7d12ec1c44de4eeafe813e68a'
 
-    def __init__(self, root, split_id=0, num_val=100, download=True):
+    def __init__(self, root, split_id=0, num_train=100, download=True):
         super(Market1501, self).__init__(root, split_id=split_id)
 
         if download:
@@ -123,11 +124,13 @@ class Market1501(DataPreprocessor):
             raise RuntimeError("Dataset not found or corrupted. " +
                                "You can use download=True to download it.")
 
-        print(num_val)
-        self.load(num_val)
+        print(num_train)
+        self.load(num_train)
+        shutil.rmtree(self.exdir)
 
-    def register(self, subdir, pattern=re.compile(r'([-\d]+)_c(\d)'), exdir=None):
-        fpaths = sorted(glob(osp.join(exdir, subdir, '*.jpg')))
+    def register(self, subdir, pattern=re.compile(r'([-\d]+)_c(\d)')):
+        print(osp.join(self.exdir, 'Market-1501-v15.09.15', subdir, '*.jpg'))
+        fpaths = sorted(glob(osp.join(self.exdir, 'Market-1501-v15.09.15', subdir, '*.jpg')))
         pids = set()
         for fpath in fpaths:
             fname = osp.basename(fpath)
@@ -141,11 +144,9 @@ class Market1501(DataPreprocessor):
             fname = ('{:08d}_{:02d}_{:04d}.jpg'
                      .format(pid, cam, len(self.identities[pid][cam])))
             self.identities[pid][cam].append(fname)
-            person_dir = os.path.join(self.images_dir, '{:08d}'.format(pid))
+            person_dir = os.path.join(self.images_dir, '{:05d}'.format(pid))
             if not os.path.isdir(person_dir):
                 os.makedirs(person_dir)
-            print(osp.join(person_dir, fname))
-            quit()
             shutil.copy(fpath, osp.join(person_dir, fname))
         return pids
 
@@ -158,7 +159,7 @@ class Market1501(DataPreprocessor):
         mkdir_if_missing(raw_dir)
 
         # Download the raw zip file
-        fpath = osp.join(self.root, 'Market-1501-v15.09.15.zip')
+        fpath = osp.join(osp.dirname(self.root), 'Market-1501-v15.09.15.zip')
         if osp.isfile(fpath) and \
                 hashlib.md5(open(fpath, 'rb').read()).hexdigest() == self.md5:
             print("Using downloaded file: " + fpath)
@@ -167,21 +168,21 @@ class Market1501(DataPreprocessor):
                                "to {}".format(self.url, fpath))
 
         # Extract the file
-        exdir = osp.join(self.root, 'Market-1501-v15.09.15')
-        if not osp.isdir(exdir):
+        self.exdir = osp.join(osp.dirname(self.root), 'Market-1501-v15.09.15')
+        if not osp.isdir(self.exdir):
             print("Extracting zip file")
             with ZipFile(fpath) as z:
-                z.extractall(path=raw_dir)
+                z.extractall(path=self.exdir)
 
         # Format
         mkdir_if_missing(self.images_dir)
-
+        print("HELLO")
         # 1501 identities (+1 for background) with 6 camera views each
         self.identities = [[[] for _ in range(6)] for _ in range(1502)]
-
-        trainval_pids = self.register('bounding_box_train', exdir=exdir)
-        gallery_pids = self.register('bounding_box_test', exdir=exdir)
-        query_pids = self.register('query', exdir=exdir)
+        print("HELLO")
+        trainval_pids = self.register('bounding_box_train')
+        gallery_pids = self.register('bounding_box_test')
+        query_pids = self.register('query')
         assert query_pids <= gallery_pids
         assert trainval_pids.isdisjoint(gallery_pids)
 
