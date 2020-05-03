@@ -142,7 +142,6 @@ if not os.path.exists(save_folder_nets):
 if not os.path.exists(save_folder_results):
     os.makedirs(save_folder_results)
 
-"""
 # load the pre-trained 
 model = net.load_net(dataset=args.dataset_name, net_type=args.net_type, nb_classes=args.nb_classes, embed=args.embed, sz_embedding=args.sz_embedding)
 
@@ -157,7 +156,7 @@ criterion2 = nn.CrossEntropyLoss().to(device)
 # do training in mixed precision
 if args.is_apex:
     model, opt = amp.initialize(model, opt, opt_level="O1")
-"""
+
 # create loaders
 dl_tr, dl_ev, _, _ = data_utility.create_loaders(args.cub_root, args.nb_classes, args.cub_is_extracted,
                                                                  args.nb_workers,
