@@ -13,11 +13,15 @@ import copy
 import json
 import dataset
 import PIL
+from apex import amp
 
 
-def train_model(model, dataloaders, criterion, optimizer, num_epochs=25, is_inception=False):
+apex_on = True
+manually_lr_dacay = True
+
+def train_model(model, dataloaders, criterion, optimizer, num_epochs=25, is_inception=False, save_name='finetuned.pth', manually_lr_decay=False):
     since = time.time()
-
+    manually_lr_decay = False
     val_acc_history = []
 
     best_model_wts = copy.deepcopy(model.state_dict())
@@ -26,6 +30,16 @@ def train_model(model, dataloaders, criterion, optimizer, num_epochs=25, is_ince
     for epoch in range(num_epochs):
         print('Epoch {}/{}'.format(epoch, num_epochs - 1))
         print('-' * 10)
+        
+        if manually_lr_decay:
+            if len(val_acc_history) > 2:
+                check = [i.cpu().data.numpy() for i in val_acc_history[-2:]]
+                print(np.abs(check[0]-check[1]))
+                if np.abs(check[0]-check[1]) < 0.1:
+                    print("Adapt LR")
+                    model.load_state_dict(torch.load(save_name))
+                    for g in optimizer.param_groups:
+                        g['lr'] = g['lr']/10.
 
         # Each epoch has a training and validation phase
         for phase in ['train', 'val']:
@@ -66,7 +80,11 @@ def train_model(model, dataloaders, criterion, optimizer, num_epochs=25, is_ince
 
                     # backward + optimize only if in training phase
                     if phase == 'train':
-                        loss.backward()
+                        if apex_on:
+                            with amp.scale_loss(loss, optimizer) as scaled_loss:
+                                scaled_loss.backward()
+                        else:
+                            loss.backward()
                         optimizer.step()
 
                 # statistics
@@ -82,6 +100,7 @@ def train_model(model, dataloaders, criterion, optimizer, num_epochs=25, is_ince
             if phase == 'val' and epoch_acc > best_acc:
                 best_acc = epoch_acc
                 best_model_wts = copy.deepcopy(model.state_dict())
+                torch.save(model.state_dict(), save_name)
             if phase == 'val':
                 val_acc_history.append(epoch_acc)
 
@@ -183,17 +202,11 @@ class DataSet(torch.utils.data.Dataset):
         for i in file_names:
             y = i.split('/')[-1].split('_')[0]
             y = int(y.strip("0"))
-            # fn needed for removing non-images starting with `._`
-            #fn = os.path.split(i)[1]
+            # fn needed for removing non-images starting with '._'
             fn = os.path.basename(i)
             if y in self.labels and fn[:2] != '._':
                 self.ys += [y]
                 self.im_paths.append(i)
-
-    def nb_classes(self):
-        n = len(np.unique(self.ys))
-        assert n == len(self.labels)
-        return n
 
     def __len__(self):
         return len(self.ys)
@@ -209,6 +222,7 @@ if __name__ == '__main__':
     # Top level data directory. Here we assume the format of the directory conforms
     #   to the ImageFolder structure
     data_dir = "../../datasets/Market"
+    dataset_name = os.path.basename(data_dir)
 
     # Models to choose from [resnet, alexnet, vgg, squeezenet, densenet, inception]
     model_name = "resnet"
@@ -220,21 +234,29 @@ if __name__ == '__main__':
     print(obj.keys())
     train_indices = obj['trainval']
     num_classes = len(train_indices)
-
+    
+    # get train and val samples and split
     train = list()
     val = list()
     labels_train = list()
     labels_val = list()
     train_percentage = 0.6
+
     for ind in train_indices:
         samples = os.listdir(os.path.join(root, 'images', "{:05d}".format(ind)))
         samples = [os.path.join(os.path.join(root, 'images', "{:05d}".format(ind)), samp) for samp in samples]
+        
         train_samps = samples[:int(train_percentage*len(samples))]
         val_samps = samples[int(train_percentage*len(samples)):]
         train.append(train_samps)
         val.append(val_samps)
+        print(len(samples))
         labels_train.append([ind]*int(train_percentage*len(samples)))
         labels_val.append([ind]*int(train_percentage*len(samples)))
+    
+    max_num = max([len(l) for m in [labels_train, labels_val] for l in m])
+    min_num = min([len(l) for m in [labels_train, labels_val] for l in m])
+    quit()
     train = [t for classes in train for t in classes]
     val = [t for classes in val for t in classes]
 
@@ -243,11 +265,13 @@ if __name__ == '__main__':
     labels_train = [map[t] for classes in labels_train for t in classes]
     labels_val = [map[t] for classes in labels_val for t in classes]
 
-    # Batch size for training (change depending on how much memory you have)
-    batch_size = 8
-
-    # Number of epochs to train for
-    num_epochs = 15
+    # hyperparams
+    batch_size = 128
+    num_epochs = 100
+    lr = 0.001
+    momentum = 0.9
+    weight_decay = 0.0001
+    trans = 'RandomResizedCrop, RandomHorizontalFlip, Normalization (0.485, 0.456, 0.406) (0.229, 0.224, 0.225)'
 
     # Flag for feature extracting. When False, we finetune the whole model,
     #   when True we only update the reshaped layer params
@@ -308,19 +332,23 @@ if __name__ == '__main__':
         for name, param in model_ft.named_parameters():
             if param.requires_grad == True:
                 params_to_update.append(param)
-                print("\t", name)
+                #print("\t", name)
     else:
         for name, param in model_ft.named_parameters():
             if param.requires_grad == True:
-                print("\t", name)
+                pass
+                #print("\t", name)
 
     # Observe that all parameters are being optimized
-    optimizer_ft = optim.SGD(params_to_update, lr=0.001, momentum=0.9)
+    optimizer_ft = optim.SGD(params_to_update, lr=lr, momentum=momentum, weight_decay=weight_decay)
+
+    if apex_on:
+        model_ft, optimizer_ft = amp.initialize(model_ft, optimizer_ft, opt_level="O1")
 
     # Setup the loss fxn
     criterion = nn.CrossEntropyLoss()
 
     # Train and evaluate
-    model_ft, hist = train_model(model_ft, dataloaders_dict, criterion, optimizer_ft, num_epochs=num_epochs,
-                                 is_inception=(model_name == "inception"))
-
+    manually_lr_decay = True
+    print('Batch size {}, momentum {}, weight decay {}, lr {}, num_epochs {}, transforms {}, manually adapt {}'.format(batch_size, momentum, weight_decay, lr, num_epochs, trans, manually_lr_decay))
+    model_ft, hist = train_model(model_ft, dataloaders_dict, criterion, optimizer_ft, num_epochs=num_epochs, is_inception=(model_name == "inception"), save_name=model_name + '_' + dataset_name  + '_pretrained.pth', manually_lr_decay=manually_lr_decay)

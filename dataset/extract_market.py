@@ -71,20 +71,18 @@ class Market1501(DataPreprocessor):
         else:
             raise RuntimeError("Please download the dataset manually from {} "
                                "to {}".format(self.url, fpath))
-
+        print('extracting')
         # Extract the file
         self.exdir = osp.join(osp.dirname(self.root), 'Market-1501-v15.09.15')
         if not osp.isdir(self.exdir):
             print("Extracting zip file")
             with ZipFile(fpath) as z:
                 z.extractall(path=self.exdir)
-
+        print(self.exdir)
         # Format
         mkdir_if_missing(self.images_dir)
-        print("HELLO")
         # 1501 identities (+1 for background) with 6 camera views each
         self.identities = [[[] for _ in range(6)] for _ in range(1502)]
-        print("HELLO")
         trainval_pids = self.register('bounding_box_train')
         gallery_pids = self.register('bounding_box_test')
         query_pids = self.register('query')
@@ -93,7 +91,7 @@ class Market1501(DataPreprocessor):
 
         # Save meta information into a json file
         meta = {'name': 'Market1501', 'shot': 'multiple', 'num_cameras': 6,
-                'identities': self.identities}
+               'identities': self.identities}
         write_json(meta, osp.join(self.root, 'meta.json'))
 
         # Save the only training / test split
