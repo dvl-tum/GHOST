@@ -13,15 +13,35 @@ import copy
 import json
 import dataset
 import PIL
-from apex import amp
+# from apex import amp
+import argparse
+import copy
+import random
 
 
-apex_on = True
-manually_lr_dacay = True
+def init_args():
+    parser = argparse.ArgumentParser(
+        description='Pretraining for Person Re-ID with Group Loss')
+    parser.add_argument('--dataset_name', default='Market', type=str,
+                        help='The name of the dataset')
+    parser.add_argument('--apex_on', default=1, type=int,
+                        help='If apex should be used')
+    parser.add_argument('--oversampling', default=1, type=int,
+                        help='If oversampling shoulf be used')
+    parser.add_argument('--manually_lr_decay', default=0, type=int,
+                        help='If manually lr decay should be applied')
+    parser.add_argument('--model_name', default='resnet', type=str,
+                        help='which model shoul be fine tuned')
+    parser.add_argument('--feature_extract', default=0, type=int,
+                        help='If only last layer should be updated')
 
-def train_model(model, dataloaders, criterion, optimizer, num_epochs=25, is_inception=False, save_name='finetuned.pth', manually_lr_decay=False):
+    return parser.parse_args()
+
+
+def train_model(model, dataloaders, criterion, optimizer, num_epochs=25,
+                is_inception=False, save_name='finetuned.pth',
+                manually_lr_decay=0, apex_on=1):
     since = time.time()
-    manually_lr_decay = False
     val_acc_history = []
 
     best_model_wts = copy.deepcopy(model.state_dict())
@@ -30,23 +50,23 @@ def train_model(model, dataloaders, criterion, optimizer, num_epochs=25, is_ince
     for epoch in range(num_epochs):
         print('Epoch {}/{}'.format(epoch, num_epochs - 1))
         print('-' * 10)
-        
+
         if manually_lr_decay:
             if len(val_acc_history) > 2:
                 check = [i.cpu().data.numpy() for i in val_acc_history[-2:]]
-                print(np.abs(check[0]-check[1]))
-                if np.abs(check[0]-check[1]) < 0.1:
+                print(np.abs(check[0] - check[1]))
+                if np.abs(check[0] - check[1]) < 0.1:
                     print("Adapt LR")
                     model.load_state_dict(torch.load(save_name))
                     for g in optimizer.param_groups:
-                        g['lr'] = g['lr']/10.
+                        g['lr'] = g['lr'] / 10.
 
         # Each epoch has a training and validation phase
         for phase in ['train', 'val']:
             if phase == 'train':
                 model.train()  # Set model to training mode
             else:
-                model.eval()   # Set model to evaluate mode
+                model.eval()  # Set model to evaluate mode
 
             running_loss = 0.0
             running_corrects = 0
@@ -62,16 +82,11 @@ def train_model(model, dataloaders, criterion, optimizer, num_epochs=25, is_ince
                 # forward
                 # track history if only in train
                 with torch.set_grad_enabled(phase == 'train'):
-                    # Get model outputs and calculate loss
-                    # Special case for inception because in training it has an auxiliary output. In train
-                    #   mode we calculate the loss by summing the final output and the auxiliary output
-                    #   but in testing we only consider the final output.
                     if is_inception and phase == 'train':
-                        # From https://discuss.pytorch.org/t/how-to-optimize-inception-model-with-auxiliary-classifiers/7958
                         outputs, aux_outputs = model(inputs)
                         loss1 = criterion(outputs, labels)
                         loss2 = criterion(aux_outputs, labels)
-                        loss = loss1 + 0.4*loss2
+                        loss = loss1 + 0.4 * loss2
                     else:
                         outputs = model(inputs)
                         loss = criterion(outputs, labels)
@@ -81,7 +96,8 @@ def train_model(model, dataloaders, criterion, optimizer, num_epochs=25, is_ince
                     # backward + optimize only if in training phase
                     if phase == 'train':
                         if apex_on:
-                            with amp.scale_loss(loss, optimizer) as scaled_loss:
+                            with amp.scale_loss(loss,
+                                                optimizer) as scaled_loss:
                                 scaled_loss.backward()
                         else:
                             loss.backward()
@@ -92,9 +108,11 @@ def train_model(model, dataloaders, criterion, optimizer, num_epochs=25, is_ince
                 running_corrects += torch.sum(preds == labels.data)
 
             epoch_loss = running_loss / len(dataloaders[phase].dataset)
-            epoch_acc = running_corrects.double() / len(dataloaders[phase].dataset)
+            epoch_acc = running_corrects.double() / len(
+                dataloaders[phase].dataset)
 
-            print('{} Loss: {:.4f} Acc: {:.4f}'.format(phase, epoch_loss, epoch_acc))
+            print('{} Loss: {:.4f} Acc: {:.4f}'.format(phase, epoch_loss,
+                                                       epoch_acc))
 
             # deep copy the model
             if phase == 'val' and epoch_acc > best_acc:
@@ -104,10 +122,9 @@ def train_model(model, dataloaders, criterion, optimizer, num_epochs=25, is_ince
             if phase == 'val':
                 val_acc_history.append(epoch_acc)
 
-        print()
-
     time_elapsed = time.time() - since
-    print('Training complete in {:.0f}m {:.0f}s'.format(time_elapsed // 60, time_elapsed % 60))
+    print('Training complete in {:.0f}m {:.0f}s'.format(time_elapsed // 60,
+                                                        time_elapsed % 60))
     print('Best val Acc: {:4f}'.format(best_acc))
 
     # load best model weights
@@ -121,7 +138,8 @@ def set_parameter_requires_grad(model, feature_extracting):
             param.requires_grad = False
 
 
-def initialize_model(model_name, num_classes, feature_extract, use_pretrained=True):
+def initialize_model(model_name, num_classes, feature_extract,
+                     use_pretrained=True):
     # Initialize these variables which will be set in this if statement. Each of these
     #   variables is model specific.
     model_ft = None
@@ -159,7 +177,8 @@ def initialize_model(model_name, num_classes, feature_extract, use_pretrained=Tr
         """
         model_ft = models.squeezenet1_0(pretrained=use_pretrained)
         set_parameter_requires_grad(model_ft, feature_extract)
-        model_ft.classifier[1] = nn.Conv2d(512, num_classes, kernel_size=(1, 1), stride=(1, 1))
+        model_ft.classifier[1] = nn.Conv2d(512, num_classes,
+                                           kernel_size=(1, 1), stride=(1, 1))
         model_ft.num_classes = num_classes
         input_size = 224
 
@@ -194,7 +213,7 @@ def initialize_model(model_name, num_classes, feature_extract, use_pretrained=Tr
 
 
 class DataSet(torch.utils.data.Dataset):
-    def __init__(self, root, labels, file_names, transform = None):
+    def __init__(self, root, labels, file_names, transform=None):
         # e.g., labels = range(0, 50) for using first 50 classes only
         self.labels = labels
         if transform: self.transform = transform
@@ -217,53 +236,61 @@ class DataSet(torch.utils.data.Dataset):
         return im, self.ys[index]
 
 
-if __name__ == '__main__':
-    root = '../../datasets/Market'
-    # Top level data directory. Here we assume the format of the directory conforms
-    #   to the ImageFolder structure
-    data_dir = "../../datasets/Market"
-    dataset_name = os.path.basename(data_dir)
-
-    # Models to choose from [resnet, alexnet, vgg, squeezenet, densenet, inception]
-    model_name = "resnet"
-
-
-    # Number of classes in the dataset
-    with open(os.path.join(data_dir, 'splits.json'), 'r') as f:
-        obj = json.load(f)[0]
-    print(obj.keys())
-    train_indices = obj['trainval']
-    num_classes = len(train_indices)
-    
+def get_samples(data_dir, oversampling, train_indices):
     # get train and val samples and split
     train = list()
     val = list()
     labels_train = list()
     labels_val = list()
-    train_percentage = 0.6
 
+    train_percentage = 0.6
+    samps = list()
     for ind in train_indices:
-        samples = os.listdir(os.path.join(root, 'images', "{:05d}".format(ind)))
-        samples = [os.path.join(os.path.join(root, 'images', "{:05d}".format(ind)), samp) for samp in samples]
-        
-        train_samps = samples[:int(train_percentage*len(samples))]
-        val_samps = samples[int(train_percentage*len(samples)):]
-        train.append(train_samps)
-        val.append(val_samps)
-        print(len(samples))
-        labels_train.append([ind]*int(train_percentage*len(samples)))
-        labels_val.append([ind]*int(train_percentage*len(samples)))
-    
-    max_num = max([len(l) for m in [labels_train, labels_val] for l in m])
-    min_num = min([len(l) for m in [labels_train, labels_val] for l in m])
-    quit()
+        samples = os.listdir(
+            os.path.join(data_dir, 'images', "{:05d}".format(ind)))
+        samples = [os.path.join(
+            os.path.join(data_dir, 'images', "{:05d}".format(ind)), samp) for
+            samp in samples]
+        samps.append(samples)
+    max_num = max([len(c) for c in samps])
+
+    random.seed(40)
+    for samples in samps:
+        if oversampling:
+            choose = copy.deepcopy(samples)
+            while len(samples) < max_num:
+                samples += [random.choice(choose)]
+        num_train = int(train_percentage * len(samples))
+        train.append(samples[:num_train])
+        val.append(samples[num_train:])
+        labels_train.append([ind] * num_train)
+        labels_val.append([ind] * (len(samples) - num_train))
+
     train = [t for classes in train for t in classes]
     val = [t for classes in val for t in classes]
 
-    # mapping
+    # mapping of labels from 0 to num_classes
     map = {class_ind: i for i, class_ind in enumerate(train_indices)}
     labels_train = [map[t] for classes in labels_train for t in classes]
     labels_val = [map[t] for classes in labels_val for t in classes]
+
+    return train, val, labels_train, labels_val, map
+
+
+if __name__ == '__main__':
+    args = init_args()
+    data_dir = os.path.join('../../datasets', args.dataset_name)
+
+    # Number of classes in the dataset
+    with open(os.path.join(data_dir, 'splits.json'), 'r') as f:
+        obj = json.load(f)[0]
+    train_indices = obj['trainval']
+    num_classes = len(train_indices)
+
+    # get samples
+    train, val, labels_train, labels_val, map = get_samples(data_dir,
+                                                            args.oversampling,
+                                                            train_indices)
 
     # hyperparams
     batch_size = 128
@@ -272,16 +299,6 @@ if __name__ == '__main__':
     momentum = 0.9
     weight_decay = 0.0001
     trans = 'RandomResizedCrop, RandomHorizontalFlip, Normalization (0.485, 0.456, 0.406) (0.229, 0.224, 0.225)'
-
-    # Flag for feature extracting. When False, we finetune the whole model,
-    #   when True we only update the reshaped layer params
-    feature_extract = False
-
-    # Initialize the model for this run
-    model_ft, input_size = initialize_model(model_name, num_classes, feature_extract, use_pretrained=True)
-
-    # Print the model we just instantiated
-
     data_transforms = {
         'train': transforms.Compose([
             transforms.RandomResizedCrop(input_size),
@@ -297,34 +314,32 @@ if __name__ == '__main__':
         ]),
     }
 
-    file_names = {'train': train, 'val': val}
-    indices = {'train': labels_train, 'val': labels_val}
+    # Initialize the modelrun
+    model_ft, input_size = initialize_model(args.model_name, num_classes,
+                                            args.feature_extract,
+                                            use_pretrained=True)
 
     print("Initializing Datasets and Dataloaders...")
-
-    # Create training and validation datasets
-    
-    train_dataset = DataSet(root=os.path.join(root, 'images'), labels=indices['train'], file_names=file_names['train'], transform=data_transforms['train'])
-    val_dataset = DataSet(root=os.path.join(root, 'images'), labels=indices['val'], file_names=file_names['val'], transform=data_transforms['val'])
+    train_dataset = DataSet(root=os.path.join(data_dir, 'images'),
+                            labels=labels_train,
+                            file_names=train,
+                            transform=data_transforms['train'])
+    val_dataset = DataSet(root=os.path.join(data_dir, 'images'),
+                          labels=labels_val, file_names=val,
+                          transform=data_transforms['val'])
 
     image_datasets = {'train': train_dataset, 'val': val_dataset}
-
-    # Create training and validation dataloaders
     dataloaders_dict = {
-        x: torch.utils.data.DataLoader(image_datasets[x], batch_size=batch_size, shuffle=True, num_workers=4) for x in
+        x: torch.utils.data.DataLoader(image_datasets[x],
+                                       batch_size=batch_size, shuffle=True,
+                                       num_workers=4) for x in
         ['train', 'val']}
 
-    # Detect if we have a GPU available
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
-    # Send the model to GPU
     model_ft = model_ft.to(device)
 
-    # Gather the parameters to be optimized/updated in this run. If we are
-    #  finetuning we will be updating all parameters. However, if we are
-    #  doing feature extract method, we will only update the parameters
-    #  that we have just initialized, i.e. the parameters with requires_grad
-    #  is True.
+    # params to fine tune
     params_to_update = model_ft.parameters()
     print("Params to learn:")
     if feature_extract:
@@ -332,23 +347,29 @@ if __name__ == '__main__':
         for name, param in model_ft.named_parameters():
             if param.requires_grad == True:
                 params_to_update.append(param)
-                #print("\t", name)
+                # print("\t", name)
     else:
         for name, param in model_ft.named_parameters():
             if param.requires_grad == True:
                 pass
-                #print("\t", name)
+                # print("\t", name)
 
-    # Observe that all parameters are being optimized
-    optimizer_ft = optim.SGD(params_to_update, lr=lr, momentum=momentum, weight_decay=weight_decay)
-
-    if apex_on:
-        model_ft, optimizer_ft = amp.initialize(model_ft, optimizer_ft, opt_level="O1")
-
-    # Setup the loss fxn
+    optimizer_ft = optim.SGD(params_to_update, lr=lr, momentum=momentum,
+                             weight_decay=weight_decay)
+    if args.apex_on:
+        model_ft, optimizer_ft = amp.initialize(model_ft, optimizer_ft,
+                                                opt_level="O1")
     criterion = nn.CrossEntropyLoss()
 
     # Train and evaluate
-    manually_lr_decay = True
-    print('Batch size {}, momentum {}, weight decay {}, lr {}, num_epochs {}, transforms {}, manually adapt {}'.format(batch_size, momentum, weight_decay, lr, num_epochs, trans, manually_lr_decay))
-    model_ft, hist = train_model(model_ft, dataloaders_dict, criterion, optimizer_ft, num_epochs=num_epochs, is_inception=(model_name == "inception"), save_name=model_name + '_' + dataset_name  + '_pretrained.pth', manually_lr_decay=manually_lr_decay)
+    print(
+        'Batch size {}, momentum {}, weight decay {}, lr {}, num_epochs {}, transforms {}, manually adapt {}'.format(
+            batch_size, momentum, weight_decay, lr, num_epochs, trans,
+            manually_lr_decay))
+    save_name = args.model_name + '_' + args.dataset_name + '_pretrained.pth'
+    model_ft, hist = train_model(model_ft, dataloaders_dict, criterion,
+                                 optimizer_ft, num_epochs=num_epochs,
+                                 is_inception=(args.model_name == "inception"),
+                                 save_name=save_name,
+                                 manually_lr_decay=manually_lr_decay,
+                                 apex=args.apex_on)
