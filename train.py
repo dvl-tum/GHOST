@@ -1,4 +1,4 @@
-# from apex import amp
+from apex import amp
 import logging, imp
 import random
 import os
@@ -86,7 +86,7 @@ class Hyperparameters():
 parser = argparse.ArgumentParser(description='Training inception V2' +
                                              ' (BNInception) on CUB-200-2011 (cub), CARS 196 (cars) and Stanford Online Products (Stanford) with The Group Loss as described in ' +
                                              '`The Group Loss for Deep Metric Learning.`')
-dataset_name = 'cuhk03'  # cub, cars or Stanford
+dataset_name = 'Market'  # cub, cars or Stanford
 parser.add_argument('--dataset_name', default=dataset_name, type=str, help='The name of the dataset')
 hyperparams = Hyperparameters(dataset_name)
 parser.add_argument('--cub-root', default=hyperparams.get_path(), help='Path to dataset folder')

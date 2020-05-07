@@ -14,8 +14,8 @@ def mkdir_if_missing(dir_path):
     try:
         os.makedirs(dir_path)
     except OSError as e:
-        if e.errno != errno.EEXIST:
-            raise
+        print('Dir {} already exists'.format(dir_path))
+        return
 
 def read_json(fpath):
     with open(fpath, 'r') as f:

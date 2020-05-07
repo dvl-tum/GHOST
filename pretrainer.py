@@ -13,7 +13,10 @@ import copy
 import json
 import dataset
 import PIL
+from apex import amp
 
+
+apex_on = True
 
 def train_model(model, dataloaders, criterion, optimizer, num_epochs=25, is_inception=False):
     since = time.time()
@@ -66,7 +69,11 @@ def train_model(model, dataloaders, criterion, optimizer, num_epochs=25, is_ince
 
                     # backward + optimize only if in training phase
                     if phase == 'train':
-                        loss.backward()
+                        if apex_on:
+                            with amp.scale_loss(loss, optimizer) as scaled_loss:
+                                scaled_loss.backward()
+                        else:
+                            loss.backward()
                         optimizer.step()
 
                 # statistics
@@ -183,15 +190,6 @@ class DataSet(torch.utils.data.Dataset):
         for i in file_names:
             y = i.split('/')[-1].split('_')[0]
             y = int(y.strip("0"))
-            # fn needed for removing non-images starting with `._`
-            #fn = os.path.split(i)[1]
-            fn = os.path.basename(i)
-            if y in self.labels and fn[:2] != '._':
-                self.ys += [y]
-                self.im_paths.append(i)
-
-    def nb_classes(self):
-        n = len(np.unique(self.ys))
         assert n == len(self.labels)
         return n
 
@@ -308,14 +306,18 @@ if __name__ == '__main__':
         for name, param in model_ft.named_parameters():
             if param.requires_grad == True:
                 params_to_update.append(param)
-                print("\t", name)
+                #print("\t", name)
     else:
         for name, param in model_ft.named_parameters():
             if param.requires_grad == True:
-                print("\t", name)
+                print("Train all params")
+                #print("\t", name)
 
     # Observe that all parameters are being optimized
     optimizer_ft = optim.SGD(params_to_update, lr=0.001, momentum=0.9)
+
+    if apex_on:
+        model_ft, optimizer_ft = amp.initialize(model_ft, optimizer_ft, opt_level="O1")
 
     # Setup the loss fxn
     criterion = nn.CrossEntropyLoss()
