@@ -17,6 +17,8 @@ from apex import amp
 import argparse
 import copy
 import random
+#from ray import tune
+#from ray.tune.examples.mnist_pytorch import get_data_loaders, ConvNet, train, test
 
 
 def init_args():
@@ -256,15 +258,24 @@ def get_samples(data_dir, oversampling, train_indices):
 
     random.seed(40)
     for i, samples in enumerate(samps):
-        if oversampling:
-            choose = copy.deepcopy(samples)
-            while len(samples) < max_num:
-                samples += [random.choice(choose)]
         num_train = int(train_percentage * len(samples))
-        train.append(samples[:num_train])
-        val.append(samples[num_train:])
-        labels_train.append([train_indices[i]] * num_train)
-        labels_val.append([train_indices[i]] * (len(samples) - num_train))
+        train_samps = samples[:num_train]
+        val_samps = samples[num_train:]
+
+        if oversampling:
+            choose_train = copy.deepcopy(train_samps)
+            while len(train_samps) < int(max_num*train_percentage):
+                train_samps += [random.choice(choose_train)]
+
+            choose_val = copy.deepcopy(val_samps)
+            while len(val_samps) < int(max_num * (1 - train_percentage)):
+                val_samps += [random.choice(choose_val)]
+
+        train.append(train_samps)
+        val.append(val_samps)
+
+        labels_train.append([train_indices[i]] * len(train_samps))
+        labels_val.append([train_indices[i]] * len(val_samps))
 
     train = [t for classes in train for t in classes]
     val = [t for classes in val for t in classes]
@@ -273,6 +284,7 @@ def get_samples(data_dir, oversampling, train_indices):
     map = {class_ind: i for i, class_ind in enumerate(train_indices)}
     labels_train = [map[t] for classes in labels_train for t in classes]
     labels_val = [map[t] for classes in labels_val for t in classes]
+
 
     return train, val, labels_train, labels_val, map
 
