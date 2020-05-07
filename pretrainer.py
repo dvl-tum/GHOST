@@ -299,6 +299,10 @@ if __name__ == '__main__':
     momentum = 0.9
     weight_decay = 0.0001
     trans = 'RandomResizedCrop, RandomHorizontalFlip, Normalization (0.485, 0.456, 0.406) (0.229, 0.224, 0.225)'
+    # Initialize the modelrun
+    model_ft, input_size = initialize_model(args.model_name, num_classes,
+                                            args.feature_extract,
+                                            use_pretrained=True)
     data_transforms = {
         'train': transforms.Compose([
             transforms.RandomResizedCrop(input_size),
@@ -314,10 +318,6 @@ if __name__ == '__main__':
         ]),
     }
 
-    # Initialize the modelrun
-    model_ft, input_size = initialize_model(args.model_name, num_classes,
-                                            args.feature_extract,
-                                            use_pretrained=True)
 
     print("Initializing Datasets and Dataloaders...")
     train_dataset = DataSet(root=os.path.join(data_dir, 'images'),
