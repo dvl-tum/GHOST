@@ -13,7 +13,7 @@ import copy
 import json
 import dataset
 import PIL
-# from apex import amp
+from apex import amp
 import argparse
 import copy
 import random
@@ -255,7 +255,7 @@ def get_samples(data_dir, oversampling, train_indices):
     max_num = max([len(c) for c in samps])
 
     random.seed(40)
-    for samples in samps:
+    for i, samples in enumerate(samps):
         if oversampling:
             choose = copy.deepcopy(samples)
             while len(samples) < max_num:
@@ -263,8 +263,8 @@ def get_samples(data_dir, oversampling, train_indices):
         num_train = int(train_percentage * len(samples))
         train.append(samples[:num_train])
         val.append(samples[num_train:])
-        labels_train.append([ind] * num_train)
-        labels_val.append([ind] * (len(samples) - num_train))
+        labels_train.append([train_indices[i]] * num_train)
+        labels_val.append([train_indices[i]] * (len(samples) - num_train))
 
     train = [t for classes in train for t in classes]
     val = [t for classes in val for t in classes]
@@ -293,7 +293,7 @@ if __name__ == '__main__':
                                                             train_indices)
 
     # hyperparams
-    batch_size = 128
+    batch_size = 64
     num_epochs = 100
     lr = 0.001
     momentum = 0.9
@@ -342,7 +342,7 @@ if __name__ == '__main__':
     # params to fine tune
     params_to_update = model_ft.parameters()
     print("Params to learn:")
-    if feature_extract:
+    if args.feature_extract:
         params_to_update = []
         for name, param in model_ft.named_parameters():
             if param.requires_grad == True:
@@ -365,11 +365,11 @@ if __name__ == '__main__':
     print(
         'Batch size {}, momentum {}, weight decay {}, lr {}, num_epochs {}, transforms {}, manually adapt {}'.format(
             batch_size, momentum, weight_decay, lr, num_epochs, trans,
-            manually_lr_decay))
+            args.manually_lr_decay))
     save_name = args.model_name + '_' + args.dataset_name + '_pretrained.pth'
     model_ft, hist = train_model(model_ft, dataloaders_dict, criterion,
                                  optimizer_ft, num_epochs=num_epochs,
                                  is_inception=(args.model_name == "inception"),
                                  save_name=save_name,
-                                 manually_lr_decay=manually_lr_decay,
-                                 apex=args.apex_on)
+                                 manually_lr_decay=args.manually_lr_decay,
+                                 apex_on=args.apex_on)
