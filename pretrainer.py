@@ -119,7 +119,7 @@ class PreTrainer():
                     val_acc_history.append(epoch_acc)
 
         time_elapsed = time.time() - since
-        print('Training complete in {:.0f}m {:.0f}s'.format(time_elapsed // 60,
+        print('Model complete in {:.0f}m {:.0f}s'.format(time_elapsed // 60,
                                                             time_elapsed % 60))
         print('Best val Acc: {:4f}'.format(best_acc))
 
@@ -282,7 +282,7 @@ class PreTrainer():
 
         data_transforms = {
             'train': transforms.Compose([
-                transforms.RandomAnffine(degrees=0, scale=(256, 480)),
+                transforms.RandomAffine(degrees=0, scale=(256, 480)),
                 transforms.RandomResizedCrop(input_size),
                 transforms.RandomHorizontalFlip(),
                 transforms.ToTensor(),
@@ -290,7 +290,7 @@ class PreTrainer():
                                      [0.229, 0.224, 0.225])
             ]),
             'val': transforms.Compose([
-                transforms.RandomAnffine(degrees=0, scale=(256, 480)),
+                transforms.RandomAffine(degrees=0, scale=(256, 480)),
                 transforms.Resize(input_size),
                 transforms.CenterCrop(input_size),
                 transforms.ToTensor(),
@@ -310,7 +310,7 @@ class PreTrainer():
 
         return {'train': train_dataset, 'val': val_dataset}
 
-    def get_data_loaders(self, batch_size):
+    def get_data_loaders(self, input_size, train_indices, batch_size):
 
         image_datasets = self.get_datasets(input_size, train_indices)
 
@@ -383,7 +383,7 @@ def main():
     save_name = args.model_name + '_' + args.dataset_name + '_pretrained.pth'
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
-    if not os.isdir('search_results'):
+    if not os.path.isdir('search_results'):
         os.makedirs('search_results')
 
     trainer = PreTrainer(args, data_dir, save_name, device)
