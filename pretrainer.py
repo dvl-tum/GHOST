@@ -17,6 +17,8 @@ from apex import amp
 import argparse
 import copy
 import random
+from RAdam import RAdam
+
 
 class DataSet(torch.utils.data.Dataset):
     def __init__(self, root, labels, file_names, transform=None):
@@ -79,9 +81,10 @@ class PreTrainer():
         num_classes = len(train_indices)
 
         model, input_size, params_to_update = self.get_model(num_classes)
-        optimizer = optim.SGD(params_to_update, lr=config['lr'],
-                              momentum=config['momentum'],
-                              weight_decay=config['weight_decay'])
+        optimizer = RAdam([{'params': params_to_update, 'lr': config[lr]}], weight_decay=config['weight_decay'])
+        #optimizer = optim.SGD(params_to_update, lr=config['lr'],
+        #                      momentum=config['momentum'],
+        #                      weight_decay=config['weight_decay'])
         if self.args.apex_on:
             model, optimizer = amp.initialize(model, optimizer, opt_level="O1")
 
@@ -416,7 +419,7 @@ def main():
         save_name = os.path.join('search_results', str(acc) + hypers + '.txt')
         with open(save_name, 'w') as file:
             for e in val_acc_history:
-                file.write(e)
+                file.write(str(e.data))
                 file.write('\n')
 
     torch.save(best_model, 'tine_tuned' + args.model_name + args.dataset_name + '.pth')
