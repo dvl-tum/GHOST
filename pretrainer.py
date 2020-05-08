@@ -48,7 +48,7 @@ def init_args():
         description='Pretraining for Person Re-ID with Group Loss')
     parser.add_argument('--dataset_name', default='Market', type=str,
                         help='The name of the dataset')
-    parser.add_argument('--apex_on', default=0, type=int,
+    parser.add_argument('--apex_on', default=1, type=int,
                         help='If apex should be used')
     parser.add_argument('--oversampling', default=1, type=int,
                         help='If oversampling shoulf be used')
@@ -81,7 +81,7 @@ class PreTrainer():
         num_classes = len(train_indices)
 
         model, input_size, params_to_update = self.get_model(num_classes)
-        optimizer = RAdam([{'params': params_to_update, 'lr': config[lr]}], weight_decay=config['weight_decay'])
+        optimizer = RAdam([{'params': params_to_update, 'lr': config['lr']}], weight_decay=config['weight_decay'])
         #optimizer = optim.SGD(params_to_update, lr=config['lr'],
         #                      momentum=config['momentum'],
         #                      weight_decay=config['weight_decay'])
