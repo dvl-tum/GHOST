@@ -59,8 +59,6 @@ def init_args():
     parser.add_argument('--feature_extract', default=0, type=int,
                         help='If only last layer should be updated')
     parser.add_argument('--num_epochs', default=10, type=int)
-    parser.add_argument('--optim', default='radam', type=str, 
-                        help='If RAdam(radam) or SGD(sgd) shoul be used')
 
     return parser.parse_args()
 
@@ -83,12 +81,8 @@ class PreTrainer():
         num_classes = len(train_indices)
 
         model, input_size, params_to_update = self.get_model(num_classes)
-        if self.args.optim == 'radam':
-            optimizer = RAdam([{'params': params_to_update, 'lr': config['lr']}], weight_decay=config['weight_decay'])
-        else:
-            optimizer = optim.SGD(params_to_update, lr=config['lr'],
-                                  momentum=config['momentum'],
-                                  weight_decay=config['weight_decay'])
+        optimizer = RAdam([{'params': params_to_update, 'lr': config['lr']}], weight_decay=config['weight_decay'])
+
         if self.args.apex_on:
             model, optimizer = amp.initialize(model, optimizer, opt_level="O1")
 
@@ -326,7 +320,7 @@ class PreTrainer():
         dataloaders_dict = {
             x: torch.utils.data.DataLoader(image_datasets[x],
                                            batch_size=batch_size, shuffle=True,
-                                           num_workers=4) for x in['train', 'val']}
+                                           num_workers=4) for x in['train']}
 
         return dataloaders_dict
 
@@ -337,7 +331,7 @@ class PreTrainer():
         labels_train = list()
         labels_val = list()
 
-        train_percentage = 0.6
+        train_percentage = 1
         samps = list()
         for ind in train_indices:
             samples = os.listdir(
@@ -386,6 +380,11 @@ class PreTrainer():
 
         return train, val, labels_train, labels_val, map
 
+def rnd(lower, higher):
+    exp = random.randint(-higher, -lower)
+    base = 0.9 * random.random() + 0.1
+    return base * 10 ** exp
+
 def main():
     args = init_args()
     data_dir = os.path.join('../../datasets', args.dataset_name)
@@ -398,24 +397,25 @@ def main():
     trainer = PreTrainer(args, data_dir, save_name, device)
 
     best_acc = 0
-    num_iter = 5
+    num_iter = 1
     # Random search
     for i in range(num_iter):
 
         # random search for hyperparameters
-        lr = 10**random.uniform(-6, 1)
+        lr = 10**random.uniform(-8, -3)
         batch_size = random.choice([8, 16, 32, 64])
-        weight_decay = 10 ** random.uniform(-6, 1)
-        momentum = random.uniform(0, 1)
+        weight_decay = 10 ** random.uniform(-15, -6)
+
+        lr = 0.001
+        batch_size = 64
+
         config = {'lr': lr,
-                  'momentum': momentum,
                   'weight_decay': weight_decay,
                   'batch_size': batch_size}
 
         model, val_acc_history = trainer.train_model(config)
 
         hypers = '_'.join([str(k) + '_' + str(v) for k, v in config.items()])
-        hypers += args.optim
 
         acc = max(val_acc_history)
         if acc > best_acc:
@@ -429,7 +429,7 @@ def main():
                 file.write(str(e.data))
                 file.write('\n')
 
-    torch.save(best_model, 'tine_tuned' + args.model_name + args.dataset_name + args.optim + '.pth')
+    torch.save(best_model, 'fine_tuned' + args.model_name + args.dataset_name + '.pth')
 
     print("Best Hyperparameters found: " + best_hypers)
 
