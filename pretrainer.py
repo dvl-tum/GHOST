@@ -17,6 +17,8 @@ from apex import amp
 import argparse
 import copy
 import random
+from RAdam import RAdam
+
 
 class DataSet(torch.utils.data.Dataset):
     def __init__(self, root, labels, file_names, transform=None):
@@ -79,9 +81,10 @@ class PreTrainer():
         num_classes = len(train_indices)
 
         model, input_size, params_to_update = self.get_model(num_classes)
-        optimizer = optim.SGD(params_to_update, lr=config['lr'],
-                              momentum=config['momentum'],
-                              weight_decay=config['weight_decay'])
+        optimizer = RAdam([{'params': params_to_update, 'lr': config[lr]}], weight_decay=config['weight_decay'])
+        #optimizer = optim.SGD(params_to_update, lr=config['lr'],
+        #                      momentum=config['momentum'],
+        #                      weight_decay=config['weight_decay'])
         if self.args.apex_on:
             model, optimizer = amp.initialize(model, optimizer, opt_level="O1")
 
@@ -394,10 +397,10 @@ def main():
     for i in range(num_iter):
 
         # random search for hyperparameters
-        lr = 10**random.randint(-6, 1)
+        lr = 10**random.uniform(-6, 1)
         batch_size = random.choice([8, 16, 32, 64])
-        weight_decay = 10 ** random.randint(-6, 1)
-        momentum = random.randint(1, 10)/10
+        weight_decay = 10 ** random.uniform(-6, 1)
+        momentum = random.uniform(0, 1)
         config = {'lr': lr,
                   'momentum': momentum,
                   'weight_decay': weight_decay,
@@ -405,7 +408,7 @@ def main():
 
         model, val_acc_history = trainer.train_model(config)
 
-        hypers = '_'.join([str(k) + '_' + str(v) for k, v in a.items()])
+        hypers = '_'.join([str(k) + '_' + str(v) for k, v in config.items()])
 
         acc = max(val_acc_history)
         if acc > best_acc:
@@ -416,7 +419,7 @@ def main():
         save_name = os.path.join('search_results', str(acc) + hypers + '.txt')
         with open(save_name, 'w') as file:
             for e in val_acc_history:
-                file.write(e)
+                file.write(str(e.data))
                 file.write('\n')
 
     torch.save(best_model, 'tine_tuned' + args.model_name + args.dataset_name + '.pth')
