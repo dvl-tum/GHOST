@@ -221,8 +221,7 @@ class DataSet(torch.utils.data.Dataset):
         if transform: self.transform = transform
         self.ys, self.im_paths = [], []
         for i in file_names:
-            y = i.split('/')[-1].split('_')[0]
-            y = int(y.strip("0"))
+            y = int(i.split('/')[-1].split('_')[0])
             # fn needed for removing non-images starting with '._'
             fn = os.path.basename(i)
             if y in self.labels and fn[:2] != '._':
@@ -270,6 +269,11 @@ def get_samples(data_dir, oversampling, train_indices):
             choose_val = copy.deepcopy(val_samps)
             while len(val_samps) < int(max_num * (1 - train_percentage)):
                 val_samps += [random.choice(choose_val)]
+
+            for v in val_samps:
+                if v in train_samps:
+                    print("Sample of validation set in training set - End.")
+                    quit()
 
         train.append(train_samps)
         val.append(val_samps)
@@ -375,8 +379,8 @@ if __name__ == '__main__':
 
     # Train and evaluate
     print(
-        'Batch size {}, momentum {}, weight decay {}, lr {}, num_epochs {}, transforms {}, manually adapt {}'.format(
-            batch_size, momentum, weight_decay, lr, num_epochs, trans,
+        'Dataset {}, Batch size {}, momentum {}, weight decay {}, lr {}, num_epochs {}, transforms {}, manually adapt {}'.format(
+            args.dataset_name, batch_size, momentum, weight_decay, lr, num_epochs, trans,
             args.manually_lr_decay))
     save_name = args.model_name + '_' + args.dataset_name + '_pretrained.pth'
     model_ft, hist = train_model(model_ft, dataloaders_dict, criterion,
