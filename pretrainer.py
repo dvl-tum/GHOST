@@ -59,6 +59,8 @@ def init_args():
     parser.add_argument('--feature_extract', default=0, type=int,
                         help='If only last layer should be updated')
     parser.add_argument('--num_epochs', default=10, type=int)
+    parser.add_argument('--optim', default='radam', type=str, 
+                        help='If RAdam(radam) or SGD(sgd) shoul be used')
 
     return parser.parse_args()
 
@@ -81,10 +83,12 @@ class PreTrainer():
         num_classes = len(train_indices)
 
         model, input_size, params_to_update = self.get_model(num_classes)
-        optimizer = RAdam([{'params': params_to_update, 'lr': config['lr']}], weight_decay=config['weight_decay'])
-        #optimizer = optim.SGD(params_to_update, lr=config['lr'],
-        #                      momentum=config['momentum'],
-        #                      weight_decay=config['weight_decay'])
+        if self.args.optim == 'radam':
+            optimizer = RAdam([{'params': params_to_update, 'lr': config['lr']}], weight_decay=config['weight_decay'])
+        else:
+            optimizer = optim.SGD(params_to_update, lr=config['lr'],
+                                  momentum=config['momentum'],
+                                  weight_decay=config['weight_decay'])
         if self.args.apex_on:
             model, optimizer = amp.initialize(model, optimizer, opt_level="O1")
 
@@ -106,7 +110,6 @@ class PreTrainer():
             for phase in ['train', 'val']:
                 epoch_loss, epoch_acc = self.run_model(phase, model, dataloaders,
                                                   optimizer, criterion)
-
                 # if phase == 'val':
                 #    tune.track.log(mean_accuracy=epoch_acc)
 
@@ -167,7 +170,10 @@ class PreTrainer():
                 if phase == 'train':
                     if self.args.apex_on:
                         with amp.scale_loss(loss, optimizer) as scaled_loss:
-                            scaled_loss.backward()
+                            try:
+                                scaled_loss.backward()
+                            except:
+                                return 100, 0
                     else:
                         loss.backward()
                     optimizer.step()
@@ -409,6 +415,7 @@ def main():
         model, val_acc_history = trainer.train_model(config)
 
         hypers = '_'.join([str(k) + '_' + str(v) for k, v in config.items()])
+        hypers += args.optim
 
         acc = max(val_acc_history)
         if acc > best_acc:
@@ -422,7 +429,7 @@ def main():
                 file.write(str(e.data))
                 file.write('\n')
 
-    torch.save(best_model, 'tine_tuned' + args.model_name + args.dataset_name + '.pth')
+    torch.save(best_model, 'tine_tuned' + args.model_name + args.dataset_name + args.optim + '.pth')
 
     print("Best Hyperparameters found: " + best_hypers)
 
