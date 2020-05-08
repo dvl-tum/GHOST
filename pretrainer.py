@@ -394,10 +394,10 @@ def main():
     for i in range(num_iter):
 
         # random search for hyperparameters
-        lr = 10**random.randint(-6, 1)
+        lr = 10**random.uniform(-6, 1)
         batch_size = random.choice([8, 16, 32, 64])
-        weight_decay = 10 ** random.randint(-6, 1)
-        momentum = random.randint(1, 10)/10
+        weight_decay = 10 ** random.uniform(-6, 1)
+        momentum = random.uniform(0, 1)
         config = {'lr': lr,
                   'momentum': momentum,
                   'weight_decay': weight_decay,
@@ -405,7 +405,7 @@ def main():
 
         model, val_acc_history = trainer.train_model(config)
 
-        hypers = '_'.join([str(k) + '_' + str(v) for k, v in a.items()])
+        hypers = '_'.join([str(k) + '_' + str(v) for k, v in config.items()])
 
         acc = max(val_acc_history)
         if acc > best_acc:
