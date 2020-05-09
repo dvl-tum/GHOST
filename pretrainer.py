@@ -78,8 +78,7 @@ class PreTrainer():
         train_indices = obj['trainval']
         num_classes = len(train_indices)
 
-        #model, input_size, params_to_update = self.get_model(num_classes)
-        model = net.resnet50(pretrained=True, progress=False)
+        model = net.load_net(dataset=self.args.dataset_name, net_type='resnet50', nb_classes=num_classes, pretraining=True)
         model = model.to(self.device)
 
         optimizer = RAdam([{'params': list(set(model.parameters())), 'lr': config['lr']}])
@@ -102,7 +101,7 @@ class PreTrainer():
             print('-' * 10)
 
             # Each epoch has a training and validation phase
-            for phase in ['train', 'val']:
+            for phase in ['train']:
                 epoch_loss, epoch_acc = self.run_model(phase, model, dataloaders,
                                                   optimizer, criterion)
                 # if phase == 'val':
@@ -157,9 +156,9 @@ class PreTrainer():
                     loss = loss1 + 0.4 * loss2
                 else:
                     outputs = model(inputs)
-                    loss = criterion(outputs, labels)
+                    loss = criterion(outputs[0], labels)
 
-                _, preds = torch.max(outputs, 1)
+                _, preds = torch.max(outputs[0], 1)
 
                 # backward + optimize only if in training phase
                 if phase == 'train':
@@ -403,7 +402,7 @@ def main():
     config = {'lr': 0.001,
               'batch_size': 64}
 
-    model, val_acc_history, model = trainer.train_model(config)
+    model, val_acc_history = trainer.train_model(config)
 
     if args.model_name == 'resnet':
         args.model_name = 'resnet50'
@@ -413,7 +412,7 @@ def main():
 
 
 if __name__ == '__main__':
-    mean = True
+    mean = False
     if mean:
         args = init_args()
         data_dir = os.path.join('../../datasets', args.dataset_name)
