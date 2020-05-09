@@ -2,26 +2,35 @@ from __future__ import print_function
 from __future__ import division
 import torch
 import torch.nn as nn
-import torch.optim as optim
-import numpy as np
-import torchvision
-from torchvision import datasets, models, transforms
-import matplotlib.pyplot as plt
 import time
 import os
-import copy
-import json
-import dataset
-import PIL
 from apex import amp
 import argparse
-import copy
 import random
+import torch.nn.functional as F
+import sys
+import logging
+import json
+import copy
+import PIL
+
 from RAdam import RAdam
 import gtg
 import net
 import data_utility
 import utils
+
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
+formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+
+ch = logging.StreamHandler()
+ch.setLevel(logging.DEBUG)
+ch.setFormatter(formatter)
+
+fh = logging.FileHandler('train_reid.txt')
+fh.setLevel(logging.DEBUG)
+fh.setFormatter(formatter)
 
 
 class Hyperparameters():
@@ -101,6 +110,8 @@ def init_args():
                         default=hyperparams.get_number_classes(), type=int,
                         help='Number of first [0, N] classes used for training and ' +
                              'next [N, N * 2] classes used for evaluating with max(N) = 100.')
+    parser.add_argument('--pretraining', default=0, type=int,
+                        help='If pretraining or fine tuning is executed')
 
     '''parser.add_argument('--num_classes_iter',
                         default=hyperparams.get_number_classes_iteration(),
@@ -157,31 +168,141 @@ def init_args():
 
     return parser.parse_args()
 
+class DataSet(torch.utils.data.Dataset):
+    def __init__(self, root, labels, file_names, transform=None):
+        # e.g., labels = range(0, 50) for using first 50 classes only
+        self.labels = labels
+        if transform: self.transform = transform
+        self.ys, self.im_paths = [], []
+        for i in file_names:
+            y = int(i.split('/')[-1].split('_')[0])
+            # fn needed for removing non-images starting with '._'
+            fn = os.path.basename(i)
+            if y in self.labels and fn[:2] != '._':
+                self.ys += [y]
+                self.im_paths.append(i)
+
+    def __len__(self):
+        return len(self.ys)
+
+    def __getitem__(self, index):
+        im = PIL.Image.open(self.im_paths[index])
+        im = self.transform(im)
+        return im, self.ys[index]
+
+
+def get_data_loaders(input_size, data_dir, batch_size, oversampling, train_percentage):
+
+    with open(os.path.join(data_dir, 'splits.json'), 'r') as f:
+        obj = json.load(f)[0]
+    train_indices = obj['trainval']
+
+    image_datasets = get_datasets(input_size, train_indices, data_dir, oversampling, train_percentage)
+
+    train = torch.utils.data.DataLoader(image_datasets['train'],
+                                        batch_size=batch_size, shuffle=True,
+                                        num_workers=4)
+
+    val = torch.utils.data.DataLoader(image_datasets['val'],
+                                        batch_size=batch_size, shuffle=True,
+                                        num_workers=4)
+
+    return train, val
+
+def get_datasets(input_size, train_indices, data_dir, oversampling, train_percentage):
+
+    # get samples
+    train, val, labels_train, labels_val, map = get_samples(train_indices, data_dir, oversampling, train_percentage)
+    import dataset.utils as utils
+    # TODO: input size and mean make_transform()
+    data_transforms = utils.make_transform()
+    data_transforms = {'train': data_transforms, 'val': data_transforms}
+
+    print("Initializing Datasets and Dataloaders...")
+    train_dataset = DataSet(root=os.path.join(data_dir, 'images'),
+                            labels=labels_train,
+                            file_names=train,
+                            transform=data_transforms['train'])
+    val_dataset = DataSet(root=os.path.join(data_dir, 'images'),
+                          labels=labels_val, file_names=val,
+                          transform=data_transforms['val'])
+
+    return {'train': train_dataset, 'val': val_dataset}
+
+def get_samples(train_indices, data_dir, oversampling, train_percentage):
+    # get train and val samples and split
+    train = list()
+    labels_train = list()
+    val = list()
+    labels_val = list()
+
+    samps = list()
+    for ind in train_indices:
+        samples = os.listdir(
+            os.path.join(data_dir, 'images', "{:05d}".format(ind)))
+        samples = [os.path.join(os.path.join(data_dir, 'images', "{:05d}".format(ind)), samp) for samp in samples]
+        samps.append(samples)
+
+    max_num = max([len(c) for c in samps])
+
+    random.seed(40)
+    for i, samples in enumerate(samps):
+        num_train = int(train_percentage * len(samples))
+        train_samps = samples[:num_train]
+        val_samps = samples[num_train:]
+
+        if oversampling:
+            choose_train = copy.deepcopy(train_samps)
+            while len(train_samps) < int(max_num * train_percentage):
+                train_samps += [random.choice(choose_train)]
+
+            choose_val = copy.deepcopy(val_samps)
+            while len(val_samps) < int(max_num * (1 - train_percentage)):
+                val_samps += [random.choice(choose_val)]
+
+            for v in val_samps:
+                if v in train_samps:
+                    print(
+                        "Sample of validation set in training set - End.")
+                    quit()
+
+        train.append(train_samps)
+        val.append(val_samps)
+
+        labels_train.append([train_indices[i]] * len(train_samps))
+        labels_val.append([train_indices[i]] * len(val_samps))
+
+    train = [t for classes in train for t in classes]
+    val = [t for classes in val for t in classes]
+
+    # mapping of labels from 0 to num_classes
+    map = {class_ind: i for i, class_ind in enumerate(train_indices)}
+    labels_train = [map[t] for classes in labels_train for t in classes]
+    labels_val = [map[t] for classes in labels_val for t in classes]
+
+    return train, val, labels_train, labels_val, map
 
 class PreTrainer():
-    def __init__(self, args, data_dir, save_name, device):
+    def __init__(self, args, data_dir, device, save_folder_results, save_folder_nets):
         self.device = device
         self.data_dir = data_dir
-        self.save_name = save_name
         self.args = args
+        self.save_folder_results = save_folder_results
+        self.save_folder_nets = save_folder_nets
 
     def train_model(self, config):
-        args = self.args
-        file_name = args.dataset_name + str(
-            args.id) + '_' + args.net_type + '_' + str(
-            config['lr']) + '_' + str(config['weight_decay']) + '_' + str(
-            config['num_classes_iter']) + '_' + str(
-            config['num_elements_class']) + '_' + str(
-            config['num_labeled_points_class'])
+
+        file_name = 'intermediate_model'
 
         model = net.load_net(dataset=self.args.dataset_name, net_type=self.args.net_type,
-                             nb_classes=self.args.nb_classes, embed=args.embed,
-                             sz_embedding=args.sz_embedding)
+                             nb_classes=self.args.nb_classes, embed=config['embed'],
+                             sz_embedding=config['sz_embedding'],
+                             pretraining=self.args.pretraining)
         model = model.to(self.device)
 
         gtg = gtg.GTG(config['nb_classes'], max_iter=config['num_iter_gtg'],
-                      sim=args.sim_type,
-                      set_negative=args.set_negative, device=self.device).to(self.device)
+                      sim=self.args.sim_type,
+                      set_negative=self.args.set_negative, device=self.device).to(self.device)
         opt = RAdam(
             [{'params': list(set(model.parameters())), 'lr': config['lr']}],
             weight_decay=config['weight_decay'])
@@ -189,69 +310,81 @@ class PreTrainer():
         criterion2 = nn.CrossEntropyLoss().to(self.device)
 
         # do training in mixed precision
-        if args.is_apex:
+        if self.args.is_apex:
             model, opt = amp.initialize(model, opt, opt_level="O1")
 
         # create loaders
-        batch_size = config['num_classes_iter'] * config['num_elements_class']
-        dl_tr, dl_ev, _, _ = data_utility.create_loaders(args.cub_root,
-                                                         args.nb_classes,
-                                                         args.cub_is_extracted,
-                                                         args.nb_workers,
-                                                         config['num_classes_iter'],
-                                                         config['num_elements_class'],
-                                                         batch_size)
+        if not self.args.pretraining:
+            batch_size = config['num_classes_iter'] * config['num_elements_class']
+            dl_tr, dl_ev, _, _ = data_utility.create_loaders(self.args.cub_root,
+                                                             self.args.nb_classes,
+                                                             self.args.cub_is_extracted,
+                                                             self.args.nb_workers,
+                                                             config['num_classes_iter'],
+                                                             config['num_elements_class'],
+                                                             batch_size)
+        else:
+            running_corrects = list()
+            batch_size = 64
+            oversampling = 0
+            train_percentage = 1
+            input_size = 224
+            dl_tr, dl_ev = get_data_loaders(input_size, self.data_dir, batch_size, oversampling, train_percentage)
 
 
         since = time.time()
         best_accuracy = 0
         scores = []
-        for e in range(1, args.nb_epochs + 1):
+        for e in range(1, self.args.nb_epochs + 1):
+            logger.info('Epoch {}/{}'.format(e, self.args.nb_epochs))
             if e == 31:
                 model.load_state_dict(torch.load(
-                    os.path.join(save_folder_nets, file_name + '.pth')))
+                    os.path.join(self.save_folder_nets, file_name + '.pth')))
                 for g in opt.param_groups:
-                    g['lr'] = args.lr_net / 10.
+                    g['lr'] = config['lr'] / 10.
 
             if e == 51:
                 model.load_state_dict(torch.load(
-                    os.path.join(save_folder_nets, file_name + '.pth')))
+                    os.path.join(self.save_folder_nets, file_name + '.pth')))
                 for g in opt.param_groups:
-                    g['lr'] = args.lr_net / 10.
+                    g['lr'] = config['lr'] / 10.
 
             i = 0
             for x, Y in dl_tr:
-                Y = Y.to(device)
+                Y = Y.to(self.device)
                 opt.zero_grad()
 
-                probs, fc7 = model(x.to(device))
-                labs, L, U = data_utility.get_labeled_and_unlabeled_points(
-                    labels=Y,
-                    num_points_per_class=config['num_labeled_points_class'],
-                    num_classes=args.nb_classes)
+                probs, fc7 = model(x.to(self.device))
+                loss = criterion2(probs, Y)
+                if not self.args.pretraining:
+                    labs, L, U = data_utility.get_labeled_and_unlabeled_points(
+                        labels=Y,
+                        num_points_per_class=config['num_labeled_points_class'],
+                        num_classes=self.args.nb_classes)
 
-                # compute the smoothed softmax
-                probs_for_gtg = F.softmax(probs / config['temperature'])
+                    # compute the smoothed softmax
+                    probs_for_gtg = F.softmax(probs / config['temperature'])
 
-                # do GTG (iterative process)
-                probs_for_gtg, W = gtg(fc7, fc7.shape[0], labs, L, U,
-                                       probs_for_gtg)
-                probs_for_gtg = torch.log(probs_for_gtg + 1e-12)
+                    # do GTG (iterative process)
+                    probs_for_gtg, W = gtg(fc7, fc7.shape[0], labs, L, U,
+                                           probs_for_gtg)
+                    probs_for_gtg = torch.log(probs_for_gtg + 1e-12)
 
-                # compute the losses
-                loss1 = criterion(probs_for_gtg, Y)
-                loss2 = criterion2(probs, Y)
-                loss = args.scaling_loss * loss1 + loss2
+                    # compute the losses
+                    loss1 = criterion(probs_for_gtg, Y)
+                    loss = self.args.scaling_loss * loss1 + loss
+                else:
+                    _, preds = torch.max(probs, 1)
+                    running_corrects += torch.sum(preds == Y.data)
                 i += 1
 
                 # check possible net divergence
                 if torch.isnan(loss):
-                    print("We have NaN numbers, closing")
-                    print("\n\n\n")
+                    logger.error("We have NaN numbers, closing\n\n\n")
                     sys.exit(0)
 
                 # backprop
-                if args.is_apex:
+                if self.args.is_apex:
                     with amp.scale_loss(loss, opt) as scaled_loss:
                         scaled_loss.backward()
                 else:
@@ -259,21 +392,24 @@ class PreTrainer():
                 opt.step()
 
             # compute recall and NMI at the end of each epoch (for Stanford NMI takes forever so skip it)
-            with torch.no_grad():
-                logging.info("**Evaluating...**")
-                nmi, recall = utils.evaluate(model, dl_ev, args.nb_classes,
-                                             args.net_type,
-                                             dataroot=args.dataset_name)
-                print('Recall {}, NMI {}'.format(recall, nmi))
-                scores.append((nmi, recall))
-                model.current_epoch = e
-                if recall[0] > best_accuracy:
-                    best_accuracy = recall[0]
-                    torch.save(model.state_dict(),
-                               os.path.join(save_folder_nets,
-                                            file_name + '.pth'))
+            if not self.args.pretraining:
+                with torch.no_grad():
+                    logging.info("**Evaluating...**")
+                    nmi, recall = utils.evaluate(model, dl_ev, self.args.nb_classes,
+                                                 self.args.net_type,
+                                                 dataroot=self.args.dataset_name)
+                    logger.info('Recall {}, NMI {}'.format(recall, nmi))
+                    scores.append((nmi, recall))
+                    model.current_epoch = e
+                    if recall[0] > best_accuracy:
+                        best_accuracy = recall[0]
+                        torch.save(model.state_dict(),
+                                   os.path.join(self.save_folder_nets,
+                                                file_name + '.pth'))
+            else:
+                logger.info('Loss {}, ACC {}'.format(loss.item(), ))
 
-        return scores
+        return scores, model
 
 def rnd(lower, higher):
     exp = random.randint(-higher, -lower)
@@ -282,18 +418,23 @@ def rnd(lower, higher):
 
 def main():
     args = init_args()
-    save_name = args.dataset_name + '_finetuned_grouploss.pth'
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
-    if not os.path.isdir('search_results'):
-        os.makedirs('search_results')
+    save_folder_results = 'search_results'
+    save_folder_nets = 'search_results_net'
+    if not os.path.isdir(save_folder_results):
+        os.makedirs(save_folder_results)
+    if not os.path.isdir(save_folder_nets):
+        os.makedirs(save_folder_nets)
 
-    trainer = PreTrainer(args, args.cub_root, save_name, device)
+    trainer = PreTrainer(args, args.cub_root, device,
+                         save_folder_results, save_folder_nets)
 
-    best_acc = 0
+    best_recall = 0
     num_iter = 100
     # Random search
     for i in range(num_iter):
+        logger.info('Search iteration {}'.format(i))
 
         # random search for hyperparameters
         lr = 10**random.uniform(-8, -3)
@@ -302,10 +443,10 @@ def main():
         num_classes_iter = random.randint(2, 10)
         num_elements_classes = random.randint(4, 10)
         num_labeled_class = random.randint(1, 3)
-        decrease_lr = random.randint(0, 15)
-        set_negative = random.choice([0, 1])
+        decrease_lr = random.randint(0, 15)  # --> Hyperparam to search?
+        set_negative = random.choice(0, 1) # --> Hyperparam to search?
         #sim_type = random.choice(0, 1)
-        num_iter_gtg = random.randint(1, 3)
+        num_iter_gtg = random.choice(1, 3) # --> Hyperparam to search?
 
 
         config = {'lr': lr,
@@ -318,7 +459,23 @@ def main():
                   'set_negative': set_negative,
                   'num_iter_gtg': num_iter_gtg}
 
-        model, val_acc_history = trainer.train_model(config)
+        hypers = ', '.join([k + ': ' + str(v) for k, v in config.items()])
+        logger.info('Using Parameters: ' + hypers)
+
+        scores, model = trainer.train_model(config)
+
+        model = model.load_state_dict(torch.load(os.path.join(
+            save_folder_nets, 'intermediate_model' + '.pth')))
+
+        recall_max = max([s[1] for s in scores])
+        logger.info('Best Recall: {}'.format(recall_max))
+
+        file_name = recall_max + '_' + args.dataset_name + '_' + str(
+            args.id) + '_' + args.net_type + '_' + str(
+            config['lr']) + '_' + str(config['weight_decay']) + '_' + str(
+            config['num_classes_iter']) + '_' + str(
+            config['num_elements_class']) + '_' + str(
+            config['num_labeled_points_class'])
 
         with open(os.path.join(save_folder_results, file_name + '.txt'),
                   'a+') as fp:
@@ -330,23 +487,19 @@ def main():
             fp.write('\n'.join('%s %s' % x for x in scores))
             fp.write("\n\n\n")
 
-        hypers = '_'.join([str(k) + '_' + str(v) for k, v in config.items()])
-
-        acc = max(val_acc_history)
-        if acc > best_acc:
+        if recall_max > best_recall:
             best_model = model
-            best_acc = acc
-            best_hypers = hypers
+            best_recall = recall_max
+            best_hypers = '_'.join([str(k) + '_' + str(v) for k, v in config.items()])
 
-        save_name = os.path.join('search_results', str(acc) + hypers + '.txt')
-        with open(save_name, 'w') as file:
-            for e in val_acc_history:
-                file.write(str(e.data))
-                file.write('\n')
+    if args.pretraining:
+        mode = 'finetuned_'
+    else:
+        mode = ''
+    torch.save(best_model, mode + args.model_name + '_' + args.dataset_name + '.pth')
 
-    torch.save(best_model, 'fine_tuned' + args.model_name + args.dataset_name + '.pth')
-
-    print("Best Hyperparameters found: " + best_hypers)
+    logger.info("Best Hyperparameters found: " + best_hypers)
+    logger.info("-----------------------------------------------------\n")
 
 
 
