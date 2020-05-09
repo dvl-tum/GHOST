@@ -38,10 +38,6 @@ class ScaleIntensities():
 def make_transform(sz_resize = 256, sz_crop = 224, mean = [128, 117, 104],
         std = [1, 1, 1], rgb_to_bgr = True, is_train = True, 
         intensity_scale = [[0, 1], [0, 255]]):
-    mean = [0.4019, 0.3973, 0.3895]
-    std = [0.2107, 0.2130, 0.2129]
-    intensity_scale  = None
-
     return transforms.Compose([
         transforms.Compose([ # train: horizontal flip and random resized crop
             transforms.RandomResizedCrop(sz_crop),
