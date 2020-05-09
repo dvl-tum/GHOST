@@ -273,10 +273,8 @@ def get_samples(train_indices, data_dir, oversampling, train_percentage):
 
         labels_train.append([train_indices[i]] * len(train_samps))
         labels_val.append([train_indices[i]] * len(val_samps))
-
     train = [t for classes in train for t in classes]
     val = [t for classes in val for t in classes]
-
     # mapping of labels from 0 to num_classes
     map = {class_ind: i for i, class_ind in enumerate(train_indices)}
     labels_train = [map[t] for classes in labels_train for t in classes]
