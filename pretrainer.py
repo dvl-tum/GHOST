@@ -13,11 +13,12 @@ import copy
 import json
 import dataset
 import PIL
-from apex import amp
+#from apex import amp
 import argparse
 import copy
 import random
 from RAdam import RAdam
+import net
 
 
 class DataSet(torch.utils.data.Dataset):
@@ -45,14 +46,13 @@ class DataSet(torch.utils.data.Dataset):
 
 def init_args():
     dataset = 'Market'
-    hyperparams = Hyperparameters(dataset)
     parser = argparse.ArgumentParser(
         description='Pretraining for Person Re-ID with Group Loss')
     parser.add_argument('--dataset_name', default=dataset, type=str,
                         help='The name of the dataset')
-    parser.add_argument('--apex_on', default=1, type=int,
+    parser.add_argument('--apex_on', default=0, type=int,
                         help='If apex should be used')
-    parser.add_argument('--oversampling', default=1, type=int,
+    parser.add_argument('--oversampling', default=0, type=int,
                         help='If oversampling shoulf be used')
     parser.add_argument('--model_name', default='resnet', type=str,
                         help='which model shoul be fine tuned')
@@ -78,15 +78,17 @@ class PreTrainer():
         train_indices = obj['trainval']
         num_classes = len(train_indices)
 
-        model, input_size, params_to_update = self.get_model(num_classes)
+        #model, input_size, params_to_update = self.get_model(num_classes)
+        model = net.resnet50(pretrained=True, progress=False)
+        model = model.to(self.device)
 
-        optimizer = RAdam([{'params': params_to_update, 'lr': config['lr']}])
+        optimizer = RAdam([{'params': list(set(model.parameters())), 'lr': config['lr']}])
 
         if self.args.apex_on:
             model, optimizer = amp.initialize(model, optimizer, opt_level="O1")
 
         criterion = nn.CrossEntropyLoss()
-
+        input_size = 224
         dataloaders = self.get_data_loaders(input_size, train_indices, config['batch_size'])
 
         since = time.time()
@@ -281,8 +283,11 @@ class PreTrainer():
         # get samples
         train, val, labels_train, labels_val, map = self.get_samples(
             train_indices)
+        import dataset.utils as utils
+        data_transforms = utils.make_transform()
+        data_transforms = {'train': data_transforms, 'val': data_transforms}
 
-        data_transforms = {
+        '''data_transforms = {
             'train': transforms.Compose([
                 transforms.RandomAffine(degrees=0, scale=(256, 480)),
                 transforms.RandomResizedCrop(input_size),
@@ -299,7 +304,7 @@ class PreTrainer():
                 transforms.Normalize([0.485, 0.456, 0.406],
                                      [0.229, 0.224, 0.225])
             ]),
-        }
+        }'''
 
         print("Initializing Datasets and Dataloaders...")
         train_dataset = DataSet(root=os.path.join(self.data_dir, 'images'),
@@ -403,9 +408,38 @@ def main():
     if args.model_name == 'resnet':
         args.model_name = 'resnet50'
 
-    torch.save(model, 'finetuned_' + args.dataset_name + '_' + args.model_name + '.pth')
+    torch.save(model.state_dict(), 'finetuned_' + args.dataset_name + '_' + args.model_name + '.pth')
 
 
 
 if __name__ == '__main__':
+    mean = False
+    if mean:
+        args = init_args()
+        data_dir = os.path.join('../../datasets', args.dataset_name)
+        save_name = args.model_name + '_' + args.dataset_name + '_pretrained.pth'
+        device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+
+        trainer = PreTrainer(args, data_dir, save_name, device)
+
+        with open(os.path.join(data_dir, 'splits.json'), 'r') as f:
+            obj = json.load(f)[0]
+        train_indices = obj['trainval']
+        train, _, _, _, _ = trainer.get_samples(train_indices)
+        import dataset.utils as utils
+        im_list = list()
+        trans = transforms.Compose([transforms.ToTensor()])
+        for im in train:
+            with PIL.Image.open(im) as file:
+                print(file)
+                im_list.append(trans(file))
+                file = file
+                print(trans(file))
+                quit()
+        mean = utils.mean_per_channel(im_list)
+        std = utils.std_per_channel(im_list)
+
+        print(mean, std)
+        quit()
+
     main()
