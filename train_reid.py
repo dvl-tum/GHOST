@@ -15,7 +15,7 @@ import copy
 import PIL
 
 from RAdam import RAdam
-import gtg
+import gtg as gtg_module
 import net
 import data_utility
 import utils
@@ -47,7 +47,7 @@ class Hyperparameters():
         else:
             self.dataset_path = '../../datasets/Stanford'
 
-        self.num_classes = {'cub': 100, 'cars': 98, 'Stanford': 11318, 'Market': 651, 'cuhk03': 1267}
+        self.num_classes = {'cub': 100, 'cars': 98, 'Stanford': 11318, 'Market': 751, 'cuhk03': 1367}
         self.num_classes_iteration = {'cub': 6, 'cars': 5, 'Stanford': 10, 'Market': 5, 'cuhk03': 5}
         self.num_elemens_class = {'cub': 9, 'cars': 7, 'Stanford': 6, 'Market': 7, 'cuhk03': 7}
         self.get_num_labeled_class = {'cub': 2, 'cars': 3, 'Stanford': 2, 'Market': 2, 'cuhk03': 2}
@@ -88,7 +88,7 @@ class Hyperparameters():
 
 
 def init_args():
-    dataset = 'Market'
+    dataset = 'cuhk03'
     hyperparams = Hyperparameters(dataset)
     parser = argparse.ArgumentParser(
         description='Pretraining for Person Re-ID with Group Loss')
@@ -202,10 +202,12 @@ def get_data_loaders(input_size, data_dir, batch_size, oversampling, train_perce
     train = torch.utils.data.DataLoader(image_datasets['train'],
                                         batch_size=batch_size, shuffle=True,
                                         num_workers=4)
-
-    val = torch.utils.data.DataLoader(image_datasets['val'],
-                                        batch_size=batch_size, shuffle=True,
-                                        num_workers=4)
+    if len(image_datasets['val']) != 0:
+        val = torch.utils.data.DataLoader(image_datasets['val'],
+                                            batch_size=batch_size, shuffle=True,
+                                            num_workers=4)
+    else:
+        val = None
 
     return train, val
 
@@ -295,12 +297,12 @@ class PreTrainer():
         file_name = 'intermediate_model'
 
         model = net.load_net(dataset=self.args.dataset_name, net_type=self.args.net_type,
-                             nb_classes=self.args.nb_classes, embed=config['embed'],
-                             sz_embedding=config['sz_embedding'],
+                             nb_classes=self.args.nb_classes, embed=self.args.embed,
+                             sz_embedding=self.args.sz_embedding,
                              pretraining=self.args.pretraining)
         model = model.to(self.device)
 
-        gtg = gtg.GTG(config['nb_classes'], max_iter=config['num_iter_gtg'],
+        gtg = gtg_module.GTG(self.args.nb_classes, max_iter=config['num_iter_gtg'],
                       sim=self.args.sim_type,
                       set_negative=self.args.set_negative, device=self.device).to(self.device)
         opt = RAdam(
@@ -324,7 +326,7 @@ class PreTrainer():
                                                              config['num_elements_class'],
                                                              batch_size)
         else:
-            running_corrects = list()
+            running_corrects = 0
             batch_size = 64
             oversampling = 0
             train_percentage = 1
@@ -375,7 +377,7 @@ class PreTrainer():
                     loss = self.args.scaling_loss * loss1 + loss
                 else:
                     _, preds = torch.max(probs, 1)
-                    running_corrects += torch.sum(preds == Y.data)
+                    running_corrects += torch.sum(preds == Y.data).cpu().data.item()
                 i += 1
 
                 # check possible net divergence
@@ -440,13 +442,14 @@ def main():
         lr = 10**random.uniform(-8, -3)
         batch_size = random.choice([8, 16, 32, 64])
         weight_decay = 10 ** random.uniform(-15, -6)
-        num_classes_iter = random.randint(2, 10)
-        num_elements_classes = random.randint(4, 10)
+        num_classes_iter = random.randint(2, 5)
+        num_elements_classes = random.randint(4, 9)
         num_labeled_class = random.randint(1, 3)
         decrease_lr = random.randint(0, 15)  # --> Hyperparam to search?
         set_negative = random.choice([0, 1]) # --> Hyperparam to search?
         #sim_type = random.choice(0, 1)
         num_iter_gtg = random.randint(1, 3) # --> Hyperparam to search?
+        temp = random.randint(50, 80)
 
 
         config = {'lr': lr,
@@ -457,7 +460,8 @@ def main():
                   'num_labeled_points_class': num_labeled_class,
                   'decrease_lr': decrease_lr,
                   'set_negative': set_negative,
-                  'num_iter_gtg': num_iter_gtg}
+                  'num_iter_gtg': num_iter_gtg,
+                  'temperature': temp}
 
         hypers = ', '.join([k + ': ' + str(v) for k, v in config.items()])
         logger.info('Using Parameters: ' + hypers)
