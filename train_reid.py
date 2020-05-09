@@ -407,7 +407,8 @@ class PreTrainer():
                                    os.path.join(self.save_folder_nets,
                                                 file_name + '.pth'))
             else:
-                logger.info('Loss {}, ACC {}'.format(loss.item(), ))
+                logger.info('Loss {}, Recall {}'.format(torch.mean(loss.cpu()), running_corrects/len(dl_tr)))
+                scores.append(running_corrects/dl_tr.shape[0])
 
         return scores, model
 
@@ -468,11 +469,13 @@ def main():
 
         model = model.load_state_dict(torch.load(os.path.join(
             save_folder_nets, 'intermediate_model' + '.pth')))
-
-        recall_max = max([s[1] for s in scores])
+        if not args.pretraining:
+            recall_max = max([s[1][0] for s in scores])
+        else:
+            recal_max = max(scores)
         logger.info('Best Recall: {}'.format(recall_max))
 
-        file_name = recall_max + '_' + args.dataset_name + '_' + str(
+        file_name = str(recall_max) + '_' + args.dataset_name + '_' + str(
             args.id) + '_' + args.net_type + '_' + str(
             config['lr']) + '_' + str(config['weight_decay']) + '_' + str(
             config['num_classes_iter']) + '_' + str(
@@ -480,7 +483,7 @@ def main():
             config['num_labeled_points_class'])
 
         with open(os.path.join(save_folder_results, file_name + '.txt'),
-                  'a+') as fp:
+                  'w') as fp:
             fp.write(file_name + "\n")
             fp.write(str(args))
             fp.write('\n')
