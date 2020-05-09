@@ -11,6 +11,7 @@ class Birds(torch.utils.data.Dataset):
     def __init__(self, root, labels, is_extracted = False, transform = None):
         # e.g., labels = range(0, 50) for using first 50 classes only
         self.labels = labels
+        map = {lab: i for i, lab in enumerate(sorted(self.labels))}
         if transform: self.transform = transform
         self.ys, self.im_paths = [], []
         for i in torchvision.datasets.ImageFolder(
@@ -21,7 +22,7 @@ class Birds(torch.utils.data.Dataset):
             # fn needed for removing non-images starting with `._`
             fn = os.path.split(i[0])[1]
             if y in self.labels and fn[:2] != '._':
-                self.ys  += [y]
+                self.ys  += [map[y]]
                 self.im_paths.append(i[0])
 
     def nb_classes(self):
