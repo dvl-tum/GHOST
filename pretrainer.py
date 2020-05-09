@@ -45,7 +45,6 @@ class DataSet(torch.utils.data.Dataset):
 
 def init_args():
     dataset = 'Market'
-    hyperparams = Hyperparameters(dataset)
     parser = argparse.ArgumentParser(
         description='Pretraining for Person Re-ID with Group Loss')
     parser.add_argument('--dataset_name', default=dataset, type=str,

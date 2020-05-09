@@ -127,7 +127,7 @@ def init_args():
 
     parser.add_argument('--nb_workers', default=4, type=int,
                         help='Number of workers for dataloader.')
-    parser.add_argument('--net_type', default='bn_inception', type=str,
+    parser.add_argument('--net_type', default='resnet50', type=str,
                         choices=['bn_inception', 'densenet121', 'densenet161',
                                  'densenet169', 'densenet201',
                                  'resnet18', 'resnet34', 'resenet50',
@@ -166,17 +166,17 @@ class PreTrainer():
         self.args = args
 
     def train_model(self, config):
-
+        args = self.args
         file_name = args.dataset_name + str(
             args.id) + '_' + args.net_type + '_' + str(
-            config['lr_net']) + '_' + str(config['weight_decay']) + '_' + str(
+            config['lr']) + '_' + str(config['weight_decay']) + '_' + str(
             config['num_classes_iter']) + '_' + str(
             config['num_elements_class']) + '_' + str(
             config['num_labeled_points_class'])
 
         model = net.load_net(dataset=self.args.dataset_name, net_type=self.args.net_type,
-                             nb_classes=self.args.nb_classes, embed=config['embed'],
-                             sz_embedding=config['sz_embedding'])
+                             nb_classes=self.args.nb_classes, embed=args.embed,
+                             sz_embedding=args.sz_embedding)
         model = model.to(self.device)
 
         gtg = gtg.GTG(config['nb_classes'], max_iter=config['num_iter_gtg'],
@@ -282,7 +282,7 @@ def rnd(lower, higher):
 
 def main():
     args = init_args()
-    save_name = args.model_name + '_' + args.dataset_name + '_pretrained.pth'
+    save_name = args.dataset_name + '_finetuned_grouploss.pth'
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
     if not os.path.isdir('search_results'):
@@ -303,16 +303,16 @@ def main():
         num_elements_classes = random.randint(4, 10)
         num_labeled_class = random.randint(1, 3)
         decrease_lr = random.randint(0, 15)
-        set_negative = random.choice(0, 1)
+        set_negative = random.choice([0, 1])
         #sim_type = random.choice(0, 1)
-        num_iter_gtg = random.choice(1, 3)
+        num_iter_gtg = random.randint(1, 3)
 
 
         config = {'lr': lr,
                   'weight_decay': weight_decay,
                   'batch_size': batch_size,
                   'num_classes_iter': num_classes_iter,
-                  'num_elements_classes': num_elements_classes,
+                  'num_elements_class': num_elements_classes,
                   'num_labeled_points_class': num_labeled_class,
                   'decrease_lr': decrease_lr,
                   'set_negative': set_negative,
