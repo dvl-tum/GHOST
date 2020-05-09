@@ -22,7 +22,7 @@ import utils
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
-formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+formatter = logging.Formatter('%(asctime)s - %(message)s')
 
 ch = logging.StreamHandler()
 ch.setLevel(logging.DEBUG)
@@ -428,6 +428,11 @@ def main():
     if not os.path.isdir(save_folder_nets):
         os.makedirs(save_folder_nets)
 
+    if args.pretraining:
+        mode = 'finetuned_'
+    else:
+        mode = ''
+
     trainer = PreTrainer(args, args.cub_root, device,
                          save_folder_results, save_folder_nets)
 
@@ -493,15 +498,11 @@ def main():
             fp.write("\n\n\n")
 
         if recall_max > best_recall:
-            best_model = model
+            torch.save(model.state_dict(),
+                       mode + args.net_type + '_' + args.dataset_name + '.pth')
             best_recall = recall_max
             best_hypers = '_'.join([str(k) + '_' + str(v) for k, v in config.items()])
 
-    if args.pretraining:
-        mode = 'finetuned_'
-    else:
-        mode = ''
-    torch.save(best_model.state_dict(), mode + args.net_type + '_' + args.dataset_name + '.pth')
 
     logger.info("Best Hyperparameters found: " + best_hypers)
     logger.info("-----------------------------------------------------\n")
