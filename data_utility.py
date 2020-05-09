@@ -6,17 +6,21 @@ import numpy as np
 import pickle
 import dataset.extract_market as extract_market
 import dataset.extract_cuhk03 as extract_cuhk03
+import os
+import json
 
 
 def create_loaders(data_root, num_classes, is_extracted, num_workers, num_classes_iter, num_elements_class, size_batch):
     if data_root.split('/')[-1] == 'Market':
-        preprocessor = extract_market.Market1501(root=data_root, num_train=num_classes)
-        labels_train = preprocessor.split['train']
-        labels_val = preprocessor.split['val']
+        with open(os.path.join(data_root, 'splits.json'), 'r') as f:
+            obj = json.load(f)[0]
+        labels_train = obj['trainval']
+        labels_val = obj['query'] + obj['gallery']
     elif data_root.split('/')[-1] == 'cuhk03':
-        preprocessor = extract_cuhk03.CUHK03(root=data_root, num_train=num_classes)
-        labels_train = preprocessor.split['train']
-        labels_val = preprocessor.split['val']
+        with open(os.path.join(data_root, 'splits.json'), 'r') as f:
+            obj = json.load(f)[0]
+        labels_train = obj['trainval']
+        labels_val = obj['query'] + obj['gallery']
     else:
         if data_root == 'Stanford':
             class_end = 2 * num_classes - 2
