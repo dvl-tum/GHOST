@@ -88,7 +88,7 @@ class Hyperparameters():
 
 
 def init_args():
-    dataset = 'cuhk03'
+    dataset = 'Market'
     hyperparams = Hyperparameters(dataset)
     parser = argparse.ArgumentParser(
         description='Pretraining for Person Re-ID with Group Loss')
@@ -96,7 +96,7 @@ def init_args():
                         help='The name of the dataset')
     parser.add_argument('--oversampling', default=1, type=int,
                         help='If oversampling shoulf be used')
-    parser.add_argument('--num_epochs', default=100, type=int)
+    parser.add_argument('--nb_epochs', default=1, type=int)
 
     parser.add_argument('--cub-root', default=hyperparams.get_path(),
                         help='Path to dataset folder')
@@ -162,7 +162,7 @@ def init_args():
                         help='Number to divide the learnign rate with')
     parser.add_argument('--id', default=1, type=int,
                         help='id, in case you run multiple independent nets, for example if you want an ensemble of nets')
-    parser.add_argument('--is_apex', default=0, type=int,
+    parser.add_argument('--is_apex', default=1, type=int,
                         help='if 1 use apex to do mixed precision training')
 
 
@@ -264,7 +264,7 @@ def get_samples(train_indices, data_dir, oversampling, train_percentage):
 
             for v in val_samps:
                 if v in train_samps:
-                    print(
+                    logger.error(
                         "Sample of validation set in training set - End.")
                     quit()
 
@@ -432,7 +432,7 @@ def main():
                          save_folder_results, save_folder_nets)
 
     best_recall = 0
-    num_iter = 100
+    num_iter = 2
     # Random search
     for i in range(num_iter):
         logger.info('Search iteration {}'.format(i))
@@ -501,7 +501,7 @@ def main():
         mode = 'finetuned_'
     else:
         mode = ''
-    torch.save(best_model, mode + args.model_name + '_' + args.dataset_name + '.pth')
+    torch.save(best_model.state_dict(), mode + args.net_type + '_' + args.dataset_name + '.pth')
 
     logger.info("Best Hyperparameters found: " + best_hypers)
     logger.info("-----------------------------------------------------\n")
