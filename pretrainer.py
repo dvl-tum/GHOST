@@ -45,7 +45,7 @@ class DataSet(torch.utils.data.Dataset):
 
 
 def init_args():
-    dataset = 'Market'
+    dataset = 'cuhk03'
     parser = argparse.ArgumentParser(
         description='Pretraining for Person Re-ID with Group Loss')
     parser.add_argument('--dataset_name', default=dataset, type=str,
@@ -413,7 +413,7 @@ def main():
 
 
 if __name__ == '__main__':
-    mean = False
+    mean = True
     if mean:
         args = init_args()
         data_dir = os.path.join('../../datasets', args.dataset_name)
@@ -430,12 +430,10 @@ if __name__ == '__main__':
         im_list = list()
         trans = transforms.Compose([transforms.ToTensor()])
         for im in train:
+            print(im)
             with PIL.Image.open(im) as file:
-                print(file)
                 im_list.append(trans(file))
                 file = file
-                print(trans(file))
-                quit()
         mean = utils.mean_per_channel(im_list)
         std = utils.std_per_channel(im_list)
 
