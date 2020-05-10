@@ -409,8 +409,30 @@ class PreTrainer():
             else:
                 logger.info('Loss {}, Recall {}'.format(torch.mean(loss.cpu()), running_corrects/len(dl_tr)))
                 scores.append(running_corrects/dl_tr.shape[0])
+                if scores[-1] > best_accuracy:
+                    best_accuracy = scores[-1]
+                    torch.save(model.state_dict(),
+                              os.path.join(self.save_folder_nets,
+                                           file_name + '.pth'))
 
-        return scores, model
+        file_name = str(best_accuracy) + '_' + self.args.dataset_name + '_' + str(
+            self.args.id) + '_' + self.args.net_type + '_' + str(
+            config['lr']) + '_' + str(config['weight_decay']) + '_' + str(
+            config['num_classes_iter']) + '_' + str(
+            config['num_elements_class']) + '_' + str(
+            config['num_labeled_points_class'])
+
+        with open(os.path.join(save_folder_results, file_name + '.txt'),
+                  'w') as fp:
+            fp.write(file_name + "\n")
+            fp.write(str(args))
+            fp.write('\n')
+            fp.write(str(config))
+            fp.write('\n')
+            fp.write('\n'.join('%s %s' % x for x in scores))
+            fp.write("\n\n\n")
+
+        return best_accuracy, model
 
 def rnd(lower, higher):
     exp = random.randint(-higher, -lower)
@@ -420,6 +442,7 @@ def rnd(lower, higher):
 def main():
     args = init_args()
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+    print(device)
 
     save_folder_results = 'search_results'
     save_folder_nets = 'search_results_net'
@@ -470,37 +493,15 @@ def main():
         hypers = ', '.join([k + ': ' + str(v) for k, v in config.items()])
         logger.info('Using Parameters: ' + hypers)
 
-        scores, model = trainer.train_model(config)
+        best_accuracy, model = trainer.train_model(config)
 
-        model = model.load_state_dict(torch.load(os.path.join(
-            save_folder_nets, 'intermediate_model' + '.pth')))
-        if not args.pretraining:
-            recall_max = max([s[1][0] for s in scores])
-        else:
-            recal_max = max(scores)
-        logger.info('Best Recall: {}'.format(recall_max))
+        logger.info('Best Recall: {}'.format(best_accuracy))
 
-        file_name = str(recall_max) + '_' + args.dataset_name + '_' + str(
-            args.id) + '_' + args.net_type + '_' + str(
-            config['lr']) + '_' + str(config['weight_decay']) + '_' + str(
-            config['num_classes_iter']) + '_' + str(
-            config['num_elements_class']) + '_' + str(
-            config['num_labeled_points_class'])
 
-        with open(os.path.join(save_folder_results, file_name + '.txt'),
-                  'w') as fp:
-            fp.write(file_name + "\n")
-            fp.write(str(args))
-            fp.write('\n')
-            fp.write(str(config))
-            fp.write('\n')
-            fp.write('\n'.join('%s %s' % x for x in scores))
-            fp.write("\n\n\n")
-
-        if recall_max > best_recall:
-            torch.save(model.state_dict(),
-                       mode + args.net_type + '_' + args.dataset_name + '.pth')
-            best_recall = recall_max
+        if best_accuracy > best_recall:
+            os.rename(os.path.join(save_folder_nets, 'intermediate_model.pth'),
+                      mode + args.net_type + '_' + args.dataset_name + '.pth')
+            best_recall = best_accuracy
             best_hypers = '_'.join([str(k) + '_' + str(v) for k, v in config.items()])
 
 

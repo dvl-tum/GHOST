@@ -167,7 +167,7 @@ def get_labeled_and_unlabeled_points(labels, num_points_per_class, num_classes=1
     labs_buffer = np.zeros(num_classes)
     num_points = labels.shape[0]
     for i in range(num_points):
-        if labs_buffer[labels[i].cpu()] == num_points_per_class:
+        if labs_buffer[labels[i]] == num_points_per_class:
             U.append(i)
         else:
             L.append(i)
