@@ -450,10 +450,10 @@ def main():
         num_elements_classes = random.randint(4, 9)
         num_labeled_class = random.randint(1, 3)
         decrease_lr = random.randint(0, 15)  # --> Hyperparam to search?
-        set_negative = random.choice([0, 1]) # --> Hyperparam to search?
+        set_negative = 1 #random.choice([0, 1]) # --> Hyperparam to search?
         #sim_type = random.choice(0, 1)
-        num_iter_gtg = random.randint(1, 3) # --> Hyperparam to search?
-        temp = random.randint(50, 80)
+        num_iter_gtg = 1 #random.randint(1, 3) # --> Hyperparam to search?
+        temp = random.randint(10, 80)
 
 
         config = {'lr': lr,
