@@ -4,6 +4,7 @@ import torch
 import torch.nn as nn
 import time
 import os
+import warnings
 from apex import amp
 import argparse
 import random
@@ -32,6 +33,7 @@ fh = logging.FileHandler('train_reid.txt')
 fh.setLevel(logging.DEBUG)
 fh.setFormatter(formatter)
 
+warnings.filterwarnings("ignore")
 
 class Hyperparameters():
     def __init__(self, dataset_name='cub'):
