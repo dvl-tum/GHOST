@@ -8,8 +8,10 @@ import tarfile
 
 
 class Birds(torch.utils.data.Dataset):
-    def __init__(self, root, labels, is_extracted = False, transform = None):
+    def __init__(self, root, labels, is_extracted = False, transform = None,
+                 eval_reid=False):
         # e.g., labels = range(0, 50) for using first 50 classes only
+        self.eval_reid = eval_reid
         self.labels = labels
         map = {lab: i for i, lab in enumerate(sorted(self.labels))}
         if transform: self.transform = transform
@@ -36,5 +38,7 @@ class Birds(torch.utils.data.Dataset):
     def __getitem__(self, index):
         im = PIL.Image.open(self.im_paths[index])
         im = self.transform(im)
+        if self.eval_reid:
+            return im, self.ys[index], self.im_paths[index]
         return im, self.ys[index]
 

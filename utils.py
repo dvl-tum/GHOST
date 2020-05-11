@@ -4,10 +4,14 @@ import torch
 import logging
 import sys
 import numpy as np
+import net
+import data_utility
+from collections import OrderedDict
+import os
 
 
 # just looking at this gives me AIDS, fix it fool!
-def predict_batchwise(model, dataloader, net_type):
+def predict_batchwise(model, dataloader, net_type, dataroot):
     fc7s, L = [], []
     with torch.no_grad():
         for X, Y in dataloader:
@@ -17,21 +21,42 @@ def predict_batchwise(model, dataloader, net_type):
     fc7, Y = torch.cat(fc7s), torch.cat(L)
     return torch.squeeze(fc7), torch.squeeze(Y)
 
+def predict_batchwise_reid(model, dataloader, net_type, dataroot):
+    features = OrderedDict()
+    labels = OrderedDict()
 
-def evaluate(model, dataloader, nb_classes, net_type='bn_inception', dataroot='CARS'):
+    for i, (X, Y, paths) in enumerate(dataloader):
+        _, fc7 = model(X) # .cuda()
+        for path, output, y in zip(paths, outputs):
+            fname = os.path.basename(path)
+            features[fname] = output
+            labels[fname] = y
+        fc7s.append(fc7.cpu())
+        L.append(Y)
+    fc7, Y = torch.cat(fc7s), torch.cat(L)
+
+    return torch.squeeze(fc7), torch.squeeze(Y), features, labels
+
+
+def evaluate(model, dataloader, nb_classes, net_type='bn_inception',
+             dataroot='CARS', query=None, gallery=None, root=None):
     model_is_training = model.training
     model.eval()
 
     # calculate embeddings with model, also get labels (non-batch-wise)
-    X, T = predict_batchwise(model, dataloader, net_type)
-
-
-    if dataroot != 'Stanford':
-        # calculate NMI with kmeans clustering
-        nmi = evaluation.calc_normalized_mutual_information(T, evaluation.cluster_by_kmeans(X, nb_classes))
-        logging.info("NMI: {:.3f}".format(nmi * 100))
+    if dataroot == 'Market' or dataroot == 'cuhk03':
+        X, T, feat_map, lab_map = predict_batchwise_reid(model, dataloader, net_type, dataroot)
+        mAP = evaluation.calc_mean_average_precision(feat_map, lab_map, query, gallery,
+                                                     root, root, dataroot)
     else:
-        nmi = -1
+        X, T = predict_batchwise(model, dataloader, net_type, dataroot)
+
+        if dataroot != 'Stanford':
+            # calculate NMI with kmeans clustering
+            nmi = evaluation.calc_normalized_mutual_information(T, evaluation.cluster_by_kmeans(X, nb_classes))
+            logging.info("NMI: {:.3f}".format(nmi * 100))
+        else:
+            nmi = -1
 
     recall = []
     if dataroot != 'Stanford':
@@ -48,3 +73,17 @@ def evaluate(model, dataloader, nb_classes, net_type='bn_inception', dataroot='C
 
     model.train(model_is_training) # revert to previous training state
     return nmi, recall
+
+
+if __name__ == '__main__':
+
+    model = net.load_net(dataset='cuhk03', net_type='resnet50',
+                         nb_classes=1367, embed=0,
+                         sz_embedding=512,
+                         pretraining=True)
+
+    dl_tr, dl_ev, _, _, query, gallery = data_utility.create_loaders(
+        '../../datasets/cuhk03', 1367, True, 1, 2, 2, 4)
+
+    evaluate(model=model, dataloader=dl_ev, nb_classes=1367, net_type='resnet50',
+             dataroot='cuhk03', query=query, gallery=gallery, root='../../datasets/cuhk03')

@@ -16,11 +16,17 @@ def create_loaders(data_root, num_classes, is_extracted, num_workers, num_classe
             obj = json.load(f)[0]
         labels_train = obj['trainval']
         labels_val = obj['query'] + obj['gallery']
+        query = obj['query']
+        gallery = obj['gallery']
+        eval_reid = True
     elif data_root.split('/')[-1] == 'cuhk03':
         with open(os.path.join(data_root, 'splits.json'), 'r') as f:
             obj = json.load(f)[0]
         labels_train = obj['trainval']
         labels_val = obj['query'] + obj['gallery']
+        query = obj['query']
+        gallery = obj['gallery']
+        eval_reid = True
     else:
         if data_root == 'Stanford':
             class_end = 2 * num_classes - 2
@@ -29,6 +35,9 @@ def create_loaders(data_root, num_classes, is_extracted, num_workers, num_classe
 
         labels_train = list(range(0, num_classes))
         labels_val = list(range(num_classes, class_end))
+        gallery = None
+        query = None
+        eval_reid = False
 
     Dataset = dataset.Birds(
         root=data_root,
@@ -59,7 +68,8 @@ def create_loaders(data_root, num_classes, is_extracted, num_workers, num_classe
             root=data_root,
             labels=labels_val,
             is_extracted=is_extracted,
-            transform=dataset.utils.make_transform(is_train=False)
+            transform=dataset.utils.make_transform(is_train=False),
+            eval_reid=eval_reid
         ),
             batch_size=50,
             shuffle=False,
@@ -93,7 +103,7 @@ def create_loaders(data_root, num_classes, is_extracted, num_workers, num_classe
         pin_memory=True
     )
 
-    return dl_tr, dl_ev, dl_finetune, dl_train_evaluate
+    return dl_tr, dl_ev, dl_finetune, dl_train_evaluate, query, gallery
 
 
 def create_loaders_finetune(data_root, num_classes, is_extracted, num_workers, size_batch):

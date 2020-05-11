@@ -318,13 +318,13 @@ class PreTrainer():
         # create loaders
         if not self.args.pretraining:
             batch_size = config['num_classes_iter'] * config['num_elements_class']
-            dl_tr, dl_ev, _, _ = data_utility.create_loaders(self.args.cub_root,
-                                                             self.args.nb_classes,
-                                                             self.args.cub_is_extracted,
-                                                             self.args.nb_workers,
-                                                             config['num_classes_iter'],
-                                                             config['num_elements_class'],
-                                                             batch_size)
+            dl_tr, dl_ev, _, _, query, gallery = data_utility.create_loaders(self.args.cub_root,
+                                                                             self.args.nb_classes,
+                                                                             self.args.cub_is_extracted,
+                                                                             self.args.nb_workers,
+                                                                             config['num_classes_iter'],
+                                                                             config['num_elements_class'],
+                                                                             batch_size)
         else:
             running_corrects = 0
             batch_size = 64
@@ -399,7 +399,9 @@ class PreTrainer():
                     logging.info("**Evaluating...**")
                     nmi, recall = utils.evaluate(model, dl_ev, self.args.nb_classes,
                                                  self.args.net_type,
-                                                 dataroot=self.args.dataset_name)
+                                                 dataroot=self.args.dataset_name,
+                                                 query=query, gallery=gallery,
+                                                 root=self.data_dir)
                     logger.info('Recall {}, NMI {}'.format(recall, nmi))
                     scores.append((nmi, recall))
                     model.current_epoch = e
