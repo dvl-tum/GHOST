@@ -469,7 +469,6 @@ def main():
 
         # random search for hyperparameters
         lr = 10**random.uniform(-8, -3)
-        batch_size = random.choice([8, 16, 32, 64])
         weight_decay = 10 ** random.uniform(-15, -6)
         num_classes_iter = random.randint(2, 5)
         num_elements_classes = random.randint(4, 9)
@@ -483,7 +482,6 @@ def main():
 
         config = {'lr': lr,
                   'weight_decay': weight_decay,
-                  'batch_size': batch_size,
                   'num_classes_iter': num_classes_iter,
                   'num_elements_class': num_elements_classes,
                   'num_labeled_points_class': num_labeled_class,
