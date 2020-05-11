@@ -98,7 +98,7 @@ def init_args():
                         help='The name of the dataset')
     parser.add_argument('--oversampling', default=1, type=int,
                         help='If oversampling shoulf be used')
-    parser.add_argument('--nb_epochs', default=1, type=int)
+    parser.add_argument('--nb_epochs', default=30, type=int)
 
     parser.add_argument('--cub-root', default=hyperparams.get_path(),
                         help='Path to dataset folder')
@@ -424,10 +424,10 @@ class PreTrainer():
             config['num_elements_class']) + '_' + str(
             config['num_labeled_points_class'])
 
-        with open(os.path.join(save_folder_results, file_name + '.txt'),
+        with open(os.path.join(self.save_folder_results, file_name + '.txt'),
                   'w') as fp:
             fp.write(file_name + "\n")
-            fp.write(str(args))
+            fp.write(str(self.args))
             fp.write('\n')
             fp.write(str(config))
             fp.write('\n')
@@ -462,7 +462,7 @@ def main():
                          save_folder_results, save_folder_nets)
 
     best_recall = 0
-    num_iter = 2
+    num_iter = 30
     # Random search
     for i in range(num_iter):
         logger.info('Search iteration {}'.format(i))
