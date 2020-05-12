@@ -21,21 +21,32 @@ def predict_batchwise(model, dataloader, net_type, dataroot):
     fc7, Y = torch.cat(fc7s), torch.cat(L)
     return torch.squeeze(fc7), torch.squeeze(Y)
 
-def predict_batchwise_reid(model, dataloader, net_type, dataroot):
-    features = OrderedDict()
-    labels = OrderedDict()
-
-    for i, (X, Y, paths) in enumerate(dataloader):
-        _, fc7 = model(X) # .cuda()
-        for path, output, y in zip(paths, outputs):
-            fname = os.path.basename(path)
-            features[fname] = output
-            labels[fname] = y
-        fc7s.append(fc7.cpu())
-        L.append(Y)
+def predict_batchwise_reid(model, dataloader):
+    fc7s, L = [], []
+    features = dict()
+    labels = dict()
+    with torch.no_grad():
+        for X, Y, P in dataloader:
+            _, fc7 = model(X.cuda())
+            for path, out, y in zip(P, fc7, Y):
+                features[path] = out
+                labels[path] = y
+            fc7s.append(fc7.cpu())
+            L.append(Y)
     fc7, Y = torch.cat(fc7s), torch.cat(L)
-
     return torch.squeeze(fc7), torch.squeeze(Y), features, labels
+
+
+def evaluate_reid(model, dataloader, nb_classes, net_type='bn_inception',
+             dataroot='CARS', query=None, gallery=None, root=None):
+    model_is_training = model.training
+    model.eval()
+    X, T, features, labels = predict_batchwise_reid(model, dataloader)
+    mAP, cmc = evaluation.calc_mean_average_precision(features, labels, query, gallery,
+                                                 root)
+    print(mAP, cmc)
+    model.train(model_is_training)
+    return mAP, cmc
 
 
 def evaluate(model, dataloader, nb_classes, net_type='bn_inception',
@@ -44,19 +55,15 @@ def evaluate(model, dataloader, nb_classes, net_type='bn_inception',
     model.eval()
 
     # calculate embeddings with model, also get labels (non-batch-wise)
-    if dataroot == 'Market' or dataroot == 'cuhk03':
-        X, T, feat_map, lab_map = predict_batchwise_reid(model, dataloader, net_type, dataroot)
-        mAP = evaluation.calc_mean_average_precision(feat_map, lab_map, query, gallery,
-                                                     root, root, dataroot)
-    else:
-        X, T = predict_batchwise(model, dataloader, net_type, dataroot)
 
-        if dataroot != 'Stanford':
-            # calculate NMI with kmeans clustering
-            nmi = evaluation.calc_normalized_mutual_information(T, evaluation.cluster_by_kmeans(X, nb_classes))
-            logging.info("NMI: {:.3f}".format(nmi * 100))
-        else:
-            nmi = -1
+    X, T = predict_batchwise(model, dataloader, net_type, dataroot)
+
+    if dataroot != 'Stanford':
+        # calculate NMI with kmeans clustering
+        nmi = evaluation.calc_normalized_mutual_information(T, evaluation.cluster_by_kmeans(X, nb_classes))
+        logging.info("NMI: {:.3f}".format(nmi * 100))
+    else:
+        nmi = -1
 
     recall = []
     if dataroot != 'Stanford':

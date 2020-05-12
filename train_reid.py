@@ -395,21 +395,30 @@ class PreTrainer():
 
             # compute recall and NMI at the end of each epoch (for Stanford NMI takes forever so skip it)
             if not self.args.pretraining:
-                with torch.no_grad():
-                    logging.info("**Evaluating...**")
-                    nmi, recall = utils.evaluate(model, dl_ev, self.args.nb_classes,
-                                                 self.args.net_type,
-                                                 dataroot=self.args.dataset_name,
-                                                 query=query, gallery=gallery,
-                                                 root=self.data_dir)
-                    logger.info('Recall {}, NMI {}'.format(recall, nmi))
-                    scores.append((nmi, recall))
-                    model.current_epoch = e
-                    if recall[0] > best_accuracy:
-                        best_accuracy = recall[0]
-                        torch.save(model.state_dict(),
-                                   os.path.join(self.save_folder_nets,
-                                                file_name + '.pth'))
+                if self.args.dataset_name != 'Market' and self.args.dataset_name != 'cuhk03':
+                    with torch.no_grad():
+                        logging.info("**Evaluating...**")
+                        nmi, recall = utils.evaluate(model, dl_ev, self.args.nb_classes,
+                                                     self.args.net_type,
+                                                     dataroot=self.args.dataset_name,
+                                                     root=self.data_dir)
+                        logger.info('Recall {}, NMI {}'.format(recall, nmi))
+                        scores.append((nmi, recall))
+                        model.current_epoch = e
+                        if recall[0] > best_accuracy:
+                            best_accuracy = recall[0]
+                            torch.save(model.state_dict(),
+                                       os.path.join(self.save_folder_nets,
+                                                    file_name + '.pth'))
+                else:
+                    with torch.no_grad():
+                        logging.info('EVALUATION')
+                        mAP, top = utils.evaluate_reid(model, dl_ev, self.args.nb_classes,
+                                                       self.args.net_type,
+                                                       dataroot=self.args.dataset_name,
+                                                       query=query, gallery=gallery,
+                                                       root=self.data_dir)
+
             else:
                 logger.info('Loss {}, Recall {}'.format(torch.mean(loss.cpu()), running_corrects/len(dl_tr)))
                 scores.append(running_corrects/dl_tr.shape[0])

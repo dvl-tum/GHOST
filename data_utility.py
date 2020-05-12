@@ -11,6 +11,7 @@ import json
 
 
 def create_loaders(data_root, num_classes, is_extracted, num_workers, num_classes_iter, num_elements_class, size_batch):
+    eval_reid = False
     if data_root.split('/')[-1] == 'Market':
         with open(os.path.join(data_root, 'splits.json'), 'r') as f:
             obj = json.load(f)[0]
@@ -37,7 +38,6 @@ def create_loaders(data_root, num_classes, is_extracted, num_workers, num_classe
         labels_val = list(range(num_classes, class_end))
         gallery = None
         query = None
-        eval_reid = False
 
     Dataset = dataset.Birds(
         root=data_root,
