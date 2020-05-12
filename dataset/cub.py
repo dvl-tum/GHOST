@@ -41,3 +41,26 @@ class Birds(torch.utils.data.Dataset):
         if self.eval_reid:
             return im, self.ys[index], self.im_paths[index]
         return im, self.ys[index]
+
+
+class DataSetPretraining(torch.utils.data.Dataset):
+    def __init__(self, root, labels, file_names, transform=None):
+        # e.g., labels = range(0, 50) for using first 50 classes only
+        self.labels = labels
+        if transform: self.transform = transform
+        self.ys, self.im_paths = [], []
+        for i in file_names:
+            y = int(i.split('/')[-1].split('_')[0])
+            # fn needed for removing non-images starting with '._'
+            fn = os.path.basename(i)
+            if y in self.labels and fn[:2] != '._':
+                self.ys += [y]
+                self.im_paths.append(i)
+
+    def __len__(self):
+        return len(self.ys)
+
+    def __getitem__(self, index):
+        im = PIL.Image.open(self.im_paths[index])
+        im = self.transform(im)
+        return im, self.ys[index]

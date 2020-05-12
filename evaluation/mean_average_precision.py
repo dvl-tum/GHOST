@@ -13,7 +13,7 @@ from collections import defaultdict
 
 def mean_ap(distmat, query_ids=None, gallery_ids=None,
             query_cams=None, gallery_cams=None):
-    distmat = distmat.to_numpy()
+    distmat = distmat.cpu().numpy()
     m, n = distmat.shape
     # Ensure numpy array
     query_ids = np.asarray(query_ids)
@@ -51,7 +51,7 @@ def cmc(distmat, query_ids=None, gallery_ids=None,
         separate_camera_set=False,
         single_gallery_shot=False,
         first_match_break=False):
-    distmat = distmat.to_numpy()
+    distmat = distmat.cpu().numpy()
     m, n = distmat.shape
     # Ensure numpy array
     query_ids = np.asarray(query_ids)
@@ -101,9 +101,10 @@ def cmc(distmat, query_ids=None, gallery_ids=None,
     return ret.cumsum() / num_valid_queries
 
 
-def pairwise_distance(features, label, query=None, gallery=None, root=None):
-    query_paths = [i for id in os.listdir(root) for i in os.listdir(id) if int(id) in query]
-    gallery_paths = [i for id in os.listdir(root) for i in os.listdir(id) if int(id) in gallery]
+def pairwise_distance(features, query=None, gallery=None, root=None):
+    img_dir = os.path.join(root, 'images')
+    query_paths = [i for id in os.listdir(img_dir) for i in os.listdir(os.path.join(img_dir, id)) if int(id) in query]
+    gallery_paths = [i for id in os.listdir(img_dir) for i in os.listdir(os.path.join(img_dir, id)) if int(id) in gallery]
 
     x = torch.cat([features[f].unsqueeze(0) for f in query_paths], 0)
     y = torch.cat([features[f].unsqueeze(0) for f in gallery_paths], 0)
@@ -154,5 +155,5 @@ def evaluate_all(distmat, query=None, gallery=None, cmc_topk=(1, 5, 10)):
 
 
 def calc_mean_average_precision(features, labels, query, gallery, rootdir):
-        distmat, query_paths, gallery_paths = pairwise_distance(features, labels, query, gallery, rootdir)
+        distmat, query_paths, gallery_paths = pairwise_distance(features, query, gallery, rootdir)
         return evaluate_all(distmat, query=query_paths, gallery=gallery_paths)

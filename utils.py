@@ -42,8 +42,8 @@ def evaluate_reid(model, dataloader, nb_classes, net_type='bn_inception',
     model_is_training = model.training
     model.eval()
     X, T, features, labels = predict_batchwise_reid(model, dataloader)
-    mAP, cmc = evaluation.calc_mean_average_precision(features, labels, query, gallery,
-                                                 root)
+    mAP, cmc = evaluation.calc_mean_average_precision(features, labels, query,
+                                                      gallery, root)
     print(mAP, cmc)
     model.train(model_is_training)
     return mAP, cmc

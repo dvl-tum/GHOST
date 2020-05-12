@@ -170,119 +170,6 @@ def init_args():
 
     return parser.parse_args()
 
-class DataSet(torch.utils.data.Dataset):
-    def __init__(self, root, labels, file_names, transform=None):
-        # e.g., labels = range(0, 50) for using first 50 classes only
-        self.labels = labels
-        if transform: self.transform = transform
-        self.ys, self.im_paths = [], []
-        for i in file_names:
-            y = int(i.split('/')[-1].split('_')[0])
-            # fn needed for removing non-images starting with '._'
-            fn = os.path.basename(i)
-            if y in self.labels and fn[:2] != '._':
-                self.ys += [y]
-                self.im_paths.append(i)
-
-    def __len__(self):
-        return len(self.ys)
-
-    def __getitem__(self, index):
-        im = PIL.Image.open(self.im_paths[index])
-        im = self.transform(im)
-        return im, self.ys[index]
-
-
-def get_data_loaders(input_size, data_dir, batch_size, oversampling, train_percentage):
-
-    with open(os.path.join(data_dir, 'splits.json'), 'r') as f:
-        obj = json.load(f)[0]
-    train_indices = obj['trainval']
-
-    image_datasets = get_datasets(input_size, train_indices, data_dir, oversampling, train_percentage)
-
-    train = torch.utils.data.DataLoader(image_datasets['train'],
-                                        batch_size=batch_size, shuffle=True,
-                                        num_workers=4)
-    if len(image_datasets['val']) != 0:
-        val = torch.utils.data.DataLoader(image_datasets['val'],
-                                            batch_size=batch_size, shuffle=True,
-                                            num_workers=4)
-    else:
-        val = None
-
-    return train, val
-
-def get_datasets(input_size, train_indices, data_dir, oversampling, train_percentage):
-
-    # get samples
-    train, val, labels_train, labels_val, map = get_samples(train_indices, data_dir, oversampling, train_percentage)
-    import dataset.utils as utils
-    # TODO: input size and mean make_transform()
-    data_transforms = utils.make_transform()
-    data_transforms = {'train': data_transforms, 'val': data_transforms}
-
-    print("Initializing Datasets and Dataloaders...")
-    train_dataset = DataSet(root=os.path.join(data_dir, 'images'),
-                            labels=labels_train,
-                            file_names=train,
-                            transform=data_transforms['train'])
-    val_dataset = DataSet(root=os.path.join(data_dir, 'images'),
-                          labels=labels_val, file_names=val,
-                          transform=data_transforms['val'])
-
-    return {'train': train_dataset, 'val': val_dataset}
-
-def get_samples(train_indices, data_dir, oversampling, train_percentage):
-    # get train and val samples and split
-    train = list()
-    labels_train = list()
-    val = list()
-    labels_val = list()
-
-    samps = list()
-    for ind in train_indices:
-        samples = os.listdir(
-            os.path.join(data_dir, 'images', "{:05d}".format(ind)))
-        samples = [os.path.join(os.path.join(data_dir, 'images', "{:05d}".format(ind)), samp) for samp in samples]
-        samps.append(samples)
-
-    max_num = max([len(c) for c in samps])
-
-    random.seed(40)
-    for i, samples in enumerate(samps):
-        num_train = int(train_percentage * len(samples))
-        train_samps = samples[:num_train]
-        val_samps = samples[num_train:]
-
-        if oversampling:
-            choose_train = copy.deepcopy(train_samps)
-            while len(train_samps) < int(max_num * train_percentage):
-                train_samps += [random.choice(choose_train)]
-
-            choose_val = copy.deepcopy(val_samps)
-            while len(val_samps) < int(max_num * (1 - train_percentage)):
-                val_samps += [random.choice(choose_val)]
-
-            for v in val_samps:
-                if v in train_samps:
-                    logger.error(
-                        "Sample of validation set in training set - End.")
-                    quit()
-
-        train.append(train_samps)
-        val.append(val_samps)
-
-        labels_train.append([train_indices[i]] * len(train_samps))
-        labels_val.append([train_indices[i]] * len(val_samps))
-    train = [t for classes in train for t in classes]
-    val = [t for classes in val for t in classes]
-    # mapping of labels from 0 to num_classes
-    map = {class_ind: i for i, class_ind in enumerate(train_indices)}
-    labels_train = [map[t] for classes in labels_train for t in classes]
-    labels_val = [map[t] for classes in labels_val for t in classes]
-
-    return train, val, labels_train, labels_val, map
 
 class PreTrainer():
     def __init__(self, args, data_dir, device, save_folder_results, save_folder_nets):
@@ -318,20 +205,15 @@ class PreTrainer():
         # create loaders
         if not self.args.pretraining:
             batch_size = config['num_classes_iter'] * config['num_elements_class']
-            dl_tr, dl_ev, _, _, query, gallery = data_utility.create_loaders(self.args.cub_root,
-                                                                             self.args.nb_classes,
-                                                                             self.args.cub_is_extracted,
-                                                                             self.args.nb_workers,
-                                                                             config['num_classes_iter'],
-                                                                             config['num_elements_class'],
-                                                                             batch_size)
+            dl_tr, dl_ev, query, gallery = data_utility.create_loaders(self.args.cub_root,
+                                                                       self.args.cub_is_extracted,
+                                                                       self.args.nb_workers,
+                                                                       config['num_classes_iter'],
+                                                                       config['num_elements_class'],
+                                                                       batch_size)
         else:
             running_corrects = 0
-            batch_size = 64
-            oversampling = 0
-            train_percentage = 1
-            input_size = 224
-            dl_tr, dl_ev = get_data_loaders(input_size, self.data_dir, batch_size, oversampling, train_percentage)
+            dl_tr, dl_ev = data_utility.create_dataloaders_pretraining(data_dir=self.data_dir)
 
 
         since = time.time()
@@ -395,29 +277,21 @@ class PreTrainer():
 
             # compute recall and NMI at the end of each epoch (for Stanford NMI takes forever so skip it)
             if not self.args.pretraining:
-                if self.args.dataset_name != 'Market' and self.args.dataset_name != 'cuhk03':
-                    with torch.no_grad():
-                        logging.info("**Evaluating...**")
-                        nmi, recall = utils.evaluate(model, dl_ev, self.args.nb_classes,
-                                                     self.args.net_type,
-                                                     dataroot=self.args.dataset_name,
-                                                     root=self.data_dir)
-                        logger.info('Recall {}, NMI {}'.format(recall, nmi))
-                        scores.append((nmi, recall))
-                        model.current_epoch = e
-                        if recall[0] > best_accuracy:
-                            best_accuracy = recall[0]
-                            torch.save(model.state_dict(),
-                                       os.path.join(self.save_folder_nets,
-                                                    file_name + '.pth'))
-                else:
-                    with torch.no_grad():
-                        logging.info('EVALUATION')
-                        mAP, top = utils.evaluate_reid(model, dl_ev, self.args.nb_classes,
-                                                       self.args.net_type,
-                                                       dataroot=self.args.dataset_name,
-                                                       query=query, gallery=gallery,
-                                                       root=self.data_dir)
+                with torch.no_grad():
+                    logging.info('EVALUATION')
+                    mAP, top = utils.evaluate_reid(model, dl_ev, self.args.nb_classes,
+                                                   self.args.net_type,
+                                                   dataroot=self.args.dataset_name,
+                                                   query=query, gallery=gallery,
+                                                   root=self.data_dir)
+                    logger.info('TOP {}, mAP {}'.format(top, mAP))
+                    scores.append((mAP, top))
+                    model.current_epoch = e
+                    if top[0] > best_accuracy:
+                        best_accuracy = top[0]
+                        torch.save(model.state_dict(),
+                                   os.path.join(self.save_folder_nets,
+                                                file_name + '.pth'))
 
             else:
                 logger.info('Loss {}, Recall {}'.format(torch.mean(loss.cpu()), running_corrects/len(dl_tr)))
@@ -447,10 +321,6 @@ class PreTrainer():
 
         return best_accuracy, model
 
-def rnd(lower, higher):
-    exp = random.randint(-higher, -lower)
-    base = 0.9 * random.random() + 0.1
-    return base * 10 ** exp
 
 def main():
     args = init_args()
