@@ -135,7 +135,7 @@ def evaluate_all(distmat, query=None, gallery=None, cmc_topk=(1, 5, 10)):
         'cuhk03': dict(separate_camera_set=True,
                        single_gallery_shot=True,
                        first_match_break=False),
-        'market1501': dict(separate_camera_set=False,
+        'Market': dict(separate_camera_set=False,
                            single_gallery_shot=False,
                            first_match_break=True)}
     cmc_scores = {name: cmc(distmat, query_ids, gallery_ids,
@@ -143,15 +143,15 @@ def evaluate_all(distmat, query=None, gallery=None, cmc_topk=(1, 5, 10)):
                   for name, params in cmc_configs.items()}
 
     print('CMC Scores{:>12}{:>12}{:>12}'
-          .format('allshots', 'cuhk03', 'market1501'))
+          .format('allshots', 'cuhk03', 'Market'))
     for k in cmc_topk:
         print('  top-{:<4}{:12.1%}{:12.1%}{:12.1%}'
               .format(k, cmc_scores['allshots'][k - 1],
                       cmc_scores['cuhk03'][k - 1],
-                      cmc_scores['market1501'][k - 1]))
+                      cmc_scores['Market'][k - 1]))
 
     # Use the allshots cmc top-1 score for validation criterion
-    return cmc_scores['allshots'][0], mAP
+    return cmc_scores, mAP
 
 
 def calc_mean_average_precision(features, labels, query, gallery, rootdir):

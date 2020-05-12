@@ -284,6 +284,7 @@ class PreTrainer():
                                                    dataroot=self.args.dataset_name,
                                                    query=query, gallery=gallery,
                                                    root=self.data_dir)
+                    top = top[self.args.dataset_name]
                     logger.info('TOP {}, mAP {}'.format(top, mAP))
                     scores.append((mAP, top))
                     model.current_epoch = e
