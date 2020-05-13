@@ -1,5 +1,6 @@
 from torch.utils.data.sampler import Sampler
 import random
+import copy
 
 
 class CombineSampler(Sampler):
@@ -41,6 +42,33 @@ class CombineSampler(Sampler):
         # shuffle the order of classes --> Could it be that same class appears twice in one batch?
         random.shuffle(split_list_of_indices)
         self.flat_list = [item for sublist in split_list_of_indices for item in sublist]
+
+        return iter(self.flat_list)
+
+    def __len__(self):
+        return len(self.flat_list)
+
+
+class PretraingSampler(Sampler):
+    def __init__(self, samples, data_dir, oversampling):
+        self.samples = samples
+        self.flat_list = list()
+
+        for inds in samples:
+            if len(inds) > self.max:
+                self.max = len(inds)
+
+    def __iter__(self):
+        # shuffle elements inside each class
+        samples = list(map(lambda a: random.sample(a, len(a)), self.samples))
+
+        for samp in samples:
+            choose = copy.deepcopy(samp)
+            while len(samp) < self.max:
+                samp += [random.choice(choose)]
+
+        self.flat_list = [item for sublist in samples for item in sublist]
+        random.shuffle(self.flat_list)
 
         return iter(self.flat_list)
 
