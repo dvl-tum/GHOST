@@ -26,9 +26,10 @@ class CUHK03(DataPreprocessor):
     url = 'https://docs.google.com/spreadsheet/viewform?usp=drive_web&formkey=dHRkMkFVSUFvbTJIRkRDLWRwZWpONnc6MA#gid=0'
     md5 = '728939e58ad9f0ff53e521857dd8fb43'
 
-    def __init__(self, root, split_id=0, num_train=100, download=True):
+    def __init__(self, root, split_id=0, num_val=0, download=True):
         super(CUHK03, self).__init__(root, split_id=split_id)
         self.exdir = None
+        self.images_dir = osp.join(root, 'images')
 
         if download:
             self.download()
@@ -37,7 +38,7 @@ class CUHK03(DataPreprocessor):
             raise RuntimeError("Dataset not found or corrupted. " +
                                "You can use download=True to download it.")
 
-        self.load(num_train)
+        self.load(num_val)
         if self.exdir is not None:
             shutil.rmtree(self.exdir)
 
@@ -59,9 +60,6 @@ class CUHK03(DataPreprocessor):
         if self._check_integrity():
             print("Files already downloaded and verified")
             return
-
-        raw_dir = osp.join(self.root, 'images')
-        mkdir_if_missing(raw_dir)
 
         # Download the raw zip file
         fpath = osp.join(osp.dirname(self.root), 'cuhk03_release.zip')
