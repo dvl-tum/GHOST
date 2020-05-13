@@ -336,6 +336,10 @@ class PreTrainer():
                                os.path.join(self.save_folder_nets,
                                             file_name + '.pth'))
 
+        end = time.time()
+        logger.info('Completed {} epochs in {}s'.format(self.args.nb_epochs,
+                                                        end-since))
+
         file_name = str(
             best_accuracy) + '_' + self.args.dataset_name + '_' + str(
             self.args.id) + '_' + self.args.net_type + '_' + str(
