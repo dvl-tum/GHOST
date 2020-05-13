@@ -1,28 +1,39 @@
 from __future__ import print_function, absolute_import
-import time
-from collections import OrderedDict
-import sklearn.metrics.pairwise
 import torch
 import numpy as np
 from sklearn.metrics import average_precision_score
 import os
 from collections import defaultdict
 
-#from .utils.meters import AverageMeter
+
+def pairwise_distance(features, query=None, gallery=None, root=None):
+    img_dir = os.path.join(root, 'images')
+    query_paths = [i for id in os.listdir(img_dir) for i in
+                   os.listdir(os.path.join(img_dir, id)) if int(id) in query]
+    gallery_paths = [i for id in os.listdir(img_dir) for i in
+                     os.listdir(os.path.join(img_dir, id)) if
+                     int(id) in gallery]
+
+    x = torch.cat([features[f].unsqueeze(0) for f in query_paths], 0)
+    y = torch.cat([features[f].unsqueeze(0) for f in gallery_paths], 0)
+    m, n = x.size(0), y.size(0)
+    x = x.view(m, -1)
+    y = y.view(n, -1)
+    dist = torch.pow(x, 2).sum(dim=1, keepdim=True).expand(m, n) + \
+           torch.pow(y, 2).sum(dim=1, keepdim=True).expand(n, m).t()
+    dist.addmm_(1, -2, x, y.t())
+    return dist, query_paths, gallery_paths
 
 
 def mean_ap(distmat, query_ids=None, gallery_ids=None,
             query_cams=None, gallery_cams=None):
     distmat = distmat.cpu().numpy()
     m, n = distmat.shape
-    # Ensure numpy array
-    query_ids = np.asarray(query_ids)
-    gallery_ids = np.asarray(gallery_ids)
-    query_cams = np.asarray(query_cams)
-    gallery_cams = np.asarray(gallery_cams)
+
     # Sort and find correct matches
     indices = np.argsort(distmat, axis=1)
     matches = (gallery_ids[indices] == query_ids[:, np.newaxis])
+
     # Compute AP for each query
     aps = []
     for i in range(m):
@@ -33,8 +44,10 @@ def mean_ap(distmat, query_ids=None, gallery_ids=None,
         y_score = -distmat[i][indices[i]][valid]
         if not np.any(y_true): continue
         aps.append(average_precision_score(y_true, y_score))
+
     if len(aps) == 0:
         raise RuntimeError("No valid query")
+
     return np.mean(aps)
 
 
@@ -51,16 +64,14 @@ def cmc(distmat, query_ids=None, gallery_ids=None,
         separate_camera_set=False,
         single_gallery_shot=False,
         first_match_break=False):
+
     distmat = distmat.cpu().numpy()
     m, n = distmat.shape
-    # Ensure numpy array
-    query_ids = np.asarray(query_ids)
-    gallery_ids = np.asarray(gallery_ids)
-    query_cams = np.asarray(query_cams)
-    gallery_cams = np.asarray(gallery_cams)
+
     # Sort and find correct matches
     indices = np.argsort(distmat, axis=1)
     matches = (gallery_ids[indices] == query_ids[:, np.newaxis])
+
     # Compute CMC for each query
     ret = np.zeros(topk)
     num_valid_queries = 0
@@ -71,7 +82,9 @@ def cmc(distmat, query_ids=None, gallery_ids=None,
         if separate_camera_set:
             # Filter out samples from same camera
             valid &= (gallery_cams[indices[i]] != query_cams[i])
+
         if not np.any(matches[i, valid]): continue
+
         if single_gallery_shot:
             repeat = 10
             gids = gallery_ids[indices[i][valid]]
@@ -81,6 +94,7 @@ def cmc(distmat, query_ids=None, gallery_ids=None,
                 ids_dict[x].append(j)
         else:
             repeat = 1
+
         for _ in range(repeat):
             if single_gallery_shot:
                 # Randomly choose one instance for each id
@@ -98,34 +112,24 @@ def cmc(distmat, query_ids=None, gallery_ids=None,
         num_valid_queries += 1
     if num_valid_queries == 0:
         raise RuntimeError("No valid query")
+
     return ret.cumsum() / num_valid_queries
 
 
-def pairwise_distance(features, query=None, gallery=None, root=None):
-    img_dir = os.path.join(root, 'images')
-    query_paths = [i for id in os.listdir(img_dir) for i in os.listdir(os.path.join(img_dir, id)) if int(id) in query]
-    gallery_paths = [i for id in os.listdir(img_dir) for i in os.listdir(os.path.join(img_dir, id)) if int(id) in gallery]
-
-    x = torch.cat([features[f].unsqueeze(0) for f in query_paths], 0)
-    y = torch.cat([features[f].unsqueeze(0) for f in gallery_paths], 0)
-    m, n = x.size(0), y.size(0)
-    x = x.view(m, -1)
-    y = y.view(n, -1)
-    dist = torch.pow(x, 2).sum(dim=1, keepdim=True).expand(m, n) + \
-           torch.pow(y, 2).sum(dim=1, keepdim=True).expand(n, m).t()
-    dist.addmm_(1, -2, x, y.t())
-    return dist, query_paths, gallery_paths
-
-def evaluate_all(distmat, query=None, gallery=None, cmc_topk=(1, 5, 10)):
-
-    query_ids = [int(os.path.basename(path).split('_')[0]) for path in query]
-    gallery_ids = [int(os.path.basename(path).split('_')[0]) for path in gallery]
-    query_cams = [int(os.path.basename(path).split('_')[1]) for path in query]
-    gallery_cams = [int(os.path.basename(path).split('_')[1]) for path in gallery]
+def evaluate_all(distmat, query=None, gallery=None):
+    query_ids = np.asarray(
+        [int(os.path.basename(path).split('_')[0]) for path in query])
+    gallery_ids = np.asarray(
+        [int(os.path.basename(path).split('_')[0]) for path in
+         gallery])
+    query_cams = np.asarray(
+        [int(os.path.basename(path).split('_')[1]) for path in query])
+    gallery_cams = np.asarray(
+        [int(os.path.basename(path).split('_')[1]) for path in
+         gallery])
 
     # Compute mean AP
     mAP = mean_ap(distmat, query_ids, gallery_ids, query_cams, gallery_cams)
-    print('Mean AP: {:4.1%}'.format(mAP))
 
     # Compute all kinds of CMC scores
     cmc_configs = {
@@ -136,24 +140,17 @@ def evaluate_all(distmat, query=None, gallery=None, cmc_topk=(1, 5, 10)):
                        single_gallery_shot=True,
                        first_match_break=False),
         'Market': dict(separate_camera_set=False,
-                           single_gallery_shot=False,
-                           first_match_break=True)}
+                       single_gallery_shot=False,
+                       first_match_break=True)}
     cmc_scores = {name: cmc(distmat, query_ids, gallery_ids,
                             query_cams, gallery_cams, **params)
                   for name, params in cmc_configs.items()}
-
-    print('CMC Scores{:>12}{:>12}{:>12}'
-          .format('allshots', 'cuhk03', 'Market'))
-    for k in cmc_topk:
-        print('  top-{:<4}{:12.1%}{:12.1%}{:12.1%}'
-              .format(k, cmc_scores['allshots'][k - 1],
-                      cmc_scores['cuhk03'][k - 1],
-                      cmc_scores['Market'][k - 1]))
 
     # Use the allshots cmc top-1 score for validation criterion
     return cmc_scores, mAP
 
 
-def calc_mean_average_precision(features, labels, query, gallery, rootdir):
-        distmat, query_paths, gallery_paths = pairwise_distance(features, query, gallery, rootdir)
-        return evaluate_all(distmat, query=query_paths, gallery=gallery_paths)
+def calc_mean_average_precision(features, query, gallery, rootdir):
+    distmat, query_paths, gallery_paths = pairwise_distance(features, query,
+                                                            gallery, rootdir)
+    return evaluate_all(distmat, query=query_paths, gallery=gallery_paths)
