@@ -35,6 +35,7 @@ fh.setFormatter(formatter)
 
 warnings.filterwarnings("ignore")
 
+
 class Hyperparameters():
     def __init__(self, dataset_name='cub'):
         self.dataset_name = dataset_name
@@ -49,14 +50,25 @@ class Hyperparameters():
         else:
             self.dataset_path = '../../datasets/Stanford'
 
-        self.num_classes = {'cub': 100, 'cars': 98, 'Stanford': 11318, 'Market': 751, 'cuhk03': 1367}
-        self.num_classes_iteration = {'cub': 6, 'cars': 5, 'Stanford': 10, 'Market': 5, 'cuhk03': 5}
-        self.num_elemens_class = {'cub': 9, 'cars': 7, 'Stanford': 6, 'Market': 7, 'cuhk03': 7}
-        self.get_num_labeled_class = {'cub': 2, 'cars': 3, 'Stanford': 2, 'Market': 2, 'cuhk03': 2}
+        self.num_classes = {'cub': 100, 'cars': 98, 'Stanford': 11318,
+                            'Market': 751, 'cuhk03': 1367}
+        self.num_classes_iteration = {'cub': 6, 'cars': 5, 'Stanford': 10,
+                                      'Market': 5, 'cuhk03': 5}
+        self.num_elemens_class = {'cub': 9, 'cars': 7, 'Stanford': 6,
+                                  'Market': 7, 'cuhk03': 7}
+        self.get_num_labeled_class = {'cub': 2, 'cars': 3, 'Stanford': 2,
+                                      'Market': 2, 'cuhk03': 2}
         # self.learning_rate = 0.0002
-        self.learning_rate = {'cub': 0.0001563663718906821, 'cars': 0.0002, 'Stanford': 0.0006077651100709081, 'Market': 0.0002, 'cuhk03': 0.00002}
-        self.weight_decay = {'cub': 6.059722614369727e-06, 'cars': 4.863656728256105e-07, 'Stanford': 5.2724883734490575e-12, 'Market': 4.863656728256105e-07, 'cuhk03': 4.863656728256105e-07}
-        self.softmax_temperature = {'cub': 24, 'cars': 79, 'Stanford': 54, 'Market': 79, 'cuhk03': 79}
+        self.learning_rate = {'cub': 0.0001563663718906821, 'cars': 0.0002,
+                              'Stanford': 0.0006077651100709081,
+                              'Market': 0.0002, 'cuhk03': 0.00002}
+        self.weight_decay = {'cub': 6.059722614369727e-06,
+                             'cars': 4.863656728256105e-07,
+                             'Stanford': 5.2724883734490575e-12,
+                             'Market': 4.863656728256105e-07,
+                             'cuhk03': 4.863656728256105e-07}
+        self.softmax_temperature = {'cub': 24, 'cars': 79, 'Stanford': 54,
+                                    'Market': 79, 'cuhk03': 79}
 
     def get_path(self):
         return self.dataset_path
@@ -114,8 +126,7 @@ def init_args():
                              'next [N, N * 2] classes used for evaluating with max(N) = 100.')
     parser.add_argument('--pretraining', default=0, type=int,
                         help='If pretraining or fine tuning is executed')
-
-    '''parser.add_argument('--num_classes_iter',
+    parser.add_argument('--num_classes_iter',
                         default=hyperparams.get_number_classes_iteration(),
                         type=int,
                         help='Number of classes in the minibatch')
@@ -136,8 +147,7 @@ def init_args():
                         type=int, help='Number of training epochs.')
     parser.add_argument('--temperature',
                         default=hyperparams.get_softmax_temperature(),
-                        help='Temperature parameter for the softmax')'''
-
+                        help='Temperature parameter for the softmax')
     parser.add_argument('--nb_workers', default=4, type=int,
                         help='Number of workers for dataloader.')
     parser.add_argument('--net_type', default='resnet50', type=str,
@@ -167,12 +177,12 @@ def init_args():
     parser.add_argument('--is_apex', default=1, type=int,
                         help='if 1 use apex to do mixed precision training')
 
-
     return parser.parse_args()
 
 
 class PreTrainer():
-    def __init__(self, args, data_dir, device, save_folder_results, save_folder_nets):
+    def __init__(self, args, data_dir, device, save_folder_results,
+                 save_folder_nets):
         self.device = device
         self.data_dir = data_dir
         self.args = args
@@ -183,15 +193,19 @@ class PreTrainer():
 
         file_name = 'intermediate_model'
 
-        model = net.load_net(dataset=self.args.dataset_name, net_type=self.args.net_type,
-                             nb_classes=self.args.nb_classes, embed=self.args.embed,
+        model = net.load_net(dataset=self.args.dataset_name,
+                             net_type=self.args.net_type,
+                             nb_classes=self.args.nb_classes,
+                             embed=self.args.embed,
                              sz_embedding=self.args.sz_embedding,
                              pretraining=self.args.pretraining)
         model = model.to(self.device)
 
-        gtg = gtg_module.GTG(self.args.nb_classes, max_iter=config['num_iter_gtg'],
-                      sim=self.args.sim_type,
-                      set_negative=self.args.set_negative, device=self.device).to(self.device)
+        gtg = gtg_module.GTG(self.args.nb_classes,
+                             max_iter=config['num_iter_gtg'],
+                             sim=self.args.sim_type,
+                             set_negative=self.args.set_negative,
+                             device=self.device).to(self.device)
         opt = RAdam(
             [{'params': list(set(model.parameters())), 'lr': config['lr']}],
             weight_decay=config['weight_decay'])
@@ -204,17 +218,19 @@ class PreTrainer():
 
         # create loaders
         if not self.args.pretraining:
-            batch_size = config['num_classes_iter'] * config['num_elements_class']
-            dl_tr, dl_ev, query, gallery = data_utility.create_loaders(self.args.cub_root,
-                                                                       self.args.cub_is_extracted,
-                                                                       self.args.nb_workers,
-                                                                       config['num_classes_iter'],
-                                                                       config['num_elements_class'],
-                                                                       batch_size)
+            batch_size = config['num_classes_iter'] * config[
+                'num_elements_class']
+            dl_tr, dl_ev, query, gallery = data_utility.create_loaders(
+                self.args.cub_root,
+                self.args.cub_is_extracted,
+                self.args.nb_workers,
+                config['num_classes_iter'],
+                config['num_elements_class'],
+                batch_size)
         else:
             running_corrects = 0
-            dl_tr, dl_ev = data_utility.create_dataloaders_pretraining(data_dir=self.data_dir)
-
+            dl_tr = data_utility.create_dataloaders_pretraining(
+                data_root=self.data_dir)
 
         since = time.time()
         best_accuracy = 0
@@ -243,7 +259,8 @@ class PreTrainer():
                 if not self.args.pretraining:
                     labs, L, U = data_utility.get_labeled_and_unlabeled_points(
                         labels=Y,
-                        num_points_per_class=config['num_labeled_points_class'],
+                        num_points_per_class=config[
+                            'num_labeled_points_class'],
                         num_classes=self.args.nb_classes)
 
                     # compute the smoothed softmax
@@ -259,7 +276,8 @@ class PreTrainer():
                     loss = self.args.scaling_loss * loss1 + loss
                 else:
                     _, preds = torch.max(probs, 1)
-                    running_corrects += torch.sum(preds == Y.data).cpu().data.item()
+                    running_corrects += torch.sum(
+                        preds == Y.data).cpu().data.item()
                 i += 1
 
                 # check possible net divergence
@@ -279,14 +297,26 @@ class PreTrainer():
             if not self.args.pretraining:
                 with torch.no_grad():
                     logging.info('EVALUATION')
-                    mAP, top = utils.evaluate_reid(model, dl_ev, self.args.nb_classes,
-                                                   self.args.net_type,
-                                                   dataroot=self.args.dataset_name,
-                                                   query=query, gallery=gallery,
+                    mAP, top = utils.evaluate_reid(model, dl_ev,
+                                                   query=query,
+                                                   gallery=gallery,
                                                    root=self.data_dir)
+                    logger.info('Mean AP: {:4.1%}'.format(mAP))
+
                     top = top[self.args.dataset_name]
                     logger.info('TOP {}, mAP {}'.format(top, mAP))
-                    scores.append((mAP, top))
+
+                    logger.info('CMC Scores{:>12}{:>12}{:>12}'
+                                .format('allshots', 'cuhk03', 'Market'))
+                    for k in (1, 5, 10):
+                        logger.info('  top-{:<4}{:12.1%}{:12.1%}{:12.1%}'
+                                    .format(k, top['allshots'][k - 1],
+                                            top['cuhk03'][k - 1],
+                                            top['Market'][k - 1]))
+
+                    scores.append((mAP,
+                                   [top[self.args.dataset_name][k - 1] for k in
+                                    [1, 5, 10]]))
                     model.current_epoch = e
                     if top[0] > best_accuracy:
                         best_accuracy = top[0]
@@ -295,15 +325,19 @@ class PreTrainer():
                                                 file_name + '.pth'))
 
             else:
-                logger.info('Loss {}, Recall {}'.format(torch.mean(loss.cpu()), running_corrects/len(dl_tr)))
-                scores.append(running_corrects/dl_tr.shape[0])
+                logger.info(
+                    'Loss {}, Accuracy {}'.format(torch.mean(loss.cpu()),
+                                                  running_corrects / len(
+                                                      dl_tr)))
+                scores.append(running_corrects / dl_tr.shape[0])
                 if scores[-1] > best_accuracy:
                     best_accuracy = scores[-1]
                     torch.save(model.state_dict(),
-                              os.path.join(self.save_folder_nets,
-                                           file_name + '.pth'))
+                               os.path.join(self.save_folder_nets,
+                                            file_name + '.pth'))
 
-        file_name = str(best_accuracy) + '_' + self.args.dataset_name + '_' + str(
+        file_name = str(
+            best_accuracy) + '_' + self.args.dataset_name + '_' + str(
             self.args.id) + '_' + self.args.net_type + '_' + str(
             config['lr']) + '_' + str(config['weight_decay']) + '_' + str(
             config['num_classes_iter']) + '_' + str(
@@ -326,7 +360,7 @@ class PreTrainer():
 def main():
     args = init_args()
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-    print(device)
+    logger.info('Switching to device {}'.format(device))
 
     save_folder_results = 'search_results'
     save_folder_nets = 'search_results_net'
@@ -342,25 +376,26 @@ def main():
 
     trainer = PreTrainer(args, args.cub_root, device,
                          save_folder_results, save_folder_nets)
+    logger.info('Initialized Pre-Trainer')
 
     best_recall = 0
+    best_hypers = None
     num_iter = 30
     # Random search
     for i in range(num_iter):
         logger.info('Search iteration {}'.format(i))
 
         # random search for hyperparameters
-        lr = 10**random.uniform(-8, -3)
+        lr = 10 ** random.uniform(-8, -3)
         weight_decay = 10 ** random.uniform(-15, -6)
         num_classes_iter = random.randint(2, 5)
         num_elements_classes = random.randint(4, 9)
         num_labeled_class = random.randint(1, 3)
         decrease_lr = random.randint(0, 15)  # --> Hyperparam to search?
-        set_negative = 1 #random.choice([0, 1]) # --> Hyperparam to search?
-        #sim_type = random.choice(0, 1)
-        num_iter_gtg = 1 #random.randint(1, 3) # --> Hyperparam to search?
+        set_negative = 1  # random.choice([0, 1]) # --> Hyperparam to search?
+        # sim_type = random.choice(0, 1) # --> potential from imrovpment
+        num_iter_gtg = 1  # random.randint(1, 3) # --> Hyperparam to search?
         temp = random.randint(10, 80)
-
 
         config = {'lr': lr,
                   'weight_decay': weight_decay,
@@ -379,17 +414,15 @@ def main():
 
         logger.info('Best Recall: {}'.format(best_accuracy))
 
-
         if best_accuracy > best_recall:
             os.rename(os.path.join(save_folder_nets, 'intermediate_model.pth'),
                       mode + args.net_type + '_' + args.dataset_name + '.pth')
             best_recall = best_accuracy
-            best_hypers = '_'.join([str(k) + '_' + str(v) for k, v in config.items()])
-
+            best_hypers = '_'.join(
+                [str(k) + '_' + str(v) for k, v in config.items()])
 
     logger.info("Best Hyperparameters found: " + best_hypers)
     logger.info("-----------------------------------------------------\n")
-
 
 
 if __name__ == '__main__':
