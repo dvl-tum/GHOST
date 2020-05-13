@@ -34,7 +34,7 @@ class DataPreprocessor(object):
     def images_dir(self):
         return osp.join(self.root, 'images')
 
-    def load(self, num_train=0.3):
+    def load(self, num_val=0):
         # load split
         splits = read_json(osp.join(self.root, 'splits.json'))
         if self.split_id >= len(splits):
@@ -46,14 +46,14 @@ class DataPreprocessor(object):
         trainval_pids = np.asarray(self.split['trainval'])
         # np.random.shuffle(trainval_pids)
         num = len(trainval_pids)
-        if isinstance(num_train, float):
-            num_train = int(round(num * num_train))
-        if num_train >= num or num_train < 0:
+        if isinstance(num_val, float):
+            num_val = int(round(num * num_val))
+        if num_val >= num or num_val < 0:
             raise ValueError("num_train exceeds total identities {}"
                              .format(num))
 
-        train_pids = sorted(trainval_pids[:num_train])
-        val_pids = sorted(trainval_pids[num_train:])
+        train_pids = sorted(trainval_pids[:num-num_val])
+        val_pids = sorted(trainval_pids[num-num_val:])
         self.split['train'] = train_pids
         self.split['val'] = val_pids
 
