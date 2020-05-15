@@ -4,21 +4,11 @@ import imageio
 import numpy as np
 
 import h5py
-import hashlib
 
 import json
 import os
-import errno
-import re
-import hashlib
-import shutil
-from glob import glob
 from zipfile import ZipFile
 
-from preprocessor import write_json
-from preprocessor import mkdir_if_missing
-from preprocessor import read_json
-from preprocessor import DataPreprocessor
 from collections import defaultdict
 
 url = 'https://docs.google.com/spreadsheet/viewform?usp=drive_web&formkey=dHRkMkFVSUFvbTJIRkRDLWRwZWpONnc6MA#gid=0'
@@ -50,7 +40,8 @@ def cuhk03(root: str = None, check_zip: str = None):
     matdata = h5py.File(osp.join(root, 'cuhk-03.mat'), 'r')
 
     for data_type in ['labeled', 'detected']:
-        mkdir_if_missing(os.path.join(root, data_type, 'images'))
+        if not os.path.isdir(os.path.join(root, data_type, 'images')):
+            os.makedirs(os.path.join(root, data_type, 'images'))
 
         identities = list()
         view_counts = list()
@@ -81,15 +72,18 @@ def cuhk03(root: str = None, check_zip: str = None):
             splits.append(split)
 
         splits_paths = list()
+        splits_new = list()
         for split in splits:
-            split_paths = defaultdict(list)
+            split_paths, split_new = defaultdict(list), defaultdict(list)
             for type in ['bounding_box_train', 'bounding_box_test', 'query']:
                 for img in os.listdir(os.path.join(root, data_type, 'images')):
                     if int(img) in split[type]:
-                        split_paths[type].append(os.listdir(os.path.join(root, data_type, 'images', img)))
-                assert len(split_paths[type]) == len(split[type])
+                        split_paths[type].extend(os.listdir(os.path.join(root, data_type, 'images', img)))
+                        split_new[type].extend([int(i.split('_')[0]) for i in os.listdir(os.path.join(root, data_type, 'images', img))])
+                assert len(split_paths[type]) == len(split_new[type])
             splits_paths.append(split_paths)
-        assert len(splits_paths) == len(splits)
+            splits_new.append(split_new)
+        assert len(splits_paths) == len(splits_new)
 
         # store paths to files in json file
         with open(os.path.join(os.path.join(root, data_type), 'info.json'), 'w') as file:
@@ -97,5 +91,5 @@ def cuhk03(root: str = None, check_zip: str = None):
 
         # store paths to files in json file
         with open(os.path.join(os.path.join(root, data_type), 'labels.json'), 'w') as file:
-            json.dump(splits, file)
+            json.dump(splits_new, file)
 

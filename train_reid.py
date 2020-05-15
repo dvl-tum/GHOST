@@ -11,9 +11,6 @@ import random
 import torch.nn.functional as F
 import sys
 import logging
-import json
-import copy
-import PIL
 
 from RAdam import RAdam
 import gtg as gtg_module
@@ -39,36 +36,33 @@ warnings.filterwarnings("ignore")
 class Hyperparameters():
     def __init__(self, dataset_name='cub'):
         self.dataset_name = dataset_name
-        if dataset_name == 'cub':
-            self.dataset_path = '../../datasets/CUB_200_2011'
-        elif dataset_name == 'cars':
-            self.dataset_path = '../../datasets/CARS'
-        elif dataset_name == 'Market':
-            self.dataset_path = '../../datasets/Market'
-        elif dataset_name == 'cuhk03':
-            self.dataset_path = '../../datasets/cuhk03'
+        if dataset_name == 'Market':
+            self.dataset_path = '../../datasets/Market-1501-v15.09.15'
+        elif dataset_name == 'cuhk03_detected':
+            self.dataset_path = '../../datasets/cuhk03/labeled'
+            self.dataset_name = 'cuhk03'
+        elif dataset_name == 'cuhk03_labeled':
+            self.dataset_path = '../../datasets/cuhk03/labeled'
+            self.dataset_name = 'cuhk03'
+        elif dataset_name == 'cuhk03_np_detected':
+            self.dataset_path = '../../datasets/cuhk03-np/labeled'
+            self.dataset_name = 'cuhk03-np'
+        elif dataset_name == 'cuhk03_np_labeled':
+            self.dataset_path = '../../datasets/cuhk03-np/labeled'
+            self.dataset_name = 'cuhk03-np'
         else:
             self.dataset_path = '../../datasets/Stanford'
 
-        self.num_classes = {'cub': 100, 'cars': 98, 'Stanford': 11318,
-                            'Market': 751, 'cuhk03': 1367}
-        self.num_classes_iteration = {'cub': 6, 'cars': 5, 'Stanford': 10,
-                                      'Market': 5, 'cuhk03': 5}
-        self.num_elemens_class = {'cub': 9, 'cars': 7, 'Stanford': 6,
-                                  'Market': 7, 'cuhk03': 7}
-        self.get_num_labeled_class = {'cub': 2, 'cars': 3, 'Stanford': 2,
-                                      'Market': 2, 'cuhk03': 2}
-        # self.learning_rate = 0.0002
-        self.learning_rate = {'cub': 0.0001563663718906821, 'cars': 0.0002,
-                              'Stanford': 0.0006077651100709081,
-                              'Market': 0.0002, 'cuhk03': 0.00002}
-        self.weight_decay = {'cub': 6.059722614369727e-06,
-                             'cars': 4.863656728256105e-07,
-                             'Stanford': 5.2724883734490575e-12,
-                             'Market': 4.863656728256105e-07,
-                             'cuhk03': 4.863656728256105e-07}
-        self.softmax_temperature = {'cub': 24, 'cars': 79, 'Stanford': 54,
-                                    'Market': 79, 'cuhk03': 79}
+        self.num_classes = {'Market': 751, 'cuhk03': 1367, 'cuhk03-np': 767}
+        self.num_classes_iteration = {'Market': 5, 'cuhk03': 5, 'cuhk03-np': 5}
+        self.num_elemens_class = {'Market': 7, 'cuhk03': 7, 'cuhk03-np': 7}
+        self.get_num_labeled_class = {'Market': 2, 'cuhk03': 2, 'cuhk03-np': 2}
+        self.learning_rate = {'Market': 0.0002, 'cuhk03': 0.00002,
+                              'cuhk03-np': 0.00002}
+        self.weight_decay = {'Market': 4.863656728256105e-07,
+                             'cuhk03': 4.863656728256105e-07,
+                             'cuhk03-np': 4.863656728256105e-07}
+        self.softmax_temperature = {'Market': 79, 'cuhk03': 79, 'cuhk03-np': 79}
 
     def get_path(self):
         return self.dataset_path
@@ -102,7 +96,7 @@ class Hyperparameters():
 
 
 def init_args():
-    dataset = 'Market'
+    dataset = 'cuhk03_labeled'
     hyperparams = Hyperparameters(dataset)
     parser = argparse.ArgumentParser(
         description='Pretraining for Person Re-ID with Group Loss')
@@ -218,19 +212,18 @@ class PreTrainer():
 
         # create loaders
         if not self.args.pretraining:
-            batch_size = config['num_classes_iter'] * config[
-                'num_elements_class']
             dl_tr, dl_ev, query, gallery = data_utility.create_loaders(
-                self.args.cub_root,
-                self.args.cub_is_extracted,
-                self.args.nb_workers,
-                config['num_classes_iter'],
-                config['num_elements_class'],
-                batch_size)
+                data_root=self.args.cub_root,
+                num_workers=self.args.nb_workers,
+                num_classes_iter=config['num_classes_iter'],
+                num_elements_class=config['num_elements_class'],
+                size_batch=config['num_classes_iter'] * config[
+                'num_elements_class'])
         else:
             running_corrects = 0
-            dl_tr = data_utility.create_dataloaders_pretraining(
-                data_root=self.data_dir)
+            dl_tr = data_utility.create_loaders(size_batch=64,
+                                                data_root=self.args.cub_root,
+                                                num_workers=self.args.nb_workers)
 
         since = time.time()
         best_accuracy = 0

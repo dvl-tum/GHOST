@@ -8,24 +8,20 @@ import tarfile
 
 
 class Birds(torch.utils.data.Dataset):
-    def __init__(self, root, labels, is_extracted=False, transform=None,
+    def __init__(self, root, labels, paths, transform=None,
                  eval_reid=False):
         self.eval_reid = eval_reid
         # e.g., labels = range(0, 50) for using first 50 classes only
         self.labels = labels
-        map = {lab: i for i, lab in enumerate(sorted(self.labels))}
+        self.im_paths = paths
+        map = {lab: i for i, lab in enumerate(sorted(set(self.labels)))}
+        self.ys = list()
+        for i, y in enumerate(self.labels):
+            self.ys.append(map[y])
+            self.im_paths[i] = os.path.join(root, 'images', '{:05d}'.format(
+                int(self.im_paths[i].split('_')[0])), self.im_paths[i])
+
         if transform: self.transform = transform
-        self.ys, self.im_paths = [], []
-        for i in torchvision.datasets.ImageFolder(
-                root=os.path.join(root, 'images')
-        ).imgs:
-            # i[1]: label, i[0]: path to file, including root
-            y = i[1]
-            # fn needed for removing non-images starting with `._`
-            fn = os.path.split(i[0])[1]
-            if y in self.labels and fn[:2] != '._':
-                self.ys += [map[y]]
-                self.im_paths.append(i[0])
 
     def nb_classes(self):
         n = len(np.unique(self.ys))
@@ -42,29 +38,3 @@ class Birds(torch.utils.data.Dataset):
             return im, self.ys[index], self.im_paths[index]
         return im, self.ys[index]
 
-
-class DataSetPretraining(torch.utils.data.Dataset):
-    def __init__(self, root, labels, transform=None):
-        # e.g., labels = range(0, 50) for using first 50 classes only
-        self.labels = labels
-        if transform: self.transform = transform
-        map = {lab: i for i, lab in enumerate(sorted(self.labels))}
-        self.ys, self.im_paths = [], []
-        for i in torchvision.datasets.ImageFolder(
-                root=os.path.join(root, 'images')
-        ).imgs:
-            # i[1]: label, i[0]: path to file, including root
-            y = i[1]
-            # fn needed for removing non-images starting with `._`
-            fn = os.path.split(i[0])[1]
-            if y in self.labels and fn[:2] != '._':
-                self.ys += [map[y]]
-                self.im_paths.append(i[0])
-
-    def __len__(self):
-        return len(self.ys)
-
-    def __getitem__(self, index):
-        im = PIL.Image.open(self.im_paths[index])
-        im = self.transform(im)
-        return im, self.ys[index]

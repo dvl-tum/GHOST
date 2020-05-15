@@ -1,5 +1,5 @@
 
 from .cub import Birds
-from .cub import DataSetPretraining
-from .extract_cuhk03 import CUHK03
-from .extract_market import Market1501
+from .load_data import load_data
+from .extract_market import marketlike
+from .extract_cuhk import cuhk03

@@ -1,8 +1,7 @@
 import os
-from collections import defaultdict
 import json
-import h5py
-from scipy.io import loadmat
+from .extract_market import marketlike
+from .extract_cuhk import cuhk03
 
 
 '''
@@ -37,57 +36,63 @@ query: used as query images for testing
 def load_data(root: str = None):
     image_dir = os.path.join(root, 'images')
 
-    # convert downloaded data to pytorch image folder
+    # check if json file already exists --> if not: generate image folders
     if not os.path.isfile(os.path.join(root, 'info.json')):
-        if not os.path.isdir(
-                os.path.join(root, 'bounding_box_test')) or not os.path.isdir(
-                os.path.join(root, 'bounding_box_train')) or not os.path.isdir(
-                os.path.join(root, 'query')):
+
+        # names of zip files
+        if os.path.basename(os.path.dirname(root)) == 'cuhk03':
+            check_zip = os.path.join(os.path.dirname(os.path.dirname(root)), 'cuhk03_release.zip')
+        elif os.path.basename(os.path.dirname(root)) == 'cuhk03-np':
+            check_zip = os.path.join(os.path.dirname(os.path.dirname(root)), 'cuhk03-np.zip')
+        elif os.path.basename(root) == 'Market-1501-v15.09.15':
+            check_zip = os.path.join(os.path.dirname(root), 'Market-1501-v15.09.15.zip')
+
+        # check if zip file or extracted directory exists
+        if not os.path.isfile(check_zip) and not os.path.isdir(root):
             if os.path.basename(root) == 'cuhk03-np':
                 path = 'https://drive.google.com/file/d/1pBCIAGSZ81pgvqjC-lUHtl0OYV1icgkz/view'
-            else:
+            elif os.path.basename(os.path.dirname(root)) == 'cuhk03':
+                path = 'https://drive.google.com/uc?id=0BxJeH3p7Ln48djNVVVJtUXh6bXc&export=download'
+            elif os.path.basename(root) == 'Market-1501-v15.09.15':
                 path = 'https://drive.google.com/file/d/0B8-rUzbwVRk0c054eEozWG9COHM/view'
             print('Please download dataset from ' + path)
             quit()
-        files = defaultdict(list)
 
-        # iterate over bbtrain, bbtest und query and move single images to
-        # class directories
-        for data in ['bounding_box_train', 'bounding_box_test', 'query']:
-            directory = os.path.join(root, data)
-            for img in os.listdir(directory):
-                pid = int(img.split('_')[0])
-                dir_name = '{:05d}'.format(pid)
-                if not os.path.isdir(os.path.join(image_dir, dir_name)):
-                    os.makedirs(os.path.join(image_dir, dir_name))
-                os.rename(os.path.join(directory, img),
-                          os.path.join(image_dir, dir_name, img))
-                files[data].append(img)
-            assert len(os.listdir(os.path.join(root, data))) == 0
-            os.rmdir(os.path.join(root, data))
+        # generate image folders for dataset and splits
+        if os.path.basename(os.path.dirname(root)) == 'cuhk03':
+            cuhk03(root=root, check_zip=check_zip)
+        else:
+            marketlike(root=root, image_dir=image_dir, check_zip=check_zip)
 
-        # get junk and good indices
-        if root.split('/')[-1].split('-')[0] == "Market":
-            indices = defaultdict(dict)
-            for gt in os.listdir(os.path.join(root, 'gt_query')):
-                x = loadmat(
-                    os.path.join(root, 'gt_query', gt))
-                img = ('_').join(gt.split('_')[:-1]) + '.jpg'
-                type = gt.split('_')[-1].split('.')[0]
-                indices[img][type] = x[type + '_index']
-
-        files['indices'] = indices
-
-        # store paths to files in json file
-        with open(os.path.join(root, 'info.json'), 'w') as file:
-            json.dump(files, file)
-
-
+    # load image paths and labels for splits
     with open(os.path.join(root, 'info.json'), 'r') as file:
         data = json.load(file)
 
-    return data
+    with open(os.path.join(root, 'labels.json'), 'r') as file:
+        labels = json.load(file)
+
+    # make list if not, for cuhk03 classic split is list
+    if type(data) != list:
+        data, labels = [data], [labels]
+
+    # check if same number of identities in splits
+    for split, split_paths in zip(labels, data):
+        for t in ['bounding_box_train', 'bounding_box_test', 'query']:
+            assert len(split_paths[t]) == len(split[t])
+
+    return labels, data
 
 
 if __name__ == '__main__':
-    load_data(root='../../../datasets/Market-1501-v15.09.15')
+    # test
+
+    lab, data = load_data(root='../../../datasets/cuhk03-np/detected')
+    print(len(lab))
+    lab, data = load_data(root='../../../datasets/cuhk03-np/labeled')
+    print(len(lab))
+    lab, data = load_data(root='../../../datasets/Market-1501-v15.09.15')
+    print(len(lab))
+    lab, data = load_data(root='../../../datasets/cuhk03/detected')
+    print(len(lab))
+    lab, data = load_data(root='../../../datasets/cuhk03/labeled')
+    print(len(lab))

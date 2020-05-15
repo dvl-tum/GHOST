@@ -50,9 +50,10 @@ class CombineSampler(Sampler):
 
 
 class PretraingSampler(Sampler):
-    def __init__(self, samples, data_dir, oversampling):
+    def __init__(self, samples):
         self.samples = samples
         self.flat_list = list()
+        self.max = 0
 
         for inds in samples:
             if len(inds) > self.max:
