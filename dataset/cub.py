@@ -35,6 +35,6 @@ class Birds(torch.utils.data.Dataset):
         im = PIL.Image.open(self.im_paths[index])
         im = self.transform(im)
         if self.eval_reid:
-            return im, self.ys[index], self.im_paths[index]
+            return im, self.ys[index], os.path.basename(self.im_paths[index])
         return im, self.ys[index]
 

@@ -33,9 +33,12 @@ def marketlike(root: str = None, image_dir: str = None, check_zip: str = None):
             dir_name = '{:05d}'.format(pid)
             if not os.path.isdir(os.path.join(image_dir, dir_name)):
                 os.makedirs(os.path.join(image_dir, dir_name))
+            img_list = img.split('_')
+            cam = img_list[1][1:2]
+            img_new = '_'.join([img_list[0], cam] + img_list[2:])
             os.rename(os.path.join(directory, img),
-                      os.path.join(image_dir, dir_name, img))
-            files[data].append(img)
+                      os.path.join(image_dir, dir_name, img_new))
+            files[data].append(img_new)
 
         assert len(os.listdir(os.path.join(root, data))) == 0
         os.rmdir(os.path.join(root, data))

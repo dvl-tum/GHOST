@@ -36,33 +36,35 @@ warnings.filterwarnings("ignore")
 class Hyperparameters():
     def __init__(self, dataset_name='cub'):
         self.dataset_name = dataset_name
+        print(self.dataset_name)
+        print('Without GL')
         if dataset_name == 'Market':
             self.dataset_path = '../../datasets/Market-1501-v15.09.15'
-        elif dataset_name == 'cuhk03_detected':
+            self.dataset_short = 'Market'
+        elif dataset_name == 'cuhk03-detected':
+            self.dataset_path = '../../datasets/cuhk03/detected'
+            self.dataset_short = 'cuhk03'
+        elif dataset_name == 'cuhk03-labeled':
             self.dataset_path = '../../datasets/cuhk03/labeled'
-            self.dataset_name = 'cuhk03'
-        elif dataset_name == 'cuhk03_labeled':
-            self.dataset_path = '../../datasets/cuhk03/labeled'
-            self.dataset_name = 'cuhk03'
-        elif dataset_name == 'cuhk03_np_detected':
+            self.dataset_short = 'cuhk03'
+        elif dataset_name == 'cuhk03-np-detected':
             self.dataset_path = '../../datasets/cuhk03-np/labeled'
-            self.dataset_name = 'cuhk03-np'
-        elif dataset_name == 'cuhk03_np_labeled':
+            self.dataset_short = 'cuhk03-np'
+        elif dataset_name == 'cuhk03-np-labeled':
             self.dataset_path = '../../datasets/cuhk03-np/labeled'
-            self.dataset_name = 'cuhk03-np'
-        else:
-            self.dataset_path = '../../datasets/Stanford'
+            self.dataset_short = 'cuhk03-np'
 
-        self.num_classes = {'Market': 751, 'cuhk03': 1367, 'cuhk03-np': 767}
-        self.num_classes_iteration = {'Market': 5, 'cuhk03': 5, 'cuhk03-np': 5}
-        self.num_elemens_class = {'Market': 7, 'cuhk03': 7, 'cuhk03-np': 7}
-        self.get_num_labeled_class = {'Market': 2, 'cuhk03': 2, 'cuhk03-np': 2}
-        self.learning_rate = {'Market': 0.0002, 'cuhk03': 0.00002,
-                              'cuhk03-np': 0.00002}
+        self.num_classes = {'Market': 751, 'cuhk03-labeled': 1367, 'cuhk03-np-labeled': 767, 'cuhk03-detected': 1367, 'cuhk03-np-detected': 767}
+        self.num_classes_iteration = {'Market': 5, 'cuhk03-labeled': 5, 'cuhk03-np-labeled': 5, 'cuhk03-detected': 5, 'cuhk03-np-detected': 5}
+        self.num_elemens_class = {'Market': 7, 'cuhk03-labeled': 7, 'cuhk03-np-labeled': 7, 'cuhk03-detected': 7, 'cuhk03-np-detected': 7}
+        self.get_num_labeled_class = {'Market': 2, 'cuhk03-labeled': 2, 'cuhk03-np-labeled': 2, 'cuhk03-detected': 2, 'cuhk03-np-detected': 2}
+        self.learning_rate = {'Market': 0.0002, 'cuhk03-labeled': 0.0002, 'cuhk03-np-labeled': 0.0002, 'cuhk03-detected': 0.0002, 'cuhk03-np-detected': 0.0002}
         self.weight_decay = {'Market': 4.863656728256105e-07,
-                             'cuhk03': 4.863656728256105e-07,
-                             'cuhk03-np': 4.863656728256105e-07}
-        self.softmax_temperature = {'Market': 79, 'cuhk03': 79, 'cuhk03-np': 79}
+                             'cuhk03-detected': 4.863656728256105e-07,
+                             'cuhk03-np-detected': 4.863656728256105e-07,
+                             'cuhk03-labeled': 4.863656728256105e-07,
+                             'cuhk03-np-labeled': 4.863656728256105e-07}
+        self.softmax_temperature = {'Market': 79, 'cuhk03-labeled': 79, 'cuhk03-np-labeled': 79, 'cuhk03-detected': 79, 'cuhk03-np-detected': 79}
 
     def get_path(self):
         return self.dataset_path
@@ -96,12 +98,14 @@ class Hyperparameters():
 
 
 def init_args():
-    dataset = 'cuhk03_labeled'
+    dataset = 'Market'
     hyperparams = Hyperparameters(dataset)
     parser = argparse.ArgumentParser(
         description='Pretraining for Person Re-ID with Group Loss')
-    parser.add_argument('--dataset_name', default=dataset, type=str,
+    parser.add_argument('--dataset_name', default=hyperparams.dataset_name, type=str,
                         help='The name of the dataset')
+    parser.add_argument('--dataset_short', default= hyperparams.dataset_short, type=str,
+                        help='without detected/labeled')
     parser.add_argument('--oversampling', default=1, type=int,
                         help='If oversampling shoulf be used')
     parser.add_argument('--nb_epochs', default=30, type=int)
@@ -137,8 +141,6 @@ def init_args():
     parser.add_argument('--weight-decay',
                         default=hyperparams.get_weight_decay(), type=float,
                         help='The l2 regularization strength')
-    parser.add_argument('--nb_epochs', default=hyperparams.get_epochs(),
-                        type=int, help='Number of training epochs.')
     parser.add_argument('--temperature',
                         default=hyperparams.get_softmax_temperature(),
                         help='Temperature parameter for the softmax')
@@ -187,7 +189,7 @@ class PreTrainer():
 
         file_name = 'intermediate_model'
 
-        model = net.load_net(dataset=self.args.dataset_name,
+        model = net.load_net(dataset=self.args.dataset_short,
                              net_type=self.args.net_type,
                              nb_classes=self.args.nb_classes,
                              embed=self.args.embed,
@@ -249,6 +251,7 @@ class PreTrainer():
 
                 probs, fc7 = model(x.to(self.device))
                 loss = criterion2(probs, Y)
+                '''
                 if not self.args.pretraining:
                     labs, L, U = data_utility.get_labeled_and_unlabeled_points(
                         labels=Y,
@@ -271,6 +274,7 @@ class PreTrainer():
                     _, preds = torch.max(probs, 1)
                     running_corrects += torch.sum(
                         preds == Y.data).cpu().data.item()
+                '''
                 i += 1
 
                 # check possible net divergence
@@ -294,13 +298,12 @@ class PreTrainer():
                                                    query=query,
                                                    gallery=gallery,
                                                    root=self.data_dir)
-                    logger.info('Mean AP: {:4.1%}'.format(mAP))
 
-                    top = top[self.args.dataset_name]
-                    logger.info('TOP {}, mAP {}'.format(top, mAP))
+                    logger.info('Mean AP: {:4.1%}'.format(mAP))
 
                     logger.info('CMC Scores{:>12}{:>12}{:>12}'
                                 .format('allshots', 'cuhk03', 'Market'))
+
                     for k in (1, 5, 10):
                         logger.info('  top-{:<4}{:12.1%}{:12.1%}{:12.1%}'
                                     .format(k, top['allshots'][k - 1],
@@ -308,11 +311,11 @@ class PreTrainer():
                                             top['Market'][k - 1]))
 
                     scores.append((mAP,
-                                   [top[self.args.dataset_name][k - 1] for k in
+                                   [top[self.args.dataset_short][k - 1] for k in
                                     [1, 5, 10]]))
                     model.current_epoch = e
-                    if top[0] > best_accuracy:
-                        best_accuracy = top[0]
+                    if top[self.args.dataset_short][0] > best_accuracy:
+                        best_accuracy = top[self.args.dataset_short][0]
                         torch.save(model.state_dict(),
                                    os.path.join(self.save_folder_nets,
                                                 file_name + '.pth'))
@@ -330,8 +333,8 @@ class PreTrainer():
                                             file_name + '.pth'))
 
         end = time.time()
-        logger.info('Completed {} epochs in {}s'.format(self.args.nb_epochs,
-                                                        end-since))
+        logger.info('Completed {} epochs in {}s on {}'.format(self.args.nb_epochs,
+                                                        end-since, self.args.dataset_name))
 
         file_name = str(
             best_accuracy) + '_' + self.args.dataset_name + '_' + str(
@@ -391,7 +394,7 @@ def main():
         decrease_lr = random.randint(0, 15)  # --> Hyperparam to search?
         set_negative = 1  # random.choice([0, 1]) # --> Hyperparam to search?
         # sim_type = random.choice(0, 1) # --> potential from imrovpment
-        num_iter_gtg = 1  # random.randint(1, 3) # --> Hyperparam to search?
+        num_iter_gtg = random.randint(1, 3) # --> Hyperparam to search?
         temp = random.randint(10, 80)
 
         config = {'lr': lr,
@@ -404,10 +407,10 @@ def main():
                   'num_iter_gtg': num_iter_gtg,
                   'temperature': temp}
 
-        hypers = ', '.join([k + ': ' + str(v) for k, v in config.items()])
-        logger.info('Using Parameters: ' + hypers)
-
         best_accuracy, model = trainer.train_model(config)
+
+        hypers = ', '.join([k + ': ' + str(v) for k, v in config.items()])
+        logger.info('Used Parameters: ' + hypers)
 
         logger.info('Best Recall: {}'.format(best_accuracy))
 

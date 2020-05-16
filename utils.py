@@ -25,7 +25,6 @@ def evaluate_reid(model, dataloader, query=None, gallery=None, root=None):
     model_is_training = model.training
     model.eval()
     _, _, features, _ = predict_batchwise_reid(model, dataloader)
-
     mAP, cmc = evaluation.calc_mean_average_precision(features, query,
                                                       gallery, root)
     model.train(model_is_training)

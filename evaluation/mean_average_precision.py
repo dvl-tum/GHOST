@@ -8,21 +8,16 @@ from collections import defaultdict
 
 def pairwise_distance(features, query=None, gallery=None, root=None):
     img_dir = os.path.join(root, 'images')
-    query_paths = [i for id in os.listdir(img_dir) for i in
-                   os.listdir(os.path.join(img_dir, id)) if int(id) in query]
-    gallery_paths = [i for id in os.listdir(img_dir) for i in
-                     os.listdir(os.path.join(img_dir, id)) if
-                     int(id) in gallery]
 
-    x = torch.cat([features[f].unsqueeze(0) for f in query_paths], 0)
-    y = torch.cat([features[f].unsqueeze(0) for f in gallery_paths], 0)
+    x = torch.cat([features[f].unsqueeze(0) for f in query], 0)
+    y = torch.cat([features[f].unsqueeze(0) for f in gallery], 0)
     m, n = x.size(0), y.size(0)
     x = x.view(m, -1)
     y = y.view(n, -1)
     dist = torch.pow(x, 2).sum(dim=1, keepdim=True).expand(m, n) + \
            torch.pow(y, 2).sum(dim=1, keepdim=True).expand(n, m).t()
     dist.addmm_(1, -2, x, y.t())
-    return dist, query_paths, gallery_paths
+    return dist, query, gallery
 
 
 def _unique_sample(ids_dict, num):
@@ -95,6 +90,7 @@ def cmc(distmat, query_ids=None, gallery_ids=None,
 
 def mean_ap_classic(dist, ql, qc, gl, gc):
     junk0 = gl == -1
+    dist = dist.cpu().numpy()
     indices = np.argsort(dist, axis=1)
     ap_list = list()
     # cmc = np.zeros(indices.shape[1])
@@ -131,7 +127,7 @@ def mean_ap_classic(dist, ql, qc, gl, gc):
 
 def mean_ap_sklearn(dist, ql, qc, gl, gc):
     # TODO: same camera out? junk -1 out?
-
+    dist = dist.cpu().numpy()
     indices = np.argsort(dist, axis=1)
     matches = (gl[indices] == ql[:, np.newaxis])
     aps = []
@@ -179,7 +175,7 @@ def evaluate_all(distmat, query=None, gallery=None):
                   for name, params in cmc_configs.items()}
 
     # Use the allshots cmc top-1 score for validation criterion
-    return cmc_scores, mAP
+    return mAP, cmc_scores
 
 
 def calc_mean_average_precision(features, query, gallery, rootdir):
