@@ -7,7 +7,6 @@ from collections import defaultdict
 
 
 def pairwise_distance(features, query=None, gallery=None, root=None):
-    img_dir = os.path.join(root, 'images')
 
     x = torch.cat([features[f].unsqueeze(0) for f in query], 0)
     y = torch.cat([features[f].unsqueeze(0) for f in gallery], 0)
@@ -33,6 +32,7 @@ def cmc(distmat, query_ids=None, gallery_ids=None,
         separate_camera_set=False,
         single_gallery_shot=False,
         first_match_break=False):
+    junk = gallery_ids != -1
     distmat = distmat.cpu().numpy()
     m, n = distmat.shape
 
@@ -48,6 +48,8 @@ def cmc(distmat, query_ids=None, gallery_ids=None,
         # Filter out the same id and same camera
         pos = ((gallery_ids[indices[i]] != query_ids[i]) |
                (gallery_cams[indices[i]] != query_cams[i]))
+        # filter out samples of class -1 (distractors)
+        pos &= junk
 
         if separate_camera_set:
             # Filter out samples from same camera
@@ -125,8 +127,9 @@ def mean_ap_classic(dist, ql, qc, gl, gc):
     return sum(ap_list) / len(ap_list)
 
 
-def mean_ap_sklearn(dist, ql, qc, gl, gc):
+def mean_ap_sklearn(dist, ql, qc, gl, gc, separate_camera_set=False):
     # TODO: same camera out? junk -1 out?
+    junk = gl != -1
     dist = dist.cpu().numpy()
     indices = np.argsort(dist, axis=1)
     matches = (gl[indices] == ql[:, np.newaxis])
@@ -134,6 +137,12 @@ def mean_ap_sklearn(dist, ql, qc, gl, gc):
     for k in range(dist.shape[0]):
         # Filter out the same id and same camera
         pos = (gl[indices[k]] != ql[k]) | (gc[indices[k]] != qc[k])
+        # filter out samples of class -1 (distractors)
+        pos &= junk
+        if separate_camera_set:
+            # Filter out samples from same camera
+            pos &= gc != qc[k]
+
         y_true = matches[k, pos]
         y_score = -dist[k][indices[k]][pos]
         if not np.any(y_true): continue
@@ -192,9 +201,9 @@ if __name__ == '__main__':
                 '00001451_01_0000.jpg': torch.tensor([6, 6, 6, 6, 6]),
                 '00001451_02_0000.jpg': torch.tensor([1, 2, 3, 4, 5]),
                 }
-    query = [84]
-    gallery = [84, 129, 1451]
-
+    query = ['00000084_00_0000.jpg', '00000129_01_0000.jpg', '00001451_01_0000.jpg', '00000084_04_0000.jpg', '00000129_03_0000.jpg', '00001451_02_0000.jpg']
+    gallery = ['00000084_04_0000.jpg', '00000129_03_0000.jpg', '00001451_02_0000.jpg', '00000084_00_0000.jpg', '00000129_01_0000.jpg', '00001451_01_0000.jpg']
+    '''
     np.random.seed(50)
     features = {'00000169_00_0000.jpg': torch.rand(5),
                 '00000169_01_0001.jpg': torch.rand(5),
@@ -235,7 +244,7 @@ if __name__ == '__main__':
 
     query = [857, 59, 862]
     gallery = [857, 59, 143, 323, 389, 98, 95, 1237, 151, 862, 864, 169]
-
+    '''
     rootdir = '../../../datasets/Market'
 
     """for dir in os.listdir(os.path.join(rootdir, 'images')):
