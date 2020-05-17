@@ -37,7 +37,9 @@ def load_data(root: str = None):
     image_dir = os.path.join(root, 'images')
 
     # check if json file already exists --> if not: generate image folders
-    if not os.path.isfile(os.path.join(root, 'info.json')):
+    if not os.path.isfile(os.path.join(root, 'info.json')) or \
+            not os.path.isfile(os.path.join(root, 'labels.json')) or \
+            not os.path.isdir(os.path.join(root, 'images')):
 
         # names of zip files
         if os.path.basename(os.path.dirname(root)) == 'cuhk03':

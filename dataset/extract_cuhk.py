@@ -71,18 +71,31 @@ def cuhk03(root: str = None, check_zip: str = None):
                      'bounding_box_test': test_pids}
             splits.append(split)
 
-        splits_paths = list()
-        splits_new = list()
+        splits_paths = list() # paths of all splits
+        splits_new = list() # labels of all splits
+
+        # iterate over splits
         for split in splits:
+            # paths and labels for one split
             split_paths, split_new = defaultdict(list), defaultdict(list)
             for type in ['bounding_box_train', 'bounding_box_test', 'query']:
                 for img in os.listdir(os.path.join(root, data_type, 'images')):
                     if int(img) in split[type]:
                         split_paths[type].extend(os.listdir(os.path.join(root, data_type, 'images', img)))
                         split_new[type].extend([int(i.split('_')[0]) for i in os.listdir(os.path.join(root, data_type, 'images', img))])
+                # check if len labels is equally long as paths
                 assert len(split_paths[type]) == len(split_new[type])
+
+            # check if no ids in train that are in test or query
+            assert set(split_new['bounding_box_train']).isdisjoint(
+                set(split_new['query']))
+            assert set(split_new['bounding_box_train']).isdisjoint(
+                set(split_new['bounding_box_test']))
+
+            # add split dicts to list
             splits_paths.append(split_paths)
             splits_new.append(split_new)
+
         assert len(splits_paths) == len(splits_new)
 
         # store paths to files in json file
