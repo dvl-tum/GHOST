@@ -37,7 +37,7 @@ class Hyperparameters():
     def __init__(self, dataset_name='cub'):
         self.dataset_name = dataset_name
         print(self.dataset_name)
-        print('Without GL')
+        #print('Without GL')
         if dataset_name == 'Market':
             self.dataset_path = '../../datasets/Market-1501-v15.09.15'
             self.dataset_short = 'Market'
@@ -98,7 +98,7 @@ class Hyperparameters():
 
 
 def init_args():
-    dataset = 'Market'
+    dataset = 'cuhk03-detected'
     hyperparams = Hyperparameters(dataset)
     parser = argparse.ArgumentParser(
         description='Pretraining for Person Re-ID with Group Loss')
@@ -251,7 +251,7 @@ class PreTrainer():
 
                 probs, fc7 = model(x.to(self.device))
                 loss = criterion2(probs, Y)
-                '''
+                
                 if not self.args.pretraining:
                     labs, L, U = data_utility.get_labeled_and_unlabeled_points(
                         labels=Y,
@@ -274,7 +274,7 @@ class PreTrainer():
                     _, preds = torch.max(probs, 1)
                     running_corrects += torch.sum(
                         preds == Y.data).cpu().data.item()
-                '''
+                
                 i += 1
 
                 # check possible net divergence
@@ -380,22 +380,22 @@ def main():
 
     best_recall = 0
     best_hypers = None
-    num_iter = 30
+    num_iter = 1
     # Random search
     for i in range(num_iter):
         logger.info('Search iteration {}'.format(i))
 
         # random search for hyperparameters
-        lr = 10 ** random.uniform(-8, -3)
-        weight_decay = 10 ** random.uniform(-15, -6)
-        num_classes_iter = random.randint(2, 5)
-        num_elements_classes = random.randint(4, 9)
-        num_labeled_class = random.randint(1, 3)
-        decrease_lr = random.randint(0, 15)  # --> Hyperparam to search?
+        lr = 6.659128415287834e-07 #10 ** random.uniform(-8, -3)
+        weight_decay = 8.530514660346047e-12 #10 ** random.uniform(-15, -6)
+        num_classes_iter = 5 #random.randint(2, 5)
+        num_elements_classes = 6 #random.randint(4, 9)
+        num_labeled_class = 2 #random.randint(1, 3)
+        decrease_lr = 5 #random.randint(0, 15)  # --> Hyperparam to search?
         set_negative = 1  # random.choice([0, 1]) # --> Hyperparam to search?
         # sim_type = random.choice(0, 1) # --> potential from imrovpment
-        num_iter_gtg = random.randint(1, 3) # --> Hyperparam to search?
-        temp = random.randint(10, 80)
+        num_iter_gtg = 1 #random.randint(1, 3) # --> Hyperparam to search?
+        temp = 33 #random.randint(10, 80)
 
         config = {'lr': lr,
                   'weight_decay': weight_decay,
