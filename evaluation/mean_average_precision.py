@@ -15,6 +15,7 @@ def pairwise_distance(features, query=None, gallery=None, root=None):
     y = y.view(n, -1)
     dist = torch.pow(x, 2).sum(dim=1, keepdim=True).expand(m, n) + \
            torch.pow(y, 2).sum(dim=1, keepdim=True).expand(n, m).t()
+
     dist.addmm_(1, -2, x, y.t())
     return dist, query, gallery
 
@@ -58,7 +59,6 @@ def cmc(distmat, query_ids=None, gallery_ids=None,
         if not np.any(matches[i, pos]): continue
 
         if single_gallery_shot:
-            # TODO: is repeat 20?!
             repeat = 10
             gids = gallery_ids[indices[i][pos]]
             inds = np.where(pos)[0]
@@ -90,65 +90,30 @@ def cmc(distmat, query_ids=None, gallery_ids=None,
     return ret.cumsum() / num_valid_queries
 
 
-def mean_ap_classic(dist, ql, qc, gl, gc):
-    junk0 = gl == -1
-    dist = dist.cpu().numpy()
-    indices = np.argsort(dist, axis=1)
-    ap_list = list()
-    # cmc = np.zeros(indices.shape[1])
-    for k in range(dist.shape[0]):
-        # generate masks
-        pos = np.argwhere((gl == ql[k]) & (gc != qc[k]))
-        junk1 = gc == qc[k]
-        junk = np.argwhere(junk0 | junk1)
-
-        # if no pos samples, continue
-        if pos.size == 0:
-            continue
-
-        # filter out junk and get good indices
-        mask = np.in1d(indices[k], junk, invert=True)
-        index = indices[k][mask]
-        mask = np.in1d(index, pos, invert=False)
-        row_good = np.argwhere(mask == True).flatten()
-
-        # cmc_tmp = np.zeros(indices.shape[1])
-        # cmc_tmp[row_good[0]:] = 1
-        old_precision, ap = 1, 0
-        for i in range(len(pos)):
-            d_recall = 1 / (len(pos))
-            precision = (i + 1) / (row_good[i] + 1)
-            ap = ap + d_recall * (old_precision - precision)
-            old_precision = precision
-
-        ap_list.append(ap)
-        # cmc = cmc + cmc_tmp
-        # cmc/indices.shape[0]
-    return sum(ap_list) / len(ap_list)
-
-
-def mean_ap_sklearn(dist, ql, qc, gl, gc, separate_camera_set=False):
-    # TODO: same camera out? junk -1 out?
+def mean_ap(dist, ql, qc, gl, gc):
+    # TODO: same camera out?
     junk = gl != -1
     dist = dist.cpu().numpy()
+
     indices = np.argsort(dist, axis=1)
     matches = (gl[indices] == ql[:, np.newaxis])
+
     aps = []
     for k in range(dist.shape[0]):
         # Filter out the same id and same camera
         pos = (gl[indices[k]] != ql[k]) | (gc[indices[k]] != qc[k])
         # filter out samples of class -1 (distractors)
         pos &= junk
-        if separate_camera_set:
-            # Filter out samples from same camera
-            pos &= gc != qc[k]
 
         y_true = matches[k, pos]
+
         y_score = -dist[k][indices[k]][pos]
         if not np.any(y_true): continue
         aps.append(average_precision_score(y_true, y_score))
+
     if len(aps) == 0:
         raise RuntimeError("No valid query")
+
     return np.mean(aps)
 
 
@@ -165,8 +130,7 @@ def evaluate_all(distmat, query=None, gallery=None):
          gallery])
 
     # Compute mean AP
-    mAP = mean_ap_sklearn(distmat, query_ids, query_cams, gallery_ids,
-                          gallery_cams)
+    mAP = mean_ap(distmat, query_ids, query_cams, gallery_ids, gallery_cams)
 
     # Compute all kinds of CMC scores
     cmc_configs = {
