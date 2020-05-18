@@ -108,7 +108,7 @@ def init_args():
                         help='without detected/labeled')
     parser.add_argument('--oversampling', default=1, type=int,
                         help='If oversampling shoulf be used')
-    parser.add_argument('--nb_epochs', default=30, type=int)
+    parser.add_argument('--nb_epochs', default=100, type=int)
 
     parser.add_argument('--cub-root', default=hyperparams.get_path(),
                         help='Path to dataset folder')
@@ -187,7 +187,7 @@ class PreTrainer():
 
     def train_model(self, config):
 
-        file_name = 'intermediate_model'
+        file_name = self.args.dataset_name + '_intermediate_model'
 
         model = net.load_net(dataset=self.args.dataset_short,
                              net_type=self.args.net_type,
@@ -380,22 +380,22 @@ def main():
 
     best_recall = 0
     best_hypers = None
-    num_iter = 1
+    num_iter = 30
     # Random search
     for i in range(num_iter):
         logger.info('Search iteration {}'.format(i))
 
         # random search for hyperparameters
-        lr = 6.659128415287834e-07 #10 ** random.uniform(-8, -3)
-        weight_decay = 8.530514660346047e-12 #10 ** random.uniform(-15, -6)
-        num_classes_iter = 5 #random.randint(2, 5)
-        num_elements_classes = 6 #random.randint(4, 9)
-        num_labeled_class = 2 #random.randint(1, 3)
-        decrease_lr = 5 #random.randint(0, 15)  # --> Hyperparam to search?
-        set_negative = 1  # random.choice([0, 1]) # --> Hyperparam to search?
+        lr = 10 ** random.uniform(-8, -3)
+        weight_decay = 10 ** random.uniform(-15, -6)
+        num_classes_iter = random.randint(2, 5)
+        num_elements_classes = random.randint(4, 9)
+        num_labeled_class = random.randint(1, 3)
+        decrease_lr = random.randint(0, 15)  # --> Hyperparam to search?
+        set_negative = random.choice([0, 1]) # --> Hyperparam to search?
         # sim_type = random.choice(0, 1) # --> potential from imrovpment
-        num_iter_gtg = 1 #random.randint(1, 3) # --> Hyperparam to search?
-        temp = 33 #random.randint(10, 80)
+        num_iter_gtg = random.randint(1, 3) # --> Hyperparam to search?
+        temp = random.randint(10, 80)
 
         config = {'lr': lr,
                   'weight_decay': weight_decay,
