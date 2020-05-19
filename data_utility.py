@@ -26,20 +26,26 @@ def create_loaders(data_root, num_workers, size_batch, num_classes_iter=None,
                     'labeled': paths['bounding_box_test']['labeled'] +
                                paths['query']['labeled']}
 
-        query = [os.path.join(data_root, 'detected', 'images', q) for q in
+        query = [os.path.join(data_root, 'detected', 'images',
+                              q.split('_')[0][-5:], q) for q in
                  paths['query']['detected']] + [
-                    os.path.join(data_root, 'labeled', 'images', q) for q in
+                    os.path.join(data_root, 'labeled', 'images',
+                                 q.split('_')[0][-5:], q) for q in
                     paths['query']['labeled']]
-        gallery = [os.path.join(data_root, 'detected', 'images', g) for g in
-                 paths['bounding_box_test']['detected']] + [
-                    os.path.join(data_root, 'labeled', 'images', g) for g in
-                    paths['bounding_box_test']['labeled']]
+        gallery = [os.path.join(data_root, 'detected', 'images',
+                                g.split('_')[0][-5:], g) for g in
+                   paths['bounding_box_test']['detected']] + [
+                      os.path.join(data_root, 'labeled', 'images',
+                                   g.split('_')[0][-5:], g) for g in
+                      paths['bounding_box_test']['labeled']]
 
     else:
         labels_ev = labels['bounding_box_test'] + labels['query']
         paths_ev = paths['bounding_box_test'] + paths['query']
-        query = [os.path.join(data_root, 'images', q) for q in paths['query']]
-        gallery = [os.path.join(data_root, 'images', g) for g in paths['bounding_box_test']]
+        query = [os.path.join(data_root, 'images', q.split('_')[0][-5:], q) for
+                 q in paths['query']]
+        gallery = [os.path.join(data_root, 'images', g.split('_')[0][-5:], g)
+                   for g in paths['bounding_box_test']]
 
     Dataset = dataset.Birds(
         root=data_root,
@@ -142,7 +148,7 @@ if __name__ == '__main__':
             print(y)
             break
         print()
-        #print(q)
+        # print(q)
 
         # print(g)
 
