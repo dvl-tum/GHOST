@@ -10,16 +10,22 @@ import tarfile
 class Birds(torch.utils.data.Dataset):
     def __init__(self, root, labels, paths, transform=None,
                  eval_reid=False):
+        if os.path.basename(root) == 'cuhk03' or os.path.basename(root) == 'cuhk03-np':
+            roots = [os.path.join(root, 'labeled'), os.path.join(root, 'detected')]
+        else:
+            roots = [root]
+
         self.eval_reid = eval_reid
         # e.g., labels = range(0, 50) for using first 50 classes only
         self.labels = labels
-        self.im_paths = paths
         map = {lab: i for i, lab in enumerate(sorted(set(self.labels)))}
         self.ys = list()
-        for i, y in enumerate(self.labels):
-            self.ys.append(map[y])
-            self.im_paths[i] = os.path.join(root, 'images', '{:05d}'.format(
-                int(self.im_paths[i].split('_')[0])), self.im_paths[i])
+        self.im_paths = list()
+        for root in roots:
+            for i, y in enumerate(self.labels):
+                self.ys.append(map[y])
+                self.im_paths.append(os.path.join(root, 'images', '{:05d}'.format(
+                    int(paths[i].split('_')[0])), paths[i]))
 
         if transform: self.transform = transform
 
