@@ -380,32 +380,33 @@ def main():
 
     best_recall = 0
     best_hypers = None
-    num_iter = 30
+    num_iter = 3
     # Random search
     for i in range(num_iter):
         logger.info('Search iteration {}'.format(i))
 
         # random search for hyperparameters
-        lr = 10 ** random.uniform(-8, -3)
-        weight_decay = 10 ** random.uniform(-15, -6)
-        num_classes_iter = random.randint(2, 5)
-        num_elements_classes = random.randint(4, 9)
-        num_labeled_class = random.randint(1, 3)
+        lr = [0.0001592052356176557, 0.0001592052356176557, 0.0002] #10 ** random.uniform(-8, -3)
+        weight_decay = [3.1589530699773613e-15, 3.1589530699773613e-15, 4.863656728256105e-07] #10 ** random.uniform(-15, -6)
+        num_classes_iter = [5, 5, 5] #random.randint(2, 5)
+        num_elements_classes = [5, 5, 7] #random.randint(4, 9)
+        num_labeled_class = [1, 1, 3] #random.randint(1, 3)
         decrease_lr = random.randint(0, 15)  # --> Hyperparam to search?
         set_negative = random.choice([0, 1]) # --> Hyperparam to search?
         # sim_type = random.choice(0, 1) # --> potential from imrovpment
-        num_iter_gtg = random.randint(1, 3) # --> Hyperparam to search?
-        temp = random.randint(10, 80)
+        num_iter_gtg = [1, 3, 1] #random.randint(1, 3) # --> Hyperparam to search?
+        temp = [46, 46, 79] #random.randint(10, 80)
 
-        config = {'lr': lr,
-                  'weight_decay': weight_decay,
-                  'num_classes_iter': num_classes_iter,
-                  'num_elements_class': num_elements_classes,
-                  'num_labeled_points_class': num_labeled_class,
+
+        config = {'lr': lr[i],
+                  'weight_decay': weight_decay[i],
+                  'num_classes_iter': num_classes_iter[i],
+                  'num_elements_class': num_elements_classes[i],
+                  'num_labeled_points_class': num_labeled_class[i],
                   'decrease_lr': decrease_lr,
                   'set_negative': set_negative,
-                  'num_iter_gtg': num_iter_gtg,
-                  'temperature': temp}
+                  'num_iter_gtg': num_iter_gtg[i],
+                  'temperature': temp[i]}
 
         best_accuracy, model = trainer.train_model(config)
 
