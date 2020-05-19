@@ -10,15 +10,36 @@ import os
 def create_loaders(data_root, num_workers, size_batch, num_classes_iter=None,
                    num_elements_class=None, pretraining=False,
                    input_size=224, both=0):
-
-    labels, paths = dataset.load_data(root=data_root)
+    labels, paths = dataset.load_data(root=data_root, both=both)
     labels = labels[0]
     paths = paths[0]
-    query = paths['query']
-    gallery = paths['bounding_box_test']
 
     if both:
         data_root = os.path.dirname(data_root)
+        labels_ev = {'detected': labels['bounding_box_test']['detected'] +
+                                 labels['query']['detected'],
+                     'labeled': labels['bounding_box_test']['labeled'] +
+                                labels['query']['labeled']}
+
+        paths_ev = {'detected': paths['bounding_box_test']['detected'] +
+                                paths['query']['detected'],
+                    'labeled': paths['bounding_box_test']['labeled'] +
+                               paths['query']['labeled']}
+
+        query = [os.path.join(data_root, 'detected', 'images', q) for q in
+                 paths['query']['detected']] + [
+                    os.path.join(data_root, 'labeled', 'images', q) for q in
+                    paths['query']['labeled']]
+        gallery = [os.path.join(data_root, 'detected', 'images', g) for g in
+                 paths['bounding_box_test']['detected']] + [
+                    os.path.join(data_root, 'labeled', 'images', g) for g in
+                    paths['bounding_box_test']['labeled']]
+
+    else:
+        labels_ev = labels['bounding_box_test'] + labels['query']
+        paths_ev = paths['bounding_box_test'] + paths['query']
+        query = [os.path.join(data_root, 'images', q) for q in paths['query']]
+        gallery = [os.path.join(data_root, 'images', g) for g in paths['bounding_box_test']]
 
     Dataset = dataset.Birds(
         root=data_root,
@@ -39,7 +60,7 @@ def create_loaders(data_root, num_workers, size_batch, num_classes_iter=None,
         drop_last = False
     else:
         sampler = CombineSampler(list_of_indices_for_each_class,
-                               num_classes_iter, num_elements_class)
+                                 num_classes_iter, num_elements_class)
         drop_last = True
 
     dl_tr = torch.utils.data.DataLoader(
@@ -58,9 +79,10 @@ def create_loaders(data_root, num_workers, size_batch, num_classes_iter=None,
     dl_ev = torch.utils.data.DataLoader(
         dataset.Birds(
             root=data_root,
-            labels=labels['bounding_box_test'] + labels['query'],
-            paths=paths['bounding_box_test'] + paths['query'],
-            transform=dataset.utils.make_transform(is_train=False, sz_crop=input_size),
+            labels=labels_ev,
+            paths=paths_ev,
+            transform=dataset.utils.make_transform(is_train=False,
+                                                   sz_crop=input_size),
             eval_reid=True
         ),
         batch_size=50,
@@ -86,6 +108,7 @@ def get_labeled_and_unlabeled_points(labels, num_points_per_class,
             labs_buffer[labels[i]] += 1
     return labs, L, U
 
+
 def debug_info(gtg, model):
     for name, param in gtg.named_parameters():
         if param.requires_grad:
@@ -102,35 +125,37 @@ def debug_info(gtg, model):
 
 if __name__ == '__main__':
     # test
-    roots = ['../../datasets/cuhk03-np/detected',
-             '../../datasets/cuhk03/detected']
+    roots = ['../../datasets/cuhk03/detected']
 
     for root in roots:
         dl_tr, dl_ev, q, g = create_loaders(data_root=root,
-                               input_size=224, size_batch=4, pretraining=False,
-                               num_workers=2, num_classes_iter=2, num_elements_class=2,
-                                            both=1)
-        print(len(dl_tr), len(dl_ev))
+                                            input_size=224, size_batch=4,
+                                            pretraining=False,
+                                            num_workers=2, num_classes_iter=2,
+                                            num_elements_class=2,
+                                            both=0)
         for batch, y, path in dl_ev:
-            print(y[0], path[0])
+            print(y, path)
             break
-
+        print()
         for batch, y in dl_tr:
-            print(y[0])
+            print(y)
             break
 
         #print(q)
 
-        #print(g)
+        # print(g)
 
         dl_tr = create_loaders(data_root=root,
                                input_size=224, size_batch=4, pretraining=True,
-                               num_workers=2, num_classes_iter=2, num_elements_class=2
-                       )
+                               num_workers=2, num_classes_iter=2,
+                               num_elements_class=2
+                               )
 
         for batch, y in dl_tr:
-            print(y[0])
+            print(y)
             break
+        quit()
 
     roots = ['../../datasets/cuhk03-np/detected',
              '../../datasets/cuhk03/detected',

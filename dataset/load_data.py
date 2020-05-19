@@ -33,7 +33,7 @@ query: used as query images for testing
 '''
 
 
-def load_data(root: str = None):
+def load_data(root: str = None, both: int = 0):
     image_dir = os.path.join(root, 'images')
 
     # check if json file already exists --> if not: generate image folders
@@ -67,16 +67,50 @@ def load_data(root: str = None):
         else:
             marketlike(root=root, image_dir=image_dir, check_zip=check_zip)
 
-    # load image paths and labels for splits
-    with open(os.path.join(root, 'info.json'), 'r') as file:
-        data = json.load(file)
+    # if both take detected and labeled for training
+    if both:
+        root_lab = os.path.join(os.path.dirname(root), 'labeled')
+        root_det = os.path.join(os.path.dirname(root), 'detected')
+        # load image paths and labels for splits
+        with open(os.path.join(root_lab, 'info.json'), 'r') as file:
+            data_lab = json.load(file)
 
-    with open(os.path.join(root, 'labels.json'), 'r') as file:
-        labels = json.load(file)
+        with open(os.path.join(root_lab, 'labels.json'), 'r') as file:
+            labels_lab = json.load(file)
 
-    # make list if not, for cuhk03 classic split is list
-    if type(data) != list:
-        data, labels = [data], [labels]
+        with open(os.path.join(root_det, 'info.json'), 'r') as file:
+            data_det = json.load(file)
+
+        with open(os.path.join(root_det, 'labels.json'), 'r') as file:
+            labels_det = json.load(file)
+
+        # make list if not, for cuhk03 classic split is list
+        if type(data_lab) != list:
+            data_lab, labels_lab, data_det, labels_det = [data_lab], [labels_lab], [data_det], [labels_det]
+
+        data, labels = list(), list()
+        for dl, ll, dd, ld in zip(data_lab, labels_lab, data_det, labels_det):
+            assert len(set(ll['bounding_box_train']).difference(
+                set(ld['bounding_box_train']))) == 0
+            assert len(set(ll['query']).difference(
+                set(ld['query']))) == 0
+            d, l = dict(), dict()
+            for t in ['bounding_box_train', 'bounding_box_test', 'query']:
+                d[t] = {'labeled': dl[t], 'detected': dd[t]}
+                l[t] = {'labeled': ll[t], 'detected': ld[t]}
+            data.append(d)
+            labels.append(l)
+    else:
+        # load image paths and labels for splits
+        with open(os.path.join(root, 'info.json'), 'r') as file:
+            data = json.load(file)
+
+        with open(os.path.join(root, 'labels.json'), 'r') as file:
+            labels = json.load(file)
+
+        # make list if not, for cuhk03 classic split is list
+        if type(data) != list:
+            data, labels = [data], [labels]
 
     # check if same number of identities in splits
     for split, split_paths in zip(labels, data):
@@ -88,6 +122,11 @@ def load_data(root: str = None):
 
 if __name__ == '__main__':
     # test
+    lab, data = load_data(root='../../../datasets/cuhk03-np/detected', both=0)
+    print(len(lab))
+    lab, data = load_data(root='../../../datasets/cuhk03/labeled', both=1)
+    print(len(lab))
+
     lab, data = load_data(root='../../../datasets/cuhk03-np/detected')
     print(len(lab))
     lab, data = load_data(root='../../../datasets/cuhk03-np/labeled')
