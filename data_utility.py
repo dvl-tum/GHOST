@@ -133,7 +133,7 @@ if __name__ == '__main__':
                                             pretraining=False,
                                             num_workers=2, num_classes_iter=2,
                                             num_elements_class=2,
-                                            both=0)
+                                            both=1)
         for batch, y, path in dl_ev:
             print(y, path)
             break
@@ -141,7 +141,7 @@ if __name__ == '__main__':
         for batch, y in dl_tr:
             print(y)
             break
-
+        print()
         #print(q)
 
         # print(g)

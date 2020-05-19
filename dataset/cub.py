@@ -20,19 +20,19 @@ class Birds(torch.utils.data.Dataset):
             typ = ['labeled', 'detected']
             assert len(set(labels[typ[0]]).difference(set(labels[typ[1]]))) == 0
 
-            map = {lab: i for i, lab in enumerate(sorted(set(self.labels[typ[0]])))}
+            self.map = {lab: i for i, lab in enumerate(sorted(set(self.labels[typ[0]])))}
             self.ys = list()
             self.im_paths = list()
             for t in typ:
                 for i, y in enumerate(self.labels[t]):
-                    self.ys.append(map[y])
+                    self.ys.append(self.map[y])
                     self.im_paths.append(os.path.join(root, t, 'images', '{:05d}'.format(
                     int(paths[t][i].split('_')[0])), paths[t][i]))
 
         else:
-            map = {lab: i for i, lab in enumerate(sorted(set(self.labels)))}
+            self.map = {lab: i for i, lab in enumerate(sorted(set(self.labels)))}
             for i, y in enumerate(self.labels):
-                self.ys.append(map[y])
+                self.ys.append(self.map[y])
                 self.im_paths.append(os.path.join(root, 'images', '{:05d}'.format(
                     int(paths[i].split('_')[0])), paths[i]))
 
