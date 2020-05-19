@@ -61,7 +61,8 @@ def load_data(root: str = None):
             quit()
 
         # generate image folders for dataset and splits
-        if os.path.basename(os.path.dirname(root)) == 'cuhk03':
+        if os.path.basename(os.path.dirname(root)) == 'cuhk03' or \
+                os.path.basename(root) == 'cuhk03':
             cuhk03(root=root, check_zip=check_zip)
         else:
             marketlike(root=root, image_dir=image_dir, check_zip=check_zip)
@@ -87,7 +88,6 @@ def load_data(root: str = None):
 
 if __name__ == '__main__':
     # test
-
     lab, data = load_data(root='../../../datasets/cuhk03-np/detected')
     print(len(lab))
     lab, data = load_data(root='../../../datasets/cuhk03-np/labeled')

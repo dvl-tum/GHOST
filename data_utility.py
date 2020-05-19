@@ -4,17 +4,21 @@ from collections import defaultdict
 from combine_sampler import CombineSampler, CombineSamplerAdvanced, \
     CombineSamplerSuperclass, CombineSamplerSuperclass2, PretraingSampler
 import numpy as np
+import os
 
 
 def create_loaders(data_root, num_workers, size_batch, num_classes_iter=None,
                    num_elements_class=None, pretraining=False,
-                   input_size=224):
+                   input_size=224, both=0):
 
     labels, paths = dataset.load_data(root=data_root)
     labels = labels[0]
     paths = paths[0]
     query = paths['query']
     gallery = paths['bounding_box_test']
+
+    if both:
+        data_root = os.path.dirname(data_root)
 
     Dataset = dataset.Birds(
         root=data_root,
@@ -99,27 +103,25 @@ def debug_info(gtg, model):
 if __name__ == '__main__':
     # test
     roots = ['../../datasets/cuhk03-np/detected',
-             '../../datasets/cuhk03-np/labeled',
-             '../../datasets/Market-1501-v15.09.15',
-             '../../datasets/cuhk03/detected',
-             '../../datasets/cuhk03/labeled']
+             '../../datasets/cuhk03/detected']
+
     for root in roots:
         dl_tr, dl_ev, q, g = create_loaders(data_root=root,
                                input_size=224, size_batch=4, pretraining=False,
-                               num_workers=2, num_classes_iter=2, num_elements_class=2
-                       )
-
+                               num_workers=2, num_classes_iter=2, num_elements_class=2,
+                                            both=1)
+        print(len(dl_tr), len(dl_ev))
         for batch, y, path in dl_ev:
-            print(batch[0], y[0], path[0])
+            print(y[0], path[0])
             break
 
         for batch, y in dl_tr:
-            print(batch[0], y[0])
+            print(y[0])
             break
 
-        print(q)
+        #print(q)
 
-        print(g)
+        #print(g)
 
         dl_tr = create_loaders(data_root=root,
                                input_size=224, size_batch=4, pretraining=True,
@@ -127,5 +129,13 @@ if __name__ == '__main__':
                        )
 
         for batch, y in dl_tr:
-            print(batch[0], y[0])
+            print(y[0])
             break
+
+    roots = ['../../datasets/cuhk03-np/detected',
+             '../../datasets/cuhk03/detected',
+             '../../datasets/cuhk03-np/detected',
+             '../../datasets/cuhk03-np/labeled',
+             '../../datasets/Market-1501-v15.09.15',
+             '../../datasets/cuhk03/detected',
+             '../../datasets/cuhk03/labeled']

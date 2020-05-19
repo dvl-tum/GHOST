@@ -172,6 +172,8 @@ def init_args():
                         help='id, in case you run multiple independent nets, for example if you want an ensemble of nets')
     parser.add_argument('--is_apex', default=1, type=int,
                         help='if 1 use apex to do mixed precision training')
+    parser.add_argument('--both', default=0, type=int,
+                        help='if labeled and detected of cuhk03 should be taken')
 
     return parser.parse_args()
 
@@ -220,7 +222,8 @@ class PreTrainer():
                 num_classes_iter=config['num_classes_iter'],
                 num_elements_class=config['num_elements_class'],
                 size_batch=config['num_classes_iter'] * config[
-                'num_elements_class'])
+                'num_elements_class'],
+            both=self.args.both)
         else:
             running_corrects = 0
             dl_tr = data_utility.create_loaders(size_batch=64,
