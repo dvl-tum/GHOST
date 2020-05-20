@@ -42,7 +42,6 @@ class CombineSampler(Sampler):
         # shuffle the order of classes --> Could it be that same class appears twice in one batch?
         random.shuffle(split_list_of_indices)
         self.flat_list = [item for sublist in split_list_of_indices for item in sublist]
-
         return iter(self.flat_list)
 
     def __len__(self):

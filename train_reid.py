@@ -98,7 +98,7 @@ class Hyperparameters():
 
 
 def init_args():
-    dataset = 'cuhk03-detected'
+    dataset = 'Market'
     hyperparams = Hyperparameters(dataset)
     parser = argparse.ArgumentParser(
         description='Pretraining for Person Re-ID with Group Loss')
@@ -172,7 +172,7 @@ def init_args():
                         help='id, in case you run multiple independent nets, for example if you want an ensemble of nets')
     parser.add_argument('--is_apex', default=1, type=int,
                         help='if 1 use apex to do mixed precision training')
-    parser.add_argument('--both', default=1, type=int,
+    parser.add_argument('--both', default=0, type=int,
                         help='if labeled and detected of cuhk03 should be taken')
 
     return parser.parse_args()
@@ -391,16 +391,16 @@ def main():
         logger.info('Search iteration {}'.format(i))
 
         # random search for hyperparameters
-        lr = [0.0001592052356176557, 0.0001592052356176557, 0.0002] #10 ** random.uniform(-8, -3)
-        weight_decay = [3.1589530699773613e-15, 3.1589530699773613e-15, 4.863656728256105e-07] #10 ** random.uniform(-15, -6)
-        num_classes_iter = [5, 5, 5] #random.randint(2, 5)
-        num_elements_classes = [5, 5, 7] #random.randint(4, 9)
-        num_labeled_class = [1, 1, 3] #random.randint(1, 3)
+        lr = [6.30231343210635e-05, 6.30231343210635e-05, 5.903200807154208e-05, 5.903200807154208e-05, 0.0002] #[0.0001592052356176557, 0.0001592052356176557, 0.0002] #10 ** random.uniform(-8, -3)
+        weight_decay = [8.245915738144614e-11, 8.245915738144614e-11, 4.3736248161450994e-11, 4.3736248161450994e-11, 4.863656728256105e-07]   #[3.1589530699773613e-15, 3.1589530699773613e-15, 4.863656728256105e-07] #10 ** random.uniform(-15, -6)
+        num_classes_iter = [4, 4, 4, 4, 5]  #[5, 5, 5] #random.randint(2, 5)
+        num_elements_classes = [8, 8, 5, 5, 7]  #[5, 5, 7] #random.randint(4, 9)
+        num_labeled_class = [3, 3, 1, 1, 3]  #[1, 1, 3] #random.randint(1, 3)
         decrease_lr = random.randint(0, 15)  # --> Hyperparam to search?
         set_negative = random.choice([0, 1]) # --> Hyperparam to search?
         # sim_type = random.choice(0, 1) # --> potential from imrovpment
-        num_iter_gtg = [1, 3, 1] #random.randint(1, 3) # --> Hyperparam to search?
-        temp = [46, 46, 79] #random.randint(10, 80)
+        num_iter_gtg = [1, 3, 1, 3, 1]  #[1, 3, 1] #random.randint(1, 3) # --> Hyperparam to search?
+        temp = [11, 11, 11, 11, 79] #[46, 46, 79] #random.randint(10, 80)
 
 
         config = {'lr': lr[i],
