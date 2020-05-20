@@ -116,12 +116,36 @@ class Bottleneck(nn.Module):
         return out
 
 
+def weights_init_kaiming(m):
+    classname = m.__class__.__name__
+    if classname.find('Linear') != -1:
+        nn.init.kaiming_normal_(m.weight, a=0, mode='fan_out')
+        nn.init.constant_(m.bias, 0.0)
+    elif classname.find('Conv') != -1:
+        nn.init.kaiming_normal_(m.weight, a=0, mode='fan_in')
+        if m.bias is not None:
+            nn.init.constant_(m.bias, 0.0)
+    elif classname.find('BatchNorm') != -1:
+        if m.affine:
+            nn.init.constant_(m.weight, 1.0)
+            nn.init.constant_(m.bias, 0.0)
+
+
+def weights_init_classifier(m):
+    classname = m.__class__.__name__
+    if classname.find('Linear') != -1:
+        nn.init.normal_(m.weight, std=0.001)
+        if m.bias:
+            nn.init.constant_(m.bias, 0.0)
+
+
 class ResNet(nn.Module):
 
-    def __init__(self, block, layers, num_classes=1000, zero_init_residual=False,
-                 groups=1, width_per_group=64, replace_stride_with_dilation=None,
-                 norm_layer=None):
+    def __init__(self, block, layers, last_stride, neck, num_classes=1000,
+                 zero_init_residual=False, groups=1, width_per_group=64,
+                 replace_stride_with_dilation=None, norm_layer=None):
         super(ResNet, self).__init__()
+        self.neck = neck
         if norm_layer is None:
             norm_layer = nn.BatchNorm2d
         self._norm_layer = norm_layer
@@ -147,10 +171,22 @@ class ResNet(nn.Module):
                                        dilate=replace_stride_with_dilation[0])
         self.layer3 = self._make_layer(block, 256, layers[2], stride=2,
                                        dilate=replace_stride_with_dilation[1])
-        self.layer4 = self._make_layer(block, 512, layers[3], stride=2,
+        if last_stride: last = 1
+        else: last = 2
+
+        self.layer4 = self._make_layer(block, 512, layers[3], stride=last,
                                        dilate=replace_stride_with_dilation[2])
         self.avgpool = nn.AdaptiveAvgPool2d((1, 1))
-        self.fc = nn.Linear(512 * block.expansion, num_classes)
+        if self.neck:
+            self.bottleneck = nn.BatchNorm1d(512 * block.expansion)
+            self.bottleneck.bias.requires_grad_(False)  # no shift
+            self.fc = nn.Linear(512 * block.expansion, num_classes,
+                                        bias=False)
+
+            self.bottleneck.apply(weights_init_kaiming)
+            self.fc.apply(weights_init_classifier)
+        else:
+            self.fc = nn.Linear(512 * block.expansion, num_classes)
 
         for m in self.modules():
             if isinstance(m, nn.Conv2d):
@@ -206,20 +242,41 @@ class ResNet(nn.Module):
 
         x = self.avgpool(x)
         fc7 = torch.flatten(x, 1)
-        x = self.fc(fc7)
 
-        return x, fc7
+        if not self.neck:
+            feat = fc7
+        elif self.neck == 'bnneck':
+            feat = self.bottleneck(fc7)  # normalize for angular softmax
+
+        if self.training:
+            x = self.fc(feat)
+            return x, fc7  # global feature for triplet loss
+        else:
+            if self.neck:
+                # print("Test with feature after BN")
+                return feat
+            else:
+                # print("Test with feature before BN")
+                return fc7
 
     # Allow for accessing forward method in a inherited class
     forward = _forward
 
 
-def _resnet(arch, block, layers, pretrained, progress, **kwargs):
-    model = ResNet(block, layers, **kwargs)
+def _resnet(arch, block, layers, pretrained, progress, last_stride=0, neck=0, **kwargs):
+    model = ResNet(block, layers, last_stride=last_stride, neck=neck, **kwargs)
     if pretrained:
-        state_dict = load_state_dict_from_url(model_urls[arch],
+        if not neck:
+            state_dict = load_state_dict_from_url(model_urls[arch],
                                               progress=progress)
-        model.load_state_dict(state_dict)
+            model.load_state_dict(state_dict)
+        else:
+            state_dict = load_state_dict_from_url(model_urls[arch],
+                                              progress=progress)
+            for i in state_dict:
+                if 'fc' in i:
+                    continue
+                model.state_dict()[i].copy_(state_dict[i])
     return model
 
 
@@ -246,7 +303,7 @@ def resnet34(pretrained=False, progress=True, **kwargs):
                    **kwargs)
 
 
-def resnet50(pretrained=False, progress=True, **kwargs):
+def resnet50(pretrained=False, progress=True, last_stride=0, neck=0, **kwargs):
     r"""ResNet-50 model from
     `"Deep Residual Learning for Image Recognition" <https://arxiv.org/pdf/1512.03385.pdf>`_
     Args:
@@ -254,7 +311,7 @@ def resnet50(pretrained=False, progress=True, **kwargs):
         progress (bool): If True, displays a progress bar of the download to stderr
     """
     return _resnet('resnet50', Bottleneck, [3, 4, 6, 3], pretrained, progress,
-                   **kwargs)
+                   last_stride, neck, **kwargs)
 
 
 def resnet101(pretrained=False, progress=True, **kwargs):

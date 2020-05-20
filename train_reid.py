@@ -190,13 +190,15 @@ class PreTrainer():
     def train_model(self, config, timer):
 
         file_name = self.args.dataset_name + '_intermediate_model_' + str(timer)
-
+        # add last stride and bottleneck
         model = net.load_net(dataset=self.args.dataset_short,
                              net_type=self.args.net_type,
                              nb_classes=self.args.nb_classes,
                              embed=self.args.embed,
                              sz_embedding=self.args.sz_embedding,
-                             pretraining=self.args.pretraining)
+                             pretraining=self.args.pretraining,
+                             last_stride=self.args.last_stride,
+                             neck=self.args.neck)
         model = model.to(self.device)
 
         gtg = gtg_module.GTG(self.args.nb_classes,

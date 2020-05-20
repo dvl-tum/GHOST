@@ -4,7 +4,7 @@ import net
 import torch.nn as nn
 
 
-def load_net(dataset, net_type, nb_classes, embed=False, sz_embedding=512, pretraining=False):
+def load_net(dataset, net_type, nb_classes, embed=False, sz_embedding=512, pretraining=False, last_stride=0, neck=0):
 
     if net_type == 'bn_inception':
         model = net.bn_inception(pretrained=True)
@@ -30,8 +30,9 @@ def load_net(dataset, net_type, nb_classes, embed=False, sz_embedding=512, pretr
             model.load_state_dict(torch.load('net/finetuned_' + dataset + '_' + net_type + '.pth'))
 
     elif net_type == 'resnet50':
-        model = net.resnet50(pretrained=True)
+        model = net.resnet50(pretrained=True, last_stride=last_stride, neck=neck)
         model.fc = nn.Linear(2048, nb_classes)
+        if neck: model.bottleneck = nn.BatchNorm1d(2048)
         if not pretraining:
             model.load_state_dict(torch.load('net/finetuned_' + dataset + '_' + net_type + '.pth'))
 
