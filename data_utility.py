@@ -9,7 +9,7 @@ import os
 
 def create_loaders(data_root, num_workers, size_batch, num_classes_iter=None,
                    num_elements_class=None, pretraining=False,
-                   input_size=224, both=0):
+                   input_size=224, both=0, bot_trans=0):
     labels, paths = dataset.load_data(root=data_root, both=both)
     labels = labels[0]
     paths = paths[0]
@@ -51,7 +51,7 @@ def create_loaders(data_root, num_workers, size_batch, num_classes_iter=None,
         root=data_root,
         labels=labels['bounding_box_train'],
         paths=paths['bounding_box_train'],
-        transform=dataset.utils.make_transform(sz_crop=input_size))
+        transform=dataset.utils.make_transform(sz_crop=input_size) if not bot_trans else dataset.utils.make_transform_bot())
 
     ddict = defaultdict(list)
     for idx, label in enumerate(Dataset.ys):
@@ -87,8 +87,7 @@ def create_loaders(data_root, num_workers, size_batch, num_classes_iter=None,
             root=data_root,
             labels=labels_ev,
             paths=paths_ev,
-            transform=dataset.utils.make_transform(is_train=False,
-                                                   sz_crop=input_size),
+            transform=dataset.utils.make_transform(sz_crop=input_size, is_train=False) if not bot_trans else dataset.utils.make_transform_bot(is_train=False),
             eval_reid=True
         ),
         batch_size=50,

@@ -214,7 +214,7 @@ class PreTrainer():
         if self.args.is_apex:
             model, opt = amp.initialize(model, opt, opt_level="O1")
 
-        # create loaders
+        # add bag of trick transformation
         if not self.args.pretraining:
             dl_tr, dl_ev, query, gallery = data_utility.create_loaders(
                 data_root=self.args.cub_root,
@@ -222,14 +222,16 @@ class PreTrainer():
                 num_classes_iter=config['num_classes_iter'],
                 num_elements_class=config['num_elements_class'],
                 size_batch=config['num_classes_iter'] * config[
-                'num_elements_class'],
-            both=self.args.both)
+                    'num_elements_class'],
+                both=self.args.both,
+                bot_trans=self.args.bot_trans)
         else:
             running_corrects = 0
             dl_tr = data_utility.create_loaders(size_batch=64,
                                                 data_root=self.args.cub_root,
                                                 num_workers=self.args.nb_workers,
-                                                both=self.args.both)
+                                                both=self.args.both,
+                                                bot_trans=self.args.bot_trans)
 
         since = time.time()
         best_accuracy = 0
