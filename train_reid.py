@@ -174,6 +174,16 @@ def init_args():
                         help='if 1 use apex to do mixed precision training')
     parser.add_argument('--both', default=0, type=int,
                         help='if labeled and detected of cuhk03 should be taken')
+    parser.add_argument('--lab_smooth', default=0, type=int,
+                        help='if label smoothing should be applied')
+    parser.add_argument('--bot_trans', default=0, type=int,
+                        help='if bot transformations should be applied')
+    parser.add_argument('--last_stride', default=0, type=int,
+                        help='If last stride should be changed to 1')
+    parser.add_argument('--neck', default=0, type=int,
+                        help='if additional batchnorm layer should be added')
+    parser.add_argument('--center', default=0, type=int,
+                        help='if center loss should be added')
 
     return parser.parse_args()
 
