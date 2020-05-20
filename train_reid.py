@@ -187,9 +187,9 @@ class PreTrainer():
         self.save_folder_results = save_folder_results
         self.save_folder_nets = save_folder_nets
 
-    def train_model(self, config):
+    def train_model(self, config, timer):
 
-        file_name = self.args.dataset_name + '_intermediate_model'
+        file_name = self.args.dataset_name + '_intermediate_model_' + str(timer)
 
         model = net.load_net(dataset=self.args.dataset_short,
                              net_type=self.args.net_type,
@@ -364,6 +364,7 @@ class PreTrainer():
 def main():
     args = init_args()
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+    timer = time.time()
     logger.info('Switching to device {}'.format(device))
 
     save_folder_results = 'search_results'
@@ -412,7 +413,7 @@ def main():
                   'num_iter_gtg': num_iter_gtg[i],
                   'temperature': temp[i]}
 
-        best_accuracy, model = trainer.train_model(config)
+        best_accuracy, model = trainer.train_model(config, timer)
 
         hypers = ', '.join([k + ': ' + str(v) for k, v in config.items()])
         logger.info('Used Parameters: ' + hypers)
@@ -420,7 +421,7 @@ def main():
         logger.info('Best Recall: {}'.format(best_accuracy))
 
         if best_accuracy > best_recall:
-            os.rename(os.path.join(save_folder_nets, 'intermediate_model.pth'),
+            os.rename(os.path.join(save_folder_nets, args.dataset_name + '_intermediate_model_' + str(timer) + '.pth'),
                       mode + args.net_type + '_' + args.dataset_name + '.pth')
             best_recall = best_accuracy
             best_hypers = '_'.join(
