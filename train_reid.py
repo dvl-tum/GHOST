@@ -210,7 +210,16 @@ class PreTrainer():
             [{'params': list(set(model.parameters())), 'lr': config['lr']}],
             weight_decay=config['weight_decay'])
         criterion = nn.NLLLoss().to(self.device)
-        criterion2 = nn.CrossEntropyLoss().to(self.device)
+
+        # add label smoothing
+        if self.args.lab_smooth:
+            criterion2 = utils.CrossEntropyLabelSmooth(num_classes=self.args.nb_classes)
+        else:
+            criterion2 = nn.CrossEntropyLoss().to(self.device)
+
+        # add center loss
+        if self.args.center:
+            criterion3 = utils.CenterLoss(num_classes=self.args.nb_classes)
 
         # do training in mixed precision
         if self.args.is_apex:
@@ -278,6 +287,10 @@ class PreTrainer():
                     # compute the losses
                     loss1 = criterion(probs_for_gtg, Y)
                     loss = self.args.scaling_loss * loss1 + loss
+                    # add center loss
+                    if self.args.center:
+                        loss += criterion3(fc7, Y)
+
                 else:
                     _, preds = torch.max(probs, 1)
                     running_corrects += torch.sum(
