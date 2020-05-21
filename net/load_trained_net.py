@@ -34,7 +34,11 @@ def load_net(dataset, net_type, nb_classes, embed=False, sz_embedding=512, pretr
         model.fc = nn.Linear(2048, nb_classes)
         if neck: model.bottleneck = nn.BatchNorm1d(2048)
         if not pretraining:
-            model.load_state_dict(torch.load('net/finetuned_' + dataset + '_' + net_type + '.pth'))
+            if neck:
+                name = os.path.join('net', 'finetuned_neck_')
+            else:
+                name = os.path.join('net', 'finetuned_')
+            model.load_state_dict(torch.load(name + dataset + '_' + net_type + '.pth'))
 
     elif net_type == 'resnet101':
         model = net.resnet101(pretrained=True)

@@ -122,7 +122,7 @@ def init_args():
                         default=hyperparams.get_number_classes(), type=int,
                         help='Number of first [0, N] classes used for training and ' +
                              'next [N, N * 2] classes used for evaluating with max(N) = 100.')
-    parser.add_argument('--pretraining', default=0, type=int,
+    parser.add_argument('--pretraining', default=1, type=int,
                         help='If pretraining or fine tuning is executed')
     parser.add_argument('--num_classes_iter',
                         default=hyperparams.get_number_classes_iteration(),
@@ -174,18 +174,18 @@ def init_args():
                         help='if 1 use apex to do mixed precision training')
     parser.add_argument('--both', default=0, type=int,
                         help='if labeled and detected of cuhk03 should be taken')
-    parser.add_argument('--lab_smooth', default=0, type=int,
+    parser.add_argument('--lab_smooth', default=1, type=int,
                         help='if label smoothing should be applied')
     parser.add_argument('--trans', default='norm', type=int,
                         help='wich augmentation shoulb be performed: '
                              'norm, bot, imgaug')
     parser.add_argument('--last_stride', default=0, type=int,
                         help='If last stride should be changed to 1')
-    parser.add_argument('--neck', default=0, type=int,
+    parser.add_argument('--neck', default=1, type=int,
                         help='if additional batchnorm layer should be added')
-    parser.add_argument('--center', default=0, type=int,
+    parser.add_argument('--center', default=1, type=int,
                         help='if center loss should be added')
-    parser.add_argument('--neck_test', default=0, type=int,
+    parser.add_argument('--neck_test', default=1, type=int,
                         help='If features after BN should be taken for test, '
                              'only possible if neck is enabled.')
 
@@ -249,14 +249,15 @@ class PreTrainer():
                 size_batch=config['num_classes_iter'] * config[
                     'num_elements_class'],
                 both=self.args.both,
-                bot_trans=self.args.bot_trans)
+                trans=self.args.trans)
         else:
             running_corrects = 0
-            dl_tr = data_utility.create_loaders(size_batch=64,
+            dl_tr = data_utility.create_loaders(size_batch=8,
                                                 data_root=self.args.cub_root,
                                                 num_workers=self.args.nb_workers,
                                                 both=self.args.both,
-                                                bot_trans=self.args.bot_trans)
+                                                trans=self.args.trans,
+                                                pretraining=self.args.pretraining)
 
         since = time.time()
         best_accuracy = 0
@@ -361,7 +362,7 @@ class PreTrainer():
                     'Loss {}, Accuracy {}'.format(torch.mean(loss.cpu()),
                                                   running_corrects / len(
                                                       dl_tr)))
-                scores.append(running_corrects / dl_tr.shape[0])
+                scores.append(running_corrects / len(dl_tr))
                 if scores[-1] > best_accuracy:
                     best_accuracy = scores[-1]
                     torch.save(model.state_dict(),
@@ -410,6 +411,10 @@ def main():
         mode = 'finetuned_'
     else:
         mode = ''
+
+    if args.neck:
+        mode = mode + 'neck_'
+
 
     trainer = PreTrainer(args, args.cub_root, device,
                          save_folder_results, save_folder_nets)
