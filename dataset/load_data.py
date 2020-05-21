@@ -104,7 +104,7 @@ def load_data(root: str = None, both: int = 0):
         # load image paths and labels for splits
         with open(os.path.join(root, 'info.json'), 'r') as file:
             data = json.load(file)
-
+        
         with open(os.path.join(root, 'labels.json'), 'r') as file:
             labels = json.load(file)
 
