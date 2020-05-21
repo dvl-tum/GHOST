@@ -98,7 +98,7 @@ class Hyperparameters():
 
 
 def init_args():
-    dataset = 'Market'
+    dataset = 'cuhk03-detected'
     hyperparams = Hyperparameters(dataset)
     parser = argparse.ArgumentParser(
         description='Pretraining for Person Re-ID with Group Loss')
@@ -108,7 +108,7 @@ def init_args():
                         help='without detected/labeled')
     parser.add_argument('--oversampling', default=1, type=int,
                         help='If oversampling shoulf be used')
-    parser.add_argument('--nb_epochs', default=100, type=int)
+    parser.add_argument('--nb_epochs', default=10, type=int)
 
     parser.add_argument('--cub-root', default=hyperparams.get_path(),
                         help='Path to dataset folder')
@@ -176,10 +176,10 @@ def init_args():
                         help='if labeled and detected of cuhk03 should be taken')
     parser.add_argument('--lab_smooth', default=1, type=int,
                         help='if label smoothing should be applied')
-    parser.add_argument('--trans', default='norm', type=int,
+    parser.add_argument('--trans', default='bot', type=str,
                         help='wich augmentation shoulb be performed: '
                              'norm, bot, imgaug')
-    parser.add_argument('--last_stride', default=0, type=int,
+    parser.add_argument('--last_stride', default=1, type=int,
                         help='If last stride should be changed to 1')
     parser.add_argument('--neck', default=1, type=int,
                         help='if additional batchnorm layer should be added')
@@ -252,7 +252,7 @@ class PreTrainer():
                 trans=self.args.trans)
         else:
             running_corrects = 0
-            dl_tr = data_utility.create_loaders(size_batch=8,
+            dl_tr = data_utility.create_loaders(size_batch=64,
                                                 data_root=self.args.cub_root,
                                                 num_workers=self.args.nb_workers,
                                                 both=self.args.both,
@@ -422,22 +422,22 @@ def main():
 
     best_recall = 0
     best_hypers = None
-    num_iter = 3
+    num_iter = 1
     # Random search
     for i in range(num_iter):
         logger.info('Search iteration {}'.format(i))
 
         # random search for hyperparameters
-        lr = [6.30231343210635e-05, 6.30231343210635e-05, 5.903200807154208e-05, 5.903200807154208e-05, 0.0002] #[0.0001592052356176557, 0.0001592052356176557, 0.0002] #10 ** random.uniform(-8, -3)
-        weight_decay = [8.245915738144614e-11, 8.245915738144614e-11, 4.3736248161450994e-11, 4.3736248161450994e-11, 4.863656728256105e-07]   #[3.1589530699773613e-15, 3.1589530699773613e-15, 4.863656728256105e-07] #10 ** random.uniform(-15, -6)
-        num_classes_iter = [4, 4, 4, 4, 5]  #[5, 5, 5] #random.randint(2, 5)
-        num_elements_classes = [8, 8, 5, 5, 7]  #[5, 5, 7] #random.randint(4, 9)
-        num_labeled_class = [3, 3, 1, 1, 3]  #[1, 1, 3] #random.randint(1, 3)
+        lr = [0.0001592052356176557] #[6.30231343210635e-05, 6.30231343210635e-05, 5.903200807154208e-05, 5.903200807154208e-05, 0.0002] #[0.0001592052356176557, 0.0001592052356176557, 0.0002] #10 ** random.uniform(-8, -3)
+        weight_decay = [3.1589530699773613e-15] #[8.245915738144614e-11, 8.245915738144614e-11, 4.3736248161450994e-11, 4.3736248161450994e-11, 4.863656728256105e-07]   #[3.1589530699773613e-15, 3.1589530699773613e-15, 4.863656728256105e-07] #10 ** random.uniform(-15, -6)
+        num_classes_iter = [5] #[4, 4, 4, 4, 5]  #[5, 5, 5] #random.randint(2, 5)
+        num_elements_classes = [5] #[8, 8, 5, 5, 7]  #[5, 5, 7] #random.randint(4, 9)
+        num_labeled_class = [1] #[3, 3, 1, 1, 3]  #[1, 1, 3] #random.randint(1, 3)
         decrease_lr = random.randint(0, 15)  # --> Hyperparam to search?
         set_negative = random.choice([0, 1]) # --> Hyperparam to search?
         # sim_type = random.choice(0, 1) # --> potential from imrovpment
-        num_iter_gtg = [1, 3, 1, 3, 1]  #[1, 3, 1] #random.randint(1, 3) # --> Hyperparam to search?
-        temp = [11, 11, 11, 11, 79] #[46, 46, 79] #random.randint(10, 80)
+        num_iter_gtg = [3] #[1, 3, 1, 3, 1]  #[1, 3, 1] #random.randint(1, 3) # --> Hyperparam to search?
+        temp = [46] #[11, 11, 11, 11, 79] #[46, 46, 79] #random.randint(10, 80)
 
 
         config = {'lr': lr[i],
