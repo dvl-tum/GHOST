@@ -365,6 +365,7 @@ class PreTrainer():
                 scores.append(running_corrects / len(dl_tr))
                 if scores[-1] > best_accuracy:
                     best_accuracy = scores[-1]
+                    print(os.path.join(self.save_folder_nets, file_name + '.pth'))
                     torch.save(model.state_dict(),
                                os.path.join(self.save_folder_nets,
                                             file_name + '.pth'))
@@ -458,8 +459,11 @@ def main():
         logger.info('Best Recall: {}'.format(best_accuracy))
 
         if best_accuracy > best_recall:
+            print("HELLO")
+            print(save_folder_nets, args.dataset_name + '_intermediate_model_' + str(timer) + '.pth')
             os.rename(os.path.join(save_folder_nets, args.dataset_name + '_intermediate_model_' + str(timer) + '.pth'),
                       mode + args.net_type + '_' + args.dataset_name + '.pth')
+            print(mode + args.net_type + '_' + args.dataset_name + '.pth')
             best_recall = best_accuracy
             best_hypers = '_'.join(
                 [str(k) + '_' + str(v) for k, v in config.items()])
