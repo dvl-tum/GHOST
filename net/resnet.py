@@ -229,7 +229,7 @@ class ResNet(nn.Module):
 
         return nn.Sequential(*layers)
 
-    def _forward(self, x):
+    def _forward(self, x, neck_test=0):
         x = self.conv1(x)
         x = self.bn1(x)
         x = self.relu(x)
@@ -245,19 +245,16 @@ class ResNet(nn.Module):
 
         if not self.neck:
             feat = fc7
-        elif self.neck == 'bnneck':
+        elif self.neck:
             feat = self.bottleneck(fc7)  # normalize for angular softmax
+        # TODO: Check for not neck for validation
+        x = self.fc(feat)
 
-        if self.training:
-            x = self.fc(feat)
-            return x, fc7  # global feature for triplet loss
+        if not neck_test:
+            return x, fc7
+
         else:
-            if self.neck:
-                # print("Test with feature after BN")
-                return feat
-            else:
-                # print("Test with feature before BN")
-                return fc7
+            return x, feat
 
     # Allow for accessing forward method in a inherited class
     forward = _forward

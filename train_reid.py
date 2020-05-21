@@ -184,6 +184,9 @@ def init_args():
                         help='if additional batchnorm layer should be added')
     parser.add_argument('--center', default=0, type=int,
                         help='if center loss should be added')
+    parser.add_argument('--neck_test', default=0, type=int,
+                        help='If features after BN should be taken for test, '
+                             'only possible if neck is enabled.')
 
     return parser.parse_args()
 
@@ -328,7 +331,8 @@ class PreTrainer():
                     mAP, top = utils.evaluate_reid(model, dl_ev,
                                                    query=query,
                                                    gallery=gallery,
-                                                   root=self.data_dir)
+                                                   root=self.data_dir,
+                                                   neck_test=self.args.neck_test)
 
                     logger.info('Mean AP: {:4.1%}'.format(mAP))
 

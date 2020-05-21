@@ -4,14 +4,14 @@ import net
 import data_utility
 
 
-def predict_batchwise_reid(model, dataloader):
+def predict_batchwise_reid(model, dataloader, neck_test=0):
     fc7s, L = [], []
     features = dict()
     labels = dict()
     with torch.no_grad():
         for X, Y, P in dataloader:
             if torch.cuda.is_available(): X = X.cuda()
-            _, fc7 = model(X)
+            _, fc7 = model(X, neck_test=neck_test)
             for path, out, y in zip(P, fc7, Y):
                 features[path] = out
                 labels[path] = y
@@ -21,10 +21,11 @@ def predict_batchwise_reid(model, dataloader):
     return torch.squeeze(fc7), torch.squeeze(Y), features, labels
 
 
-def evaluate_reid(model, dataloader, query=None, gallery=None, root=None):
+def evaluate_reid(model, dataloader, query=None, gallery=None, root=None,
+                  neck_test=0):
     model_is_training = model.training
     model.eval()
-    _, _, features, _ = predict_batchwise_reid(model, dataloader)
+    _, _, features, _ = predict_batchwise_reid(model, dataloader, neck_test)
     mAP, cmc = evaluation.calc_mean_average_precision(features, query,
                                                       gallery, root)
     model.train(model_is_training)
