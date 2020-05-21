@@ -380,16 +380,16 @@ class PreTrainer():
             config['num_classes_iter']) + '_' + str(
             config['num_elements_class']) + '_' + str(
             config['num_labeled_points_class'])
-
-        with open(os.path.join(self.save_folder_results, file_name + '.txt'),
-                  'w') as fp:
-            fp.write(file_name + "\n")
-            fp.write(str(self.args))
-            fp.write('\n')
-            fp.write(str(config))
-            fp.write('\n')
-            fp.write('\n'.join('%s %s' % x for x in scores))
-            fp.write("\n\n\n")
+        if not self.args.pretraining:
+            with open(os.path.join(self.save_folder_results, file_name + '.txt'),
+                      'w') as fp:
+                fp.write(file_name + "\n")
+                fp.write(str(self.args))
+                fp.write('\n')
+                fp.write(str(config))
+                fp.write('\n')
+                fp.write('\n'.join('%s %s' % x for x in scores))
+                fp.write("\n\n\n")
 
         return best_accuracy, model
 
