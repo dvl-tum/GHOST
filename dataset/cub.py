@@ -5,11 +5,18 @@ import torchvision
 import numpy as np
 import PIL.Image
 import tarfile
+import imageio
 
+
+def pil_loader(path):
+    with open(path, 'rb') as f:
+        img = PIL.Image.open(f)
+        return img.convert('RGB')
 
 class Birds(torch.utils.data.Dataset):
     def __init__(self, root, labels, paths, transform=None,
-                 eval_reid=False):
+                 eval_reid=False, imgaug=False):
+        self.imgaug = imgaug
         self.eval_reid = eval_reid
         # e.g., labels = range(0, 50) for using first 50 classes only
         self.labels = labels
@@ -47,10 +54,22 @@ class Birds(torch.utils.data.Dataset):
         return len(self.ys)
 
     def __getitem__(self, index):
-        im = PIL.Image.open(self.im_paths[index])
+        im = pil_loader(self.im_paths[index])
         im = self.transform(im)
+
         if self.eval_reid:
 
             return im, self.ys[index], self.im_paths[index]
         return im, self.ys[index]
 
+
+'''     
+if self.imaug:
+    im = imageio.imread(self.im_paths[index])
+    im = TF.to_tensor(self.transform.augment_image(im))
+
+else:
+    im = PIL.Image.open(self.im_paths[index])
+    im = self.transform(im)
+            
+'''

@@ -5,11 +5,12 @@ from combine_sampler import CombineSampler, CombineSamplerAdvanced, \
     CombineSamplerSuperclass, CombineSamplerSuperclass2, PretraingSampler
 import numpy as np
 import os
+import matplotlib.pyplot as plt
 
 
 def create_loaders(data_root, num_workers, size_batch, num_classes_iter=None,
                    num_elements_class=None, pretraining=False,
-                   input_size=224, both=0, bot_trans=0):
+                   input_size=224, both=0, trans= 'norm'):
     labels, paths = dataset.load_data(root=data_root, both=both)
     labels = labels[0]
     paths = paths[0]
@@ -47,11 +48,21 @@ def create_loaders(data_root, num_workers, size_batch, num_classes_iter=None,
         gallery = [os.path.join(data_root, 'images', g.split('_')[0][-5:], g)
                    for g in paths['bounding_box_test']]
 
-    Dataset = dataset.Birds(
-        root=data_root,
-        labels=labels['bounding_box_train'],
-        paths=paths['bounding_box_train'],
-        transform=dataset.utils.make_transform(sz_crop=input_size) if not bot_trans else dataset.utils.make_transform_bot())
+    if trans == 'norm':
+        trans_tr = dataset.utils.make_transform(sz_crop=input_size)
+        trans_ev = dataset.utils.make_transform(sz_crop=input_size, is_train=False)
+    elif trans == 'bot':
+        trans_tr = dataset.utils.make_transform_bot()
+        trans_ev = dataset.utils.make_transform_bot(is_train=False)
+    elif trans == 'imgaug':
+        trans_tr = dataset.utils.make_transform_imaug()
+        trans_ev = dataset.utils.make_transform_imaug(is_train=False)
+
+    Dataset = dataset.Birds(root=data_root,
+                            labels=labels['bounding_box_train'],
+                            paths=paths['bounding_box_train'],
+                            transform=trans_tr,
+                            imgaug=trans=='imgaug')
 
     ddict = defaultdict(list)
     for idx, label in enumerate(Dataset.ys):
@@ -87,8 +98,9 @@ def create_loaders(data_root, num_workers, size_batch, num_classes_iter=None,
             root=data_root,
             labels=labels_ev,
             paths=paths_ev,
-            transform=dataset.utils.make_transform(sz_crop=input_size, is_train=False) if not bot_trans else dataset.utils.make_transform_bot(is_train=False),
-            eval_reid=True
+            transform=trans_ev,
+            eval_reid=True,
+            imgaug=trans=='imgaug'
         ),
         batch_size=50,
         shuffle=False,
@@ -128,6 +140,17 @@ def debug_info(gtg, model):
     print("\n\n\n")
 
 
+def show_dataset(img, n=6):
+  #img = np.vstack((np.hstack((np.asarray(dataset[i][0]) for _ in range(n)))
+  #                 for i in range(len(dataset))))
+  for i in range(img.shape[0]):
+    im = img[i, :, :, :].squeeze()
+    x = im.numpy().reshape(im.shape[1], im.shape[2], -1)
+    plt.imshow(x)
+    plt.axis('off')
+    plt.show()
+
+
 if __name__ == '__main__':
     # test
     roots = ['../../datasets/cuhk03/detected']
@@ -138,13 +161,19 @@ if __name__ == '__main__':
                                             pretraining=False,
                                             num_workers=2, num_classes_iter=2,
                                             num_elements_class=2,
-                                            both=1)
+                                            both=1,
+                                            trans='imgaug')
         for batch, y, path in dl_ev:
             print(y, path)
+            print(batch.shape)
             break
         print()
         for batch, y in dl_tr:
             print(y)
+            x = batch.numpy()
+            print(x.shape)
+            show_dataset(batch)
+
             break
         print()
         # print(q)

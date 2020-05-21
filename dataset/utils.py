@@ -3,6 +3,9 @@ import PIL.Image
 import torch
 import random
 import math
+import numpy as np
+import imgaug as ia
+import imgaug.augmenters as iaa
 
 
 def std_per_channel(images):
@@ -107,6 +110,7 @@ class RandomErasing(object):
 
         return img
 
+
 # transformations for paper Bag of Tricks
 def make_transform_bot(sz_crop=256, mean=[0.485, 0.456, 0.406],
                        std=[0.299, 0.224, 0.225], is_train=True):
@@ -116,7 +120,7 @@ def make_transform_bot(sz_crop=256, mean=[0.485, 0.456, 0.406],
             transforms.Resize(sz_crop),
             transforms.RandomHorizontalFlip(p=0.5),
             transforms.Pad(10),
-            transforms.RandomCrop(sz_crop),
+            transforms.RandomCrop((sz_crop, sz_crop)),
             transforms.ToTensor(),
             normalize_transform,
             RandomErasing(probability=0.5,
@@ -124,7 +128,62 @@ def make_transform_bot(sz_crop=256, mean=[0.485, 0.456, 0.406],
         ])
     else:
         transform = transforms.Compose([
-            transforms.Resize(sz_crop),
+            transforms.Resize((sz_crop, sz_crop)),
+            transforms.ToTensor(),
+            normalize_transform
+        ])
+
+    return transform
+
+
+def make_transform_imaug(sz_crop=256, mean=[0.485, 0.456, 0.406],
+                       std=[0.299, 0.224, 0.225], is_train=True):
+    sometimes = lambda aug: iaa.Sometimes(0.5, aug)
+
+    normalize_transform = transforms.Normalize(mean=mean, std=std)
+
+    if is_train:
+        transform = transforms.Compose([
+            lambda x: np.array(x),
+            iaa.Sequential(
+                [
+                    iaa.Fliplr(0.5),  # horizontally flip 50% of all images
+
+                    sometimes(iaa.Crop(percent=(0, 0.1))),
+
+                    # Apply affine transformations to some of the images
+                    # - scale to 80-120% of image height/width (each axis independently)
+                    # - translate by -20 to +20 relative to height/width (per axis)
+                    # - rotate by -45 to +45 degrees
+                    # - shear by -16 to +16 degrees
+                    # - order: use nearest neighbour or bilinear interpolation (fast)
+                    # - mode: use any available mode to fill newly created pixels
+                    #         see API or scikit-image for which modes are available
+                    # - cval: if the mode is constant, then use a random brightness
+                    #         for the newly created pixels (e.g. sometimes black,
+                    #         sometimes white)
+                    sometimes(iaa.Affine(
+                        scale={"x": (0.8, 1.2), "y": (0.8, 1.2)},
+                        translate_percent={"x": (-0.2, 0.2), "y": (-0.2, 0.2)},
+                        rotate=(-20, 20),
+                        shear=(-16, 16),
+                        order=[0, 1],
+                        cval=(0, 255),
+                        mode=ia.ALL
+                    ))
+                ],
+                # do all of the above augmentations in random order
+                random_order=True
+            ).augment_image,
+            lambda x: PIL.Image.fromarray(x),
+            transforms.Resize((sz_crop, sz_crop)),
+            transforms.ToTensor(),
+            normalize_transform
+        ])
+
+    else:
+        transform = transforms.Compose([
+            transforms.Resize((sz_crop, sz_crop)),
             transforms.ToTensor(),
             normalize_transform
         ])

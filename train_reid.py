@@ -176,8 +176,9 @@ def init_args():
                         help='if labeled and detected of cuhk03 should be taken')
     parser.add_argument('--lab_smooth', default=0, type=int,
                         help='if label smoothing should be applied')
-    parser.add_argument('--bot_trans', default=0, type=int,
-                        help='if bot transformations should be applied')
+    parser.add_argument('--trans', default='norm', type=int,
+                        help='wich augmentation shoulb be performed: '
+                             'norm, bot, imgaug')
     parser.add_argument('--last_stride', default=0, type=int,
                         help='If last stride should be changed to 1')
     parser.add_argument('--neck', default=0, type=int,
