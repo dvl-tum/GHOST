@@ -140,7 +140,7 @@ def init_args():
                         default=hyperparams.get_number_classes(), type=int,
                         help='Number of first [0, N] classes used for training and ' +
                              'next [N, N * 2] classes used for evaluating with max(N) = 100.')
-    parser.add_argument('--pretraining', default=0, type=int,
+    parser.add_argument('--pretraining', default=1, type=int,
                         help='If pretraining or fine tuning is executed')
     parser.add_argument('--num_classes_iter',
                         default=hyperparams.get_number_classes_iteration(),
@@ -457,22 +457,18 @@ def main():
 
     best_recall = 0
     best_hypers = None
-    num_iter = 30
+    num_iter = 1
     # Random search
     for i in range(num_iter):
         logger.info('Search iteration {}'.format(i + 1))
 
         # random search for hyperparameters
-        lr = 10 ** random.uniform(-8,
-                                  -3)  # [6.30231343210635e-05, 6.30231343210635e-05, 5.903200807154208e-05, 5.903200807154208e-05, 0.0002] #[0.0001592052356176557, 0.0001592052356176557, 0.0002]
-        weight_decay = 10 ** random.uniform(-15,
-                                            -6)  # [8.245915738144614e-11, 8.245915738144614e-11, 4.3736248161450994e-11, 4.3736248161450994e-11, 4.863656728256105e-07]   #[3.1589530699773613e-15, 3.1589530699773613e-15, 4.863656728256105e-07]
+        lr = 0.0002 #10 ** random.uniform(-8, -3)  # [6.30231343210635e-05, 6.30231343210635e-05, 5.903200807154208e-05, 5.903200807154208e-05, 0.0002] #[0.0001592052356176557, 0.0001592052356176557, 0.0002]
+        weight_decay = 0 #10 ** random.uniform(-15, -6)  # [8.245915738144614e-11, 8.245915738144614e-11, 4.3736248161450994e-11, 4.3736248161450994e-11, 4.863656728256105e-07]   #[3.1589530699773613e-15, 3.1589530699773613e-15, 4.863656728256105e-07]
         num_classes_iter = random.randint(2, 5)  # [4, 4, 4, 4, 5]  #[5, 5, 5]
-        num_elements_classes = random.randint(4,
-                                              9)  # [8, 8, 5, 5, 7]  #[5, 5, 7]
+        num_elements_classes = random.randint(4, 9)  # [8, 8, 5, 5, 7]  #[5, 5, 7]
         num_labeled_class = random.randint(1, 3)  # [3, 3, 1, 1, 3]  #[1, 1, 3]
-        num_iter_gtg = random.randint(1,
-                                      3)  # [1, 3, 1, 3, 1]  #[1, 3, 1] # --> Hyperparam to search?
+        num_iter_gtg = random.randint(1, 3)  # [1, 3, 1, 3, 1]  #[1, 3, 1] # --> Hyperparam to search?
         temp = random.randint(10, 80)  # [11, 11, 11, 11, 79] #[46, 46, 79]
 
         config = {'lr': lr,
