@@ -126,7 +126,7 @@ def init_args():
                         help='without detected/labeled')
     parser.add_argument('--oversampling', default=1, type=int,
                         help='If oversampling shoulf be used')
-    parser.add_argument('--nb_epochs', default=100, type=int)
+    parser.add_argument('--nb_epochs', default=30, type=int)
 
     parser.add_argument('--cub-root', default=hyperparams.get_path(),
                         help='Path to dataset folder')
@@ -457,7 +457,7 @@ def main():
 
     best_recall = 0
     best_hypers = None
-    num_iter = 1
+    num_iter = 30
     # Random search
     for i in range(num_iter):
         logger.info('Search iteration {}'.format(i + 1))
