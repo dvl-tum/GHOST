@@ -9,16 +9,16 @@ import imgaug.augmenters as iaa
 
 
 def std_per_channel(images):
-    images = torch.stack(images, dim = 0)
-    return images.view(3, -1).std(dim = 1)
+    images = torch.stack(images, dim=0)
+    return images.view(3, -1).std(dim=1)
 
 
 def mean_per_channel(images):
-    images = torch.stack(images, dim = 0)
-    return images.view(3, -1).mean(dim = 1)
+    images = torch.stack(images, dim=0)
+    return images.view(3, -1).mean(dim=1)
 
 
-class Identity(): # used for skipping transforms
+class Identity():  # used for skipping transforms
     def __call__(self, im):
         return im
 
@@ -31,36 +31,29 @@ class ScaleIntensities():
 
     def __call__(self, tensor):
         tensor = (
-            tensor - self.in_range[0]
-        ) / (
-            self.in_range[1] - self.in_range[0]
-        ) * (
-            self.out_range[1] - self.out_range[0]
-        ) + self.out_range[0]
+                         tensor - self.in_range[0]
+                 ) / (
+                         self.in_range[1] - self.in_range[0]
+                 ) * (
+                         self.out_range[1] - self.out_range[0]
+                 ) + self.out_range[0]
         return tensor
 
 
-def make_transform(sz_resize = 256, sz_crop = 224, mean = [128, 117, 104],
-        std = [1, 1, 1], rgb_to_bgr = False, is_train = True,
-        intensity_scale = [[0, 1], [0, 255]]):
+def make_transform(sz_resize=[384, 128], sz_crop=[384, 128], mean=[0.485, 0.456, 0.406],
+                   std=[0.299, 0.224, 0.225], rgb_to_bgr=False, is_train=True,
+                   intensity_scale=[[0, 1], [0, 255]]):
     return transforms.Compose([
-        transforms.Compose([ # train: horizontal flip and random resized crop
-            transforms.RandomResizedCrop(sz_crop),
-            transforms.RandomHorizontalFlip(),
-        ]) if is_train else transforms.Compose([ # test: else center crop
-            transforms.Resize(sz_resize),
-            transforms.CenterCrop(sz_crop),
+        transforms.Compose([  # train: horizontal flip and random resized crop
+            transforms.Resize(sz_crop),
+            transforms.RandomHorizontalFlip(p=0.5),
+            transforms.Pad(10),
+            transforms.RandomCrop(sz_crop),
+        ]) if is_train else transforms.Compose([  # test: else center crop
+            transforms.Resize(sz_resize)
         ]),
         transforms.ToTensor(),
-        ScaleIntensities(
-            *intensity_scale) if intensity_scale is not None else Identity(),
-        transforms.Normalize(
-            mean=mean,
-            std=std,
-        ),
-        transforms.Lambda(
-            lambda x: x[[2, 1, 0], ...]
-        ) if rgb_to_bgr else Identity()
+        transforms.Normalize(mean=mean, std=std)
     ])
 
 
@@ -76,7 +69,8 @@ class RandomErasing(object):
          mean: Erasing value.
     """
 
-    def __init__(self, probability=0.5, sl=0.02, sh=0.4, r1=0.3, mean=(0.4914, 0.4822, 0.4465)):
+    def __init__(self, probability=0.5, sl=0.02, sh=0.4, r1=0.3,
+                 mean=(0.4914, 0.4822, 0.4465)):
         self.probability = probability
         self.mean = mean
         self.sl = sl
@@ -112,7 +106,7 @@ class RandomErasing(object):
 
 
 # transformations for paper Bag of Tricks
-def make_transform_bot(sz_crop=256, mean=[0.485, 0.456, 0.406],
+def make_transform_bot(sz_crop=[384, 128], mean=[0.485, 0.456, 0.406],
                        std=[0.299, 0.224, 0.225], is_train=True):
     normalize_transform = transforms.Normalize(mean=mean, std=std)
     if is_train:
@@ -120,7 +114,7 @@ def make_transform_bot(sz_crop=256, mean=[0.485, 0.456, 0.406],
             transforms.Resize(sz_crop),
             transforms.RandomHorizontalFlip(p=0.5),
             transforms.Pad(10),
-            transforms.RandomCrop((sz_crop, sz_crop)),
+            transforms.RandomCrop(sz_crop),
             transforms.ToTensor(),
             normalize_transform,
             RandomErasing(probability=0.5,
@@ -128,7 +122,7 @@ def make_transform_bot(sz_crop=256, mean=[0.485, 0.456, 0.406],
         ])
     else:
         transform = transforms.Compose([
-            transforms.Resize((sz_crop, sz_crop)),
+            transforms.Resize(sz_crop),
             transforms.ToTensor(),
             normalize_transform
         ])
@@ -136,8 +130,8 @@ def make_transform_bot(sz_crop=256, mean=[0.485, 0.456, 0.406],
     return transform
 
 
-def make_transform_imaug(sz_crop=256, mean=[0.485, 0.456, 0.406],
-                       std=[0.299, 0.224, 0.225], is_train=True):
+def make_transform_imaug(sz_crop=[384, 128], mean=[0.485, 0.456, 0.406],
+                         std=[0.299, 0.224, 0.225], is_train=True):
     sometimes = lambda aug: iaa.Sometimes(0.5, aug)
 
     normalize_transform = transforms.Normalize(mean=mean, std=std)
@@ -147,43 +141,60 @@ def make_transform_imaug(sz_crop=256, mean=[0.485, 0.456, 0.406],
             lambda x: np.array(x),
             iaa.Sequential(
                 [
-                    iaa.Fliplr(0.5),  # horizontally flip 50% of all images
-
+                    # horizontally flip 50% of all images
+                    iaa.Fliplr(0.5),
+                    # crop 0-10 percent on each side
                     sometimes(iaa.Crop(percent=(0, 0.1))),
 
                     # Apply affine transformations to some of the images
-                    # - scale to 80-120% of image height/width (each axis independently)
-                    # - translate by -20 to +20 relative to height/width (per axis)
-                    # - rotate by -45 to +45 degrees
-                    # - shear by -16 to +16 degrees
-                    # - order: use nearest neighbour or bilinear interpolation (fast)
-                    # - mode: use any available mode to fill newly created pixels
-                    #         see API or scikit-image for which modes are available
-                    # - cval: if the mode is constant, then use a random brightness
-                    #         for the newly created pixels (e.g. sometimes black,
-                    #         sometimes white)
                     sometimes(iaa.Affine(
                         scale={"x": (0.8, 1.2), "y": (0.8, 1.2)},
                         translate_percent={"x": (-0.2, 0.2), "y": (-0.2, 0.2)},
-                        rotate=(-20, 20),
-                        shear=(-16, 16),
+                        rotate=(-5, 5),
+                        shear=(-5, 5),
                         order=[0, 1],
                         cval=(0, 255),
                         mode=ia.ALL
-                    ))
+                    )),
+
+                    iaa.SomeOf((0, 1),
+                               [
+                                   iaa.OneOf([
+                                       iaa.AdditiveGaussianNoise(
+                                           loc=0, scale=(0.0, 0.03 * 255),
+                                           per_channel=0.5),
+                                       iaa.Add(
+                                           value=(-20, 20)
+                                       ),
+                                   ]),
+                                   iaa.Cutout(
+                                       nb_iterations=1,
+                                       position='uniform',
+                                       size=(0, 0.1),
+                                       fill_mode='constant',
+                                       cval=(0, 255)),
+                                   iaa.Solarize(p=0.5),
+                                   iaa.BlendAlpha((0.0, 1.0), iaa.Grayscale(1.0)),
+                                   iaa.GaussianBlur(sigma=(0, 0.2)),
+                                   iaa.MultiplyAndAddToBrightness(
+                                       mul=(0.8, 1.2), add=(-20, 20)),
+                                   iaa.GammaContrast(gamma=(0.7, 1.3)),
+                                   iaa.imgcorruptlike.ZoomBlur(severity=(1, 2))
+                               ], random_order=True
+                               )
                 ],
                 # do all of the above augmentations in random order
                 random_order=True
             ).augment_image,
             lambda x: PIL.Image.fromarray(x),
-            transforms.Resize((sz_crop, sz_crop)),
+            transforms.Resize(sz_crop),
             transforms.ToTensor(),
             normalize_transform
         ])
 
     else:
         transform = transforms.Compose([
-            transforms.Resize((sz_crop, sz_crop)),
+            transforms.Resize(sz_crop),
             transforms.ToTensor(),
             normalize_transform
         ])

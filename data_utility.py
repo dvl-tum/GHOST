@@ -10,7 +10,7 @@ import matplotlib.pyplot as plt
 
 def create_loaders(data_root, num_workers, size_batch, num_classes_iter=None,
                    num_elements_class=None, pretraining=False,
-                   input_size=224, both=0, trans= 'norm'):
+                   input_size=[384, 128], both=0, trans= 'norm'):
     labels, paths = dataset.load_data(root=data_root, both=both)
     labels = labels[0]
     paths = paths[0]
@@ -49,8 +49,8 @@ def create_loaders(data_root, num_workers, size_batch, num_classes_iter=None,
                    for g in paths['bounding_box_test']]
 
     if trans == 'norm':
-        trans_tr = dataset.utils.make_transform(sz_crop=input_size)
-        trans_ev = dataset.utils.make_transform(sz_crop=input_size, is_train=False)
+        trans_tr = dataset.utils.make_transform()
+        trans_ev = dataset.utils.make_transform(is_train=False)
     elif trans == 'bot':
         trans_tr = dataset.utils.make_transform_bot()
         trans_ev = dataset.utils.make_transform_bot(is_train=False)
@@ -140,15 +140,14 @@ def debug_info(gtg, model):
     print("\n\n\n")
 
 
-def show_dataset(img, n=6):
-  #img = np.vstack((np.hstack((np.asarray(dataset[i][0]) for _ in range(n)))
-  #                 for i in range(len(dataset))))
-  for i in range(img.shape[0]):
-    im = img[i, :, :, :].squeeze()
-    x = im.numpy().reshape(im.shape[1], im.shape[2], -1)
-    plt.imshow(x)
-    plt.axis('off')
-    plt.show()
+def show_dataset(img, y):
+    for i in range(img.shape[0]):
+        im = img[i, :, :, :].squeeze()
+        x = im.numpy().reshape(im.shape[1], im.shape[2], -1)
+        plt.imshow(x)
+        plt.axis('off')
+        plt.title('Image of label {}'.format(y[i]))
+        plt.show()
 
 
 if __name__ == '__main__':
@@ -156,8 +155,7 @@ if __name__ == '__main__':
     roots = ['../../datasets/cuhk03/detected']
 
     for root in roots:
-        dl_tr, dl_ev, q, g = create_loaders(data_root=root,
-                                            input_size=224, size_batch=4,
+        dl_tr, dl_ev, q, g = create_loaders(data_root=root, size_batch=4,
                                             pretraining=False,
                                             num_workers=2, num_classes_iter=2,
                                             num_elements_class=2,
@@ -170,10 +168,7 @@ if __name__ == '__main__':
         print()
         for batch, y in dl_tr:
             print(y)
-            x = batch.numpy()
-            print(x.shape)
-            show_dataset(batch)
-
+            show_dataset(batch, y)
             break
         print()
         # print(q)
