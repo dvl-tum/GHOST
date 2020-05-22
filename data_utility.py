@@ -143,7 +143,7 @@ def debug_info(gtg, model):
 def show_dataset(img, y):
     for i in range(img.shape[0]):
         im = img[i, :, :, :].squeeze()
-        x = im.numpy().reshape(im.shape[1], im.shape[2], -1)
+        x = im.numpy().transpose((1, 2, 0))
         plt.imshow(x)
         plt.axis('off')
         plt.title('Image of label {}'.format(y[i]))
@@ -152,15 +152,16 @@ def show_dataset(img, y):
 
 if __name__ == '__main__':
     # test
-    roots = ['../../datasets/cuhk03/detected']
+    roots = ['../../datasets/Market-1501-v15.09.15',
+             '../../datasets/cuhk03/detected']
 
     for root in roots:
         dl_tr, dl_ev, q, g = create_loaders(data_root=root, size_batch=4,
                                             pretraining=False,
                                             num_workers=2, num_classes_iter=2,
                                             num_elements_class=2,
-                                            both=1,
-                                            trans='imgaug')
+                                            both=0,
+                                            trans='bot')
         for batch, y, path in dl_ev:
             print(y, path)
             print(batch.shape)

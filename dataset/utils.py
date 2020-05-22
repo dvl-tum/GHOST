@@ -40,9 +40,9 @@ class ScaleIntensities():
         return tensor
 
 
-def make_transform(sz_resize=[384, 128], sz_crop=[384, 128], mean=[0.485, 0.456, 0.406],
-                   std=[0.299, 0.224, 0.225], rgb_to_bgr=False, is_train=True,
-                   intensity_scale=[[0, 1], [0, 255]]):
+def make_transform(sz_resize=[384, 128], sz_crop=[384, 128],
+                   mean=[0.485, 0.456, 0.406], std=[0.299, 0.224, 0.225],
+                   is_train=True):
     return transforms.Compose([
         transforms.Compose([  # train: horizontal flip and random resized crop
             transforms.Resize(sz_crop),

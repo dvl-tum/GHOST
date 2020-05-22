@@ -6,12 +6,22 @@ import numpy as np
 import PIL.Image
 import tarfile
 import imageio
+import matplotlib.pyplot as plt
 
 
 def pil_loader(path):
     with open(path, 'rb') as f:
         img = PIL.Image.open(f)
         return img.convert('RGB')
+
+def show_dataset(img, y):
+    im = np.array(img)
+    if im.shape[2] != 3:
+        im = im.transpose((1, 2, 0))
+    plt.imshow(im)
+    plt.axis('off')
+    plt.title('Image of label {}'.format(y))
+    plt.show()
 
 class Birds(torch.utils.data.Dataset):
     def __init__(self, root, labels, paths, transform=None,
@@ -55,7 +65,9 @@ class Birds(torch.utils.data.Dataset):
 
     def __getitem__(self, index):
         im = pil_loader(self.im_paths[index])
+        #show_dataset(im, self.ys[index])
         im = self.transform(im)
+        #show_dataset(im, self.ys[index])
 
         if self.eval_reid:
 
