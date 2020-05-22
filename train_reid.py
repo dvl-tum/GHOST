@@ -108,7 +108,7 @@ def init_args():
                         help='without detected/labeled')
     parser.add_argument('--oversampling', default=1, type=int,
                         help='If oversampling shoulf be used')
-    parser.add_argument('--nb_epochs', default=10, type=int)
+    parser.add_argument('--nb_epochs', default=100, type=int)
 
     parser.add_argument('--cub-root', default=hyperparams.get_path(),
                         help='Path to dataset folder')
@@ -122,7 +122,7 @@ def init_args():
                         default=hyperparams.get_number_classes(), type=int,
                         help='Number of first [0, N] classes used for training and ' +
                              'next [N, N * 2] classes used for evaluating with max(N) = 100.')
-    parser.add_argument('--pretraining', default=1, type=int,
+    parser.add_argument('--pretraining', default=0, type=int,
                         help='If pretraining or fine tuning is executed')
     parser.add_argument('--num_classes_iter',
                         default=hyperparams.get_number_classes_iteration(),
@@ -365,7 +365,6 @@ class PreTrainer():
                 scores.append(running_corrects / len(dl_tr))
                 if scores[-1] > best_accuracy:
                     best_accuracy = scores[-1]
-                    print(os.path.join(self.save_folder_nets, file_name + '.pth'))
                     torch.save(model.state_dict(),
                                os.path.join(self.save_folder_nets,
                                             file_name + '.pth'))
@@ -459,11 +458,8 @@ def main():
         logger.info('Best Recall: {}'.format(best_accuracy))
 
         if best_accuracy > best_recall:
-            print("HELLO")
-            print(save_folder_nets, args.dataset_name + '_intermediate_model_' + str(timer) + '.pth')
             os.rename(os.path.join(save_folder_nets, args.dataset_name + '_intermediate_model_' + str(timer) + '.pth'),
                       mode + args.net_type + '_' + args.dataset_name + '.pth')
-            print(mode + args.net_type + '_' + args.dataset_name + '.pth')
             best_recall = best_accuracy
             best_hypers = '_'.join(
                 [str(k) + '_' + str(v) for k, v in config.items()])
