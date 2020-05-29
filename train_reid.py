@@ -203,31 +203,40 @@ def init_args():
                         help='if additional batchnorm layer should be added')
     parser.add_argument('--center', default=1, type=int,
                         help='if center loss should be added')
-    parser.add_argument('--neck_test', default=1, type=int,
-                        help='If features after BN should be taken for test, '
-                             'only possible if neck is enabled.')
-    parser.add_argument('--early_thresh', default=7, type=int,
-                        help='threshold when to stop, i.e. after 5 epochs, '
+    parser.add_argument('--test_option', default='norm', type=str,
+                        help='If features after BN or before should be taken for test if neck is enabled, '
+                        'if plain normalization should be applied when neck is not enabeled: neck/norm, plain/norm .')
+    parser.add_argument('--early_thresh', default=20, type=int,
+                        help='threshold when to stop, i.e. after 7 epochs, '
                              'where best recall did not improve')
+    parser.add_argument('--test', default=0, type=int, 
+                        help='If net should only be tested, not trained')
+    parser.add_argument('--use_pretrained', default=0, type=int,
+                        help='If weights pretrained for 10 epochs, lr=0.0002 using cross entropy should be used')
+    parser.add_argument('--bn_GL', default=0, type=int, 
+                        help='if features after batchnorm layer should be used for group loss')
 
     return parser.parse_args()
 
 
 class PreTrainer():
     def __init__(self, args, data_dir, device, save_folder_results,
-                 save_folder_nets):
+                 save_folder_nets, load_path):
         self.device = device
         self.data_dir = data_dir
         self.args = args
         self.save_folder_results = save_folder_results
         self.save_folder_nets = save_folder_nets
+        self.load_path = load_path
 
     def train_model(self, config, timer):
+        print(self.args)
         early_thresh_counter = 0
 
         file_name = self.args.dataset_name + '_intermediate_model_' + str(
             timer)
         # add last stride and bottleneck
+        print(self.args.bn_GL)
         model = net.load_net(dataset=self.args.dataset_short,
                              net_type=self.args.net_type,
                              nb_classes=self.args.nb_classes,
@@ -235,7 +244,10 @@ class PreTrainer():
                              sz_embedding=self.args.sz_embedding,
                              pretraining=self.args.pretraining,
                              last_stride=self.args.last_stride,
-                             neck=self.args.neck)
+                             neck=self.args.neck, 
+                             load_path=self.load_path,
+                             use_pretrained=self.args.use_pretrained, 
+                             bn_GL=self.args.bn_GL)
         model = model.to(self.device)
 
         gtg = gtg_module.GTG(self.args.nb_classes,
@@ -287,68 +299,69 @@ class PreTrainer():
         best_accuracy = 0
         scores = []
         for e in range(1, self.args.nb_epochs + 1):
-            logger.info('Epoch {}/{}'.format(e, self.args.nb_epochs))
-            if e == 31:
-                model.load_state_dict(torch.load(
-                    os.path.join(self.save_folder_nets, file_name + '.pth')))
-                for g in opt.param_groups:
-                    g['lr'] = config['lr'] / 10.
+            if not self.args.test:
+                logger.info('Epoch {}/{}'.format(e, self.args.nb_epochs))
+                if e == 31:
+                    model.load_state_dict(torch.load(
+                        os.path.join(self.save_folder_nets, file_name + '.pth')))
+                    for g in opt.param_groups:
+                        g['lr'] = config['lr'] / 10.
 
-            if e == 51:
-                model.load_state_dict(torch.load(
-                    os.path.join(self.save_folder_nets, file_name + '.pth')))
-                for g in opt.param_groups:
-                    g['lr'] = config['lr'] / 10.
+                if e == 51:
+                    model.load_state_dict(torch.load(
+                        os.path.join(self.save_folder_nets, file_name + '.pth')))
+                    for g in opt.param_groups:
+                        g['lr'] = config['lr'] / 10.
 
-            i = 0
-            for x, Y in dl_tr:
-                Y = Y.to(self.device)
-                opt.zero_grad()
+                i = 0
+                for x, Y in dl_tr:
+                    Y = Y.to(self.device)
+                    opt.zero_grad()
 
-                probs, fc7 = model(x.to(self.device))
-                loss = criterion2(probs, Y)
+                    probs, fc7 = model(x.to(self.device))
+                    loss = criterion2(probs, Y)
+    
+                    if not self.args.pretraining:
+                        labs, L, U = data_utility.get_labeled_and_unlabeled_points(
+                            labels=Y,
+                            num_points_per_class=config[
+                                'num_labeled_points_class'],
+                            num_classes=self.args.nb_classes)
+    
+                        # compute the smoothed softmax
+                        probs_for_gtg = F.softmax(probs / config['temperature'])
+    
+                        # do GTG (iterative process)
+                        probs_for_gtg, W = gtg(fc7, fc7.shape[0], labs, L, U,
+                                               probs_for_gtg)
+                        probs_for_gtg = torch.log(probs_for_gtg + 1e-12)
 
-                if not self.args.pretraining:
-                    labs, L, U = data_utility.get_labeled_and_unlabeled_points(
-                        labels=Y,
-                        num_points_per_class=config[
-                            'num_labeled_points_class'],
-                        num_classes=self.args.nb_classes)
+                        # compute the losses
+                        loss1 = criterion(probs_for_gtg, Y)
+                        loss = self.args.scaling_loss * loss1 + loss
+                        # add center loss
+                        if self.args.center:
+                            loss += criterion3(fc7, Y)
+    
+                    else:
+                        _, preds = torch.max(probs, 1)
+                        running_corrects += torch.sum(
+                            preds == Y.data).cpu().data.item()
+    
+                    i += 1
+    
+                    # check possible net divergence
+                    if torch.isnan(loss):
+                        logger.error("We have NaN numbers, closing\n\n\n")
+                        sys.exit(0)
 
-                    # compute the smoothed softmax
-                    probs_for_gtg = F.softmax(probs / config['temperature'])
-
-                    # do GTG (iterative process)
-                    probs_for_gtg, W = gtg(fc7, fc7.shape[0], labs, L, U,
-                                           probs_for_gtg)
-                    probs_for_gtg = torch.log(probs_for_gtg + 1e-12)
-
-                    # compute the losses
-                    loss1 = criterion(probs_for_gtg, Y)
-                    loss = self.args.scaling_loss * loss1 + loss
-                    # add center loss
-                    if self.args.center:
-                        loss += criterion3(fc7, Y)
-
-                else:
-                    _, preds = torch.max(probs, 1)
-                    running_corrects += torch.sum(
-                        preds == Y.data).cpu().data.item()
-
-                i += 1
-
-                # check possible net divergence
-                if torch.isnan(loss):
-                    logger.error("We have NaN numbers, closing\n\n\n")
-                    sys.exit(0)
-
-                # backprop
-                if self.args.is_apex:
-                    with amp.scale_loss(loss, opt) as scaled_loss:
-                        scaled_loss.backward()
-                else:
-                    loss.backward()
-                opt.step()
+                    # backprop
+                    if self.args.is_apex:
+                        with amp.scale_loss(loss, opt) as scaled_loss:
+                            scaled_loss.backward()
+                    else:
+                        loss.backward()
+                    opt.step()
 
             # compute recall and NMI at the end of each epoch (for Stanford NMI takes forever so skip it)
             if not self.args.pretraining:
@@ -358,7 +371,7 @@ class PreTrainer():
                                                    query=query,
                                                    gallery=gallery,
                                                    root=self.data_dir,
-                                                   neck_test=self.args.neck_test)
+                                                   test_option=self.args.test_option)
 
                     logger.info('Mean AP: {:4.1%}'.format(mAP))
 
@@ -415,6 +428,8 @@ class PreTrainer():
             config['num_classes_iter']) + '_' + str(
             config['num_elements_class']) + '_' + str(
             config['num_labeled_points_class'])
+        if self.args.test:
+            file_name = 'test_' + file_name 
         if not self.args.pretraining:
             with open(
                     os.path.join(self.save_folder_results, file_name + '.txt'),
@@ -450,10 +465,20 @@ def main():
 
     if args.neck:
         mode = mode + 'neck_'
+    if args.test:
+        args.nb_epochs = 1
+        load_path = os.path.join('save_trained_nets', mode + args.net_type + '_' + args.dataset_name + '.pth')
+    else:
+        load_path = os.path.join('net', 'finetuned_' + mode + args.dataset_short + '_' + args.net_type + '.pth')
 
     trainer = PreTrainer(args, args.cub_root, device,
-                         save_folder_results, save_folder_nets)
-    logger.info('Initialized Pre-Trainer')
+                         save_folder_results, save_folder_nets, 
+                         load_path)
+    
+    if args.use_pretrained:
+        logger.info('Load model from {}'.format(load_path))
+    else:
+        logger.info('Using model only pretrained on ImageNet')
 
     best_recall = 0
     best_hypers = None
@@ -486,16 +511,21 @@ def main():
 
         logger.info('Best Recall: {}'.format(best_accuracy))
 
-        if best_accuracy > best_recall:
+        if best_accuracy > best_recall and not args.test:
             os.rename(os.path.join(save_folder_nets,
-                                   args.dataset_name + '_intermediate_model_' + str(
+                args.dataset_name + '_intermediate_model_' + str(
                                        timer) + '.pth'),
                       mode + args.net_type + '_' + args.dataset_name + '.pth')
             best_recall = best_accuracy
             best_hypers = '_'.join(
                 [str(k) + '_' + str(v) for k, v in config.items()])
+        elif args.test:
+            best_recall = best_accuracy
+            best_hypers = '_'.join(
+                [str(k) + '_' + str(v) for k, v in config.items()])
 
     logger.info("Best Hyperparameters found: " + best_hypers)
+    logger.info("Achieved {} with this hyperparameters".format(best_recall))
     logger.info("-----------------------------------------------------\n")
 
 

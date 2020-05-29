@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 from torch.utils.model_zoo import load_url as load_state_dict_from_url
+import torch.nn.functional as F
 
 __all__ = ['ResNet', 'resnet18', 'resnet34', 'resnet50', 'resnet101',
            'resnet152', 'resnext50_32x4d', 'resnext101_32x8d',
@@ -143,9 +144,10 @@ class ResNet(nn.Module):
 
     def __init__(self, block, layers, last_stride, neck, num_classes=1000,
                  zero_init_residual=False, groups=1, width_per_group=64,
-                 replace_stride_with_dilation=None, norm_layer=None):
+                 replace_stride_with_dilation=None, norm_layer=None, bn_GL=0):
         super(ResNet, self).__init__()
         self.neck = neck
+        self.bn_GL = bn_GL
         if norm_layer is None:
             norm_layer = nn.BatchNorm2d
         self._norm_layer = norm_layer
@@ -229,7 +231,7 @@ class ResNet(nn.Module):
 
         return nn.Sequential(*layers)
 
-    def _forward(self, x, neck_test=0):
+    def _forward(self, x, test_option='norm'):
         x = self.conv1(x)
         x = self.bn1(x)
         x = self.relu(x)
@@ -244,24 +246,30 @@ class ResNet(nn.Module):
         fc7 = torch.flatten(x, 1)
 
         if not self.neck:
-            feat = fc7
+            x = self.fc(fc7)
+            if test_option == 'norm': # norm always enabled for training
+                return x, fc7 # just return original GL
+            elif test_option == 'plain':
+                feat = F.normalize(fc7, p=2, dim=1)
+                return x, feat # return normalized features instead of fc7
+
         elif self.neck:
             feat = self.bottleneck(fc7)  # normalize for angular softmax
-        # TODO: Check for not neck for validation
-        x = self.fc(feat)
-
-        if not neck_test:
-            return x, fc7
-
-        else:
-            return x, feat
+            # TODO: Check for not neck for validation
+            x = self.fc(feat)
+            if test_option == 'norm': # test option norm always enabled for training
+                if self.bn_GL: # use features after bn layer for GroupLoss 
+                    return x, feat 
+                return x, fc7 # use fc7 for GroupLoss
+            elif test_option == 'neck':
+                return x, feat # basically same as self.bn_GL, but to enable different settings in training and testing both are required
 
     # Allow for accessing forward method in a inherited class
     forward = _forward
 
 
-def _resnet(arch, block, layers, pretrained, progress, last_stride=0, neck=0, **kwargs):
-    model = ResNet(block, layers, last_stride=last_stride, neck=neck, **kwargs)
+def _resnet(arch, block, layers, pretrained, progress, last_stride=0, neck=0, bn_GL=0, **kwargs):
+    model = ResNet(block, layers, last_stride=last_stride, neck=neck, bn_GL=bn_GL, **kwargs)
     if pretrained:
         if not neck:
             state_dict = load_state_dict_from_url(model_urls[arch],
@@ -300,7 +308,7 @@ def resnet34(pretrained=False, progress=True, **kwargs):
                    **kwargs)
 
 
-def resnet50(pretrained=False, progress=True, last_stride=0, neck=0, **kwargs):
+def resnet50(pretrained=False, progress=True, last_stride=0, neck=0, bn_GL=0, **kwargs):
     r"""ResNet-50 model from
     `"Deep Residual Learning for Image Recognition" <https://arxiv.org/pdf/1512.03385.pdf>`_
     Args:
@@ -308,7 +316,7 @@ def resnet50(pretrained=False, progress=True, last_stride=0, neck=0, **kwargs):
         progress (bool): If True, displays a progress bar of the download to stderr
     """
     return _resnet('resnet50', Bottleneck, [3, 4, 6, 3], pretrained, progress,
-                   last_stride, neck, **kwargs)
+                   last_stride, neck, bn_GL, **kwargs)
 
 
 def resnet101(pretrained=False, progress=True, **kwargs):
