@@ -132,6 +132,7 @@ def make_transform_bot(sz_crop=[384, 128], mean=[0.485, 0.456, 0.406],
 
 def make_transform_imaug(sz_crop=[384, 128], mean=[0.485, 0.456, 0.406],
                          std=[0.299, 0.224, 0.225], is_train=True):
+
     sometimes = lambda aug: iaa.Sometimes(0.5, aug)
 
     normalize_transform = transforms.Normalize(mean=mean, std=std)
@@ -189,6 +190,165 @@ def make_transform_imaug(sz_crop=[384, 128], mean=[0.485, 0.456, 0.406],
             lambda x: PIL.Image.fromarray(x),
             transforms.Resize(sz_crop),
             transforms.ToTensor(),
+            normalize_transform
+        ])
+
+    else:
+        transform = transforms.Compose([
+            transforms.Resize(sz_crop),
+            transforms.ToTensor(),
+            normalize_transform
+        ])
+
+    return transform
+
+
+def appearance_proportional_augmentation1(sz_crop=[384, 128],
+                                         mean=[0.485, 0.456, 0.406],
+                                         std=[0.299, 0.224, 0.225],
+                                         is_train=True, app=0):
+    print(is_train)
+    p = (1-app) ** (1/3)
+
+    sometimes = lambda aug: iaa.Sometimes(p, aug)
+
+    normalize_transform = transforms.Normalize(mean=mean, std=std)
+
+    if is_train:
+        transform = transforms.Compose([
+            lambda x: np.array(x),
+            iaa.Sequential(
+                [
+                    # crop 0-10 percent on each side
+                    sometimes(iaa.Crop(percent=(0, 0.1))),
+
+                    # Apply affine transformations to some of the images
+                    sometimes(iaa.OneOf([
+                        iaa.Affine(
+                            scale={"x": (0.9, 1.1), "y": (0.9, 1.1)},
+                            order=[0, 1],
+                            cval=0,
+                            mode=ia.ALL),
+                        iaa.Affine(
+                            translate_percent={"x": (-0.1, 0.1),
+                                               "y": (-0.1, 0.1)},
+                            order=[0, 1],
+                            cval=0,
+                            mode=ia.ALL),
+                        iaa.Affine(
+                            rotate=(-5, 5),
+                            order=[0, 1],
+                            cval=0,
+                            mode=ia.ALL),
+                        iaa.Affine(
+                            shear=(-5, 5),
+                            order=[0, 1],
+                            cval=0,
+                            mode=ia.ALL)])
+                        ),
+
+                    sometimes(iaa.SomeOf((0, 1),
+                               [
+                                   iaa.AdditiveGaussianNoise(
+                                       loc=0, scale=(0.0, 0.03 * 255),
+                                       per_channel=0.5),
+                                   iaa.Add(
+                                       value=(-20, 20)
+                                    ),
+                                   iaa.Solarize(p=0.5),
+                                   iaa.BlendAlpha((0.0, 1.0), iaa.Grayscale(1.0)),
+                                   iaa.GaussianBlur(sigma=(0, 0.2)),
+                                   iaa.MultiplyAndAddToBrightness(
+                                       mul=(0.8, 1.2), add=(-20, 20)),
+                                   iaa.GammaContrast(gamma=(0.5, 1.1)),
+                                   iaa.imgcorruptlike.ZoomBlur(severity=(1, 2))
+                               ], random_order=True
+                               ))
+                ],
+                # do all of the above augmentations in random order
+                random_order=True
+            ).augment_image,
+            lambda x: PIL.Image.fromarray(x),
+            transforms.Resize(sz_crop),
+            transforms.RandomHorizontalFlip(p=0.5),
+            transforms.Pad(10),
+            transforms.RandomCrop(sz_crop),
+            transforms.ToTensor(),
+            RandomErasing(probability=0.5,
+                          mean=(0.4914, 0.4822, 0.4465)),
+            normalize_transform
+        ])
+
+    else:
+        transform = transforms.Compose([
+            transforms.Resize(sz_crop),
+            transforms.ToTensor(),
+            normalize_transform
+        ])
+
+    return transform
+
+
+def appearance_proportional_augmentation2(sz_crop=[384, 128],
+                                         mean=[0.485, 0.456, 0.406],
+                                         std=[0.299, 0.224, 0.225],
+                                         is_train=True, app=0):
+
+    p = (1-app) ** (1/3)
+
+    sometimes = lambda aug: iaa.Sometimes(p, aug)
+
+    normalize_transform = transforms.Normalize(mean=mean, std=std)
+
+    if is_train:
+        transform = transforms.Compose([
+            lambda x: np.array(x),
+            # crop 0-10 percent on each side
+
+            # Apply affine transformations to some of the images
+            sometimes(iaa.OneOf([
+                iaa.Crop(percent=(0, 0.1)),
+                iaa.Affine(
+                    scale={"x": (0.9, 1.1), "y": (0.9, 1.1)},
+                    order=[0, 1],
+                    cval=0,
+                    mode=ia.ALL),
+                iaa.Affine(
+                    translate_percent={"x": (-0.1, 0.1),
+                                       "y": (-0.1, 0.1)},
+                    order=[0, 1],
+                    cval=0,
+                    mode=ia.ALL),
+                iaa.Affine(
+                    rotate=(-5, 5),
+                    order=[0, 1],
+                    cval=0,
+                    mode=ia.ALL),
+                iaa.Affine(
+                    shear=(-5, 5),
+                    order=[0, 1],
+                    cval=0,
+                    mode=ia.ALL),
+                iaa.AdditiveGaussianNoise(
+                    loc=0, scale=(0.0, 0.03 * 255),
+                    per_channel=0.5),
+                iaa.Add(value=(-20, 20)),
+                iaa.Solarize(p=0.5),
+                iaa.BlendAlpha((0.0, 1.0), iaa.Grayscale(1.0)),
+                iaa.GaussianBlur(sigma=(0, 0.2)),
+                iaa.MultiplyAndAddToBrightness(
+                    mul=(0.8, 1.2), add=(-20, 20)),
+                iaa.GammaContrast(gamma=(0.5, 1.1)),
+                iaa.imgcorruptlike.ZoomBlur(severity=(1, 2))
+            ])).augment_image,
+            lambda x: PIL.Image.fromarray(x),
+            transforms.Resize(sz_crop),
+            transforms.RandomHorizontalFlip(p=0.5),
+            transforms.Pad(10),
+            transforms.RandomCrop(sz_crop),
+            transforms.ToTensor(),
+            RandomErasing(probability=0.5,
+                          mean=(0.4914, 0.4822, 0.4465)),
             normalize_transform
         ])
 
