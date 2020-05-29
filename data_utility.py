@@ -148,8 +148,7 @@ if __name__ == '__main__':
                                             pretraining=False,
                                             num_workers=2, num_classes_iter=2,
                                             num_elements_class=2,
-                                            both=0,
-                                            trans='bot')
+                                            both=0, trans='appearance')
         for batch, y, path in dl_ev:
             print(y, path)
             print(batch.shape)
