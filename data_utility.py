@@ -48,21 +48,10 @@ def create_loaders(data_root, num_workers, size_batch, num_classes_iter=None,
         gallery = [os.path.join(data_root, 'images', '{:05d}'.format(int(g.split('_')[0])), g)
                    for g in paths['bounding_box_test']]
 
-    if trans == 'norm':
-        trans_tr = dataset.utils.make_transform()
-        trans_ev = dataset.utils.make_transform(is_train=False)
-    elif trans == 'bot':
-        trans_tr = dataset.utils.make_transform_bot()
-        trans_ev = dataset.utils.make_transform_bot(is_train=False)
-    elif trans == 'imgaug':
-        trans_tr = dataset.utils.make_transform_imaug()
-        trans_ev = dataset.utils.make_transform_imaug(is_train=False)
-
     Dataset = dataset.Birds(root=data_root,
                             labels=labels['bounding_box_train'],
                             paths=paths['bounding_box_train'],
-                            transform=trans_tr,
-                            imgaug=trans=='imgaug')
+                            trans=trans)
 
     ddict = defaultdict(list)
     for idx, label in enumerate(Dataset.ys):
@@ -98,9 +87,8 @@ def create_loaders(data_root, num_workers, size_batch, num_classes_iter=None,
             root=data_root,
             labels=labels_ev,
             paths=paths_ev,
-            transform=trans_ev,
-            eval_reid=True,
-            imgaug=trans=='imgaug'
+            trans=trans,
+            eval_reid=True
         ),
         batch_size=50,
         shuffle=False,

@@ -7,6 +7,7 @@ import PIL.Image
 import tarfile
 import imageio
 import matplotlib.pyplot as plt
+from collections import defaultdict, Counter
 
 
 def pil_loader(path):
@@ -24,15 +25,16 @@ def show_dataset(img, y):
     plt.show()
 
 class Birds(torch.utils.data.Dataset):
-    def __init__(self, root, labels, paths, transform=None,
-                 eval_reid=False, imgaug=False):
-        self.imgaug = imgaug
+    def __init__(self, root, labels, paths, trans=None,
+                 eval_reid=False):
+        self.trans = trans
         self.eval_reid = eval_reid
         # e.g., labels = range(0, 50) for using first 50 classes only
         self.labels = labels
         self.ys = list()
         self.im_paths = list()
 
+        # when cuhk03 detected and labeled should be used
         if os.path.basename(root) == 'cuhk03' or os.path.basename(root) == 'cuhk03-np':
             typ = ['labeled', 'detected']
             assert len(set(labels[typ[0]]).difference(set(labels[typ[1]]))) == 0
@@ -45,7 +47,7 @@ class Birds(torch.utils.data.Dataset):
                     self.ys.append(self.map[y])
                     self.im_paths.append(os.path.join(root, t, 'images', '{:05d}'.format(
                     int(paths[t][i].split('_')[0])), paths[t][i]))
-
+        # when only detected or labeled
         else:
             self.map = {lab: i for i, lab in enumerate(sorted(set(self.labels)))}
             for i, y in enumerate(self.labels):
@@ -53,7 +55,27 @@ class Birds(torch.utils.data.Dataset):
                 self.im_paths.append(os.path.join(root, 'images', '{:05d}'.format(
                     int(paths[i].split('_')[0])), paths[i]))
 
-        if transform: self.transform = transform
+        self.transform = self.get_transform()
+
+    def get_transform(self):
+        if self.trans == 'norm':
+            trans = utils.make_transform(is_train=not self.eval_reid)
+        elif self.trans == 'bot':
+            trans = utils.make_transform_bot(is_train=not self.eval_reid)
+        elif self.trans == 'imgaug':
+            trans = utils.make_transform_imaug(is_train=not self.eval_reid)
+        elif self.trans == 'appearance':
+            ddict = defaultdict(list)
+            for idx, label in enumerate(self.ys):
+                ddict[label].append(idx)
+            self.occurance = {k: len(v) for k, v in ddict.items()}
+            num_im = set(self.occurance.values())
+            ps = [i / max(num_im) for i in num_im]
+            trans = dict()
+            for p, n in zip(ps, num_im):
+                trans[n] = utils.appearance_proportional_augmentation1(is_train=not self.eval_reid, app=p)
+
+        return trans
 
     def nb_classes(self):
         n = len(np.unique(self.ys))
@@ -66,7 +88,10 @@ class Birds(torch.utils.data.Dataset):
     def __getitem__(self, index):
         im = pil_loader(self.im_paths[index])
         #show_dataset(im, self.ys[index])
-        im = self.transform(im)
+        if self.trans == 'appearance':
+            im = self.transform[self.occurance[self.ys[index]]](im)
+        else:
+            im = self.transform(im)
         #show_dataset(im, self.ys[index])
 
         if self.eval_reid:
