@@ -221,15 +221,14 @@ def init_args():
 
 class PreTrainer():
     def __init__(self, args, data_dir, device, save_folder_results,
-                 save_folder_nets, load_path):
+                 save_folder_nets):
         self.device = device
         self.data_dir = data_dir
         self.args = args
         self.save_folder_results = save_folder_results
         self.save_folder_nets = save_folder_nets
-        self.load_path = load_path
-
-    def train_model(self, config, timer):
+    
+    def train_model(self, config, timer, load_path):
         print(self.args)
         early_thresh_counter = 0
 
@@ -245,7 +244,7 @@ class PreTrainer():
                              pretraining=self.args.pretraining,
                              last_stride=self.args.last_stride,
                              neck=self.args.neck, 
-                             load_path=self.load_path,
+                             load_path=load_path,
                              use_pretrained=self.args.use_pretrained, 
                              bn_GL=self.args.bn_GL)
         model = model.to(self.device)
@@ -457,44 +456,71 @@ def main():
         os.makedirs(save_folder_results)
     if not os.path.isdir(save_folder_nets):
         os.makedirs(save_folder_nets)
-
-    if args.pretraining:
-        mode = 'finetuned_'
-    else:
-        mode = ''
-
-    if args.neck:
-        mode = mode + 'neck_'
-    if args.test:
-        args.nb_epochs = 1
-        load_path = os.path.join('save_trained_nets', mode + args.net_type + '_' + args.dataset_name + '.pth')
-    else:
-        load_path = os.path.join('net', 'finetuned_' + mode + args.dataset_short + '_' + args.net_type + '.pth')
-
-    trainer = PreTrainer(args, args.cub_root, device,
-                         save_folder_results, save_folder_nets, 
-                         load_path)
     
-    if args.use_pretrained:
-        logger.info('Load model from {}'.format(load_path))
-    else:
-        logger.info('Using model only pretrained on ImageNet')
+    trainer = PreTrainer(args, args.cub_root, device,
+                         save_folder_results, save_folder_nets)
 
     best_recall = 0
     best_hypers = None
-    num_iter = 1
+    num_iter = 6 #30
+
+    lab_smooth = [1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
+    trans = ['norm', 'bot', 'bot', 'bot', 'bot', 'bot', 'bot', 'bot', 'bot', 'bot']
+    neck = [0, 0, 1, 1, 1, 1, 1, 1, 1, 1]
+    last_stride = [0, 0, 0, 1, 1, 1, 0, 0, 1, 0]
+    neck_test = [0, 0, 0, 0, 1, 1, 1, 1, 0, 0]
+    center = [0, 0, 0, 0, 0, 1, 1, 0, 1, 1]
+
+    trans = ['bot', 'bot', 'appearance', 'appearance', 'bot', 'appearance'] # --> test without bot
+    test_option = ['neck', 'norm', 'neck', 'norm', 'plain', 'plain'] # --> test with bot (with and without lab smooth) and higher temperatur
+    bn_GL = [1, 1, 1, 1, 0, 0]
+    neck = [1, 1, 1, 1, 0, 0]
+    # --> test without bot and higher temperatur
+
     # Random search
     for i in range(num_iter):
+        trainer.args.lab_smooth = 0 #lab_smooth[i]
+        trainer.args.trans = 'norm' #trans[i]
+        trainer.args.neck = 0 #neck[i]
+        trainer.args.last_stride = 0 #last_stride[i]
+        trainer.args.test_option = 'norm' #test_option[i] #neck_test[i]
+        trainer.args.bn_GL = 0 # bn_GL[i]
+        trainer.args.center = 0 #center[i]
+        
+        if args.pretraining:
+            mode = 'finetuned_'
+        else:
+            mode = ''
+
+        if trainer.args.neck:
+            print('args')
+            mode = mode + 'neck_'
+            print(mode)
+
+        if args.test:
+            trainer.args.nb_epochs = 1
+            load_path = os.path.join('save_trained_nets', mode + trainer.args.net_type + '_' + trainer.args.dataset_name + '.pth')
+        else:
+            load_path = os.path.join('net', 'finetuned_' + mode + trainer.args.dataset_short + '_' + trainer.args.net_type + '.pth')
+        print(load_path)
+
+        if args.use_pretrained:
+            logger.info('Load model from {}'.format(load_path))
+        else:
+            logger.info('Using model only pretrained on ImageNet')
+
+
         logger.info('Search iteration {}'.format(i + 1))
 
         # random search for hyperparameters
-        lr = 0.0002 #10 ** random.uniform(-8, -3)  # [6.30231343210635e-05, 6.30231343210635e-05, 5.903200807154208e-05, 5.903200807154208e-05, 0.0002] #[0.0001592052356176557, 0.0001592052356176557, 0.0002]
-        weight_decay = 0 #10 ** random.uniform(-15, -6)  # [8.245915738144614e-11, 8.245915738144614e-11, 4.3736248161450994e-11, 4.3736248161450994e-11, 4.863656728256105e-07]   #[3.1589530699773613e-15, 3.1589530699773613e-15, 4.863656728256105e-07]
-        num_classes_iter = random.randint(2, 5)  # [4, 4, 4, 4, 5]  #[5, 5, 5]
-        num_elements_classes = random.randint(4, 9)  # [8, 8, 5, 5, 7]  #[5, 5, 7]
-        num_labeled_class = random.randint(1, 3)  # [3, 3, 1, 1, 3]  #[1, 1, 3]
-        num_iter_gtg = random.randint(1, 3)  # [1, 3, 1, 3, 1]  #[1, 3, 1] # --> Hyperparam to search?
-        temp = random.randint(10, 80)  # [11, 11, 11, 11, 79] #[46, 46, 79]
+        # Market #cuhk03 # search
+        lr = 2.6628700218967546e-05 # 10 ** random.uniform(-8, -3) # 1.289377564403867e-05 #4.4819286767613e-05 #10 ** random.uniform(-8, -3) 
+        weight_decay = 7.652037428744117e-13 # 10 ** random.uniform(-15, -6) #1.9250447877921047e-14 #1.5288509425482333e-13 #10 ** random.uniform(-15, -6)  
+        num_classes_iter = 3 #random.randint(2, 5) #3 #5 #random.randint(2, 5)  
+        num_elements_classes = 8 #random.randint(4, 9) #4 #5 #random.randint(4, 9)  
+        num_labeled_class = 1 #random.randint(1, 3) #3 #2 #random.randint(1, 3) 
+        num_iter_gtg = 0 #1 #2 #1 #random.randint(1, 3)  # --> Hyperparam to search?
+        temp = 78 #random.randint(10, 80) #100 #61 #80 #random.randint(10, 80) 
 
         config = {'lr': lr,
                   'weight_decay': weight_decay,
@@ -504,7 +530,7 @@ def main():
                   'num_iter_gtg': num_iter_gtg,
                   'temperature': temp}
 
-        best_accuracy, model = trainer.train_model(config, timer)
+        best_accuracy, model = trainer.train_model(config, timer, load_path)
 
         hypers = ', '.join([k + ': ' + str(v) for k, v in config.items()])
         logger.info('Used Parameters: ' + hypers)
