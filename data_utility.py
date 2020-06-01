@@ -2,7 +2,8 @@ import dataset
 import torch
 from collections import defaultdict
 from combine_sampler import CombineSampler, CombineSamplerAdvanced, \
-    CombineSamplerSuperclass, CombineSamplerSuperclass2, PretraingSampler
+    CombineSamplerSuperclass, CombineSamplerSuperclass2, PretraingSampler, \
+    DistanceSampler
 import numpy as np
 import os
 import matplotlib.pyplot as plt
@@ -10,7 +11,8 @@ import matplotlib.pyplot as plt
 
 def create_loaders(data_root, num_workers, size_batch, num_classes_iter=None,
                    num_elements_class=None, pretraining=False,
-                   input_size=[384, 128], both=0, trans= 'norm'):
+                   input_size=[384, 128], both=0, trans= 'norm',
+                   distance_sampler=0):
     labels, paths = dataset.load_data(root=data_root, both=both)
     labels = labels[0]
     paths = paths[0]
@@ -60,10 +62,13 @@ def create_loaders(data_root, num_workers, size_batch, num_classes_iter=None,
     list_of_indices_for_each_class = []
     for key in ddict:
         list_of_indices_for_each_class.append(ddict[key])
-    
+
     if pretraining:
         sampler = PretraingSampler(list_of_indices_for_each_class)
         drop_last = False
+    elif distance_sampler:
+        sampler = DistanceSampler(num_classes_iter, num_elements_class, ddict)
+        drop_last = True
     else:
         sampler = CombineSampler(list_of_indices_for_each_class,
                                  num_classes_iter, num_elements_class)

@@ -215,6 +215,8 @@ def init_args():
                         help='If weights pretrained for 10 epochs, lr=0.0002 using cross entropy should be used')
     parser.add_argument('--bn_GL', default=0, type=int, 
                         help='if features after batchnorm layer should be used for group loss')
+    parser.add_argument('--distance_sampling', default=0, type=int,
+                        help='if distance sampling should be applied')
 
     return parser.parse_args()
 
@@ -284,7 +286,8 @@ class PreTrainer():
                 size_batch=config['num_classes_iter'] * config[
                     'num_elements_class'],
                 both=self.args.both,
-                trans=self.args.trans)
+                trans=self.args.trans,
+                distance_sampler=self.args.distanca_sampling)
         else:
             running_corrects = 0
             dl_tr = data_utility.create_loaders(size_batch=64,
@@ -296,6 +299,8 @@ class PreTrainer():
 
         since = time.time()
         best_accuracy = 0
+        if self.args.distanca_sampling:
+            feature_dict = dict()
         scores = []
         for e in range(1, self.args.nb_epochs + 1):
             if not self.args.test:
@@ -313,11 +318,17 @@ class PreTrainer():
                         g['lr'] = config['lr'] / 10.
 
                 i = 0
-                for x, Y in dl_tr:
+                if self.args.distanca_sampling:
+                    dl_tr.feature_dict = feature_dict
+                    feature_dict = dict()
+                for x, Y, idx in dl_tr:
                     Y = Y.to(self.device)
                     opt.zero_grad()
 
                     probs, fc7 = model(x.to(self.device))
+                    if self.args.distanca_sampling:
+                        for i in idx.shape[0]:
+                            feature_dict[idx[i]] = fc7[i, :]
                     loss = criterion2(probs, Y)
     
                     if not self.args.pretraining:
