@@ -2,7 +2,7 @@ from torch.utils.data.sampler import Sampler
 import random
 import copy
 import torch
-import sklearn
+import sklearn.metrics.pairwise
 from collections import defaultdict
 import numpy as np
 
@@ -32,8 +32,9 @@ class CombineSampler(Sampler):
 
         # add elements till every class has the same num of obs
         for inds in l_inds:
-            n_els = self.max - len(inds) + 1  # take out 1?
-            inds.extend(inds[:n_els])  # max + 1
+            choose = copy.deepcopy(inds)
+            while len(inds) < self.max:
+                inds += [random.choice(choose)]
 
         # split lists of a class every n_cl elements
         split_list_of_indices = []
@@ -57,51 +58,61 @@ class DistanceSampler(Sampler):
         self.num_classes = num_classes
         self.num_samples = num_samples
         self.samples = samples
+        self.max = -1
         self.feature_dict = dict()
-        self.feature_vects = dict()
 
-        self.inner_dist = dict()
         for inds, samp in samples.items():
             if len(samp) > self.max:
                 self.max = len(samp)
-            self.inner_dist[inds] = 1
+        self.inter_class_dist = np.ones([len(samples), len(samples)])
 
-    def get_inner_distances(self):
+    def get_inter_class_distances(self):
         if len(self.feature_dict) == 0:
             return
-        self.feature_vects = defaultdict(list)
-        for inds, samps in self.samples.items():
-            for samp in samps:
-                self.feature_vects[inds].append(self.feature_dict[samp])
+        # generate distance mat for all classes as in Hierachrical Triplet Loss
+        self.feature_dict = {k: self.feature_dict[k] for k in sorted(self.feature_dict.keys())}
+        dist_mat = np.zeros([len(self.feature_dict), len(self.feature_dict)])
+        i = 0
+        for ind1, feat_vect1 in self.feature_dict.items():
+            j = 0
+            for ind2, feat_vect2 in self.feature_dict.items():
+                if i > j:
+                    dist_mat[i, j] = dist_mat[j, i]
+                    j += 1
+                    continue
+                x = torch.cat(feat_vect1, 0)
+                y = torch.cat(feat_vect2, 0)
+                m, n = x.size(0), y.size(0)
+                x = x.view(m, -1)
+                y = y.view(n, -1)
+                # use x^TX + y^Ty - 2x^Ty
+                dist = torch.pow(x, 2).sum(dim=1, keepdim=True).expand(m, n) + \
+                       torch.pow(y, 2).sum(dim=1, keepdim=True).expand(n,
+                                                                       m).t()
+                dist.addmm_(1, -2, x, y.t())
+                dist_mat[i, j] = torch.sum(dist).data.item() / (m*n)
+                j += 1
+            i += 1
 
-        for ind, feat_vect in self.feature_vects.items():
-            feats = torch.stack(feat_vect)
-            distances = sklearn.metrics.pairwise.pairwise_distances(feats)
-            self.inner_dist[ind] = torch.mean(distances, dim=0)
-        self.inner_dist = {k: self.inner_dist[k] for k in sorted(self.inner_dist.keys())}
+        self.inter_class_dist = dist_mat
 
     def __iter__(self):
+        self.get_inter_class_distances()
         # shuffle elements inside each class
         l_inds = {ind: random.sample(sam, len(sam)) for ind, sam in self.samples.items()}
 
-        for inds, samp in l_inds.items():
-            n_els = self.max - len(samp) + 1  # take out 1?
-            l_inds[inds].extend(l_inds[inds][:n_els])  # max + 1
-
-        ids_splits = defaultdict(list)
-        for inds, samp in l_inds.items():
-            # drop the last < n_cl elements
-            while len(samp) >= self.num_samples:
-                ids_splits[inds].append(l_inds[inds][:self.num_samples])
-                l_inds[inds] = l_inds[inds][self.num_samples:]
-
-        inner_dist_mat = np.array(list(self.inner_dist.values()))
-        dist_mat = sklearn.metrics.pairwise.pairwise_distances(inner_dist_mat)
-        indices = np.argsort(dist_mat, axis=1)
+        for c, inds in l_inds.items():
+            choose = copy.deepcopy(inds)
+            while len(inds) < self.max:
+                l_inds[c] += [random.choice(choose)]
+        # get clostest classes for each class
+        indices = np.argsort(self.inter_class_dist, axis=1)
 
         batches = list()
         for cl in range(indices.shape[0]):
-            cls = indices[cl, :self.num_classes-1]
+            possible_classes = indices[cl, :].tolist()
+            possible_classes.remove(possible_classes.index(cl))
+            cls = possible_classes[:self.num_classes - 1]
             cls.append(cl)
             batch = [s for c in cls for s in random.sample(l_inds[c], self.num_samples)]
             batches.append(batch)

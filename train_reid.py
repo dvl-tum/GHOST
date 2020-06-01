@@ -11,7 +11,7 @@ import random
 import torch.nn.functional as F
 import sys
 import logging
-
+from collections import defaultdict
 from RAdam import RAdam
 import gtg as gtg_module
 import net
@@ -300,7 +300,7 @@ class PreTrainer():
         since = time.time()
         best_accuracy = 0
         if self.args.distanca_sampling:
-            feature_dict = dict()
+            feature_dict = defaultdict()
         scores = []
         for e in range(1, self.args.nb_epochs + 1):
             if not self.args.test:
@@ -320,15 +320,15 @@ class PreTrainer():
                 i = 0
                 if self.args.distanca_sampling:
                     dl_tr.feature_dict = feature_dict
-                    feature_dict = dict()
-                for x, Y, idx in dl_tr:
+                    feature_dict = defaultdict()
+                for x, Y in dl_tr:
                     Y = Y.to(self.device)
                     opt.zero_grad()
 
                     probs, fc7 = model(x.to(self.device))
                     if self.args.distanca_sampling:
-                        for i in idx.shape[0]:
-                            feature_dict[idx[i]] = fc7[i, :]
+                        for y, f in zip(Y, fc7):
+                            feature_dict[y.data.item()].append(f)
                     loss = criterion2(probs, Y)
     
                     if not self.args.pretraining:
