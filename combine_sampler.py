@@ -1,6 +1,10 @@
 from torch.utils.data.sampler import Sampler
 import random
 import copy
+import torch
+import sklearn
+from collections import defaultdict
+import numpy as np
 
 
 class CombineSampler(Sampler):
@@ -43,6 +47,68 @@ class CombineSampler(Sampler):
         random.shuffle(split_list_of_indices)
         self.flat_list = [item for sublist in split_list_of_indices for item in sublist]
         return iter(self.flat_list)
+
+    def __len__(self):
+        return len(self.flat_list)
+
+
+class DistanceSampler(Sampler):
+    def __init__(self, num_classes, num_samples, samples):
+        self.num_classes = num_classes
+        self.num_samples = num_samples
+        self.samples = samples
+        self.feature_dict = dict()
+        self.feature_vects = dict()
+
+        self.inner_dist = dict()
+        for inds, samp in samples.items():
+            if len(samp) > self.max:
+                self.max = len(samp)
+            self.inner_dist[inds] = 1
+
+    def get_inner_distances(self):
+        if len(self.feature_dict) == 0:
+            return
+        self.feature_vects = defaultdict(list)
+        for inds, samps in self.samples.items():
+            for samp in samps:
+                self.feature_vects[inds].append(self.feature_dict[samp])
+
+        for ind, feat_vect in self.feature_vects.items():
+            feats = torch.stack(feat_vect)
+            distances = sklearn.metrics.pairwise.pairwise_distances(feats)
+            self.inner_dist[ind] = torch.mean(distances, dim=0)
+        self.inner_dist = {k: self.inner_dist[k] for k in sorted(self.inner_dist.keys())}
+
+    def __iter__(self):
+        # shuffle elements inside each class
+        l_inds = {ind: random.sample(sam, len(sam)) for ind, sam in self.samples.items()}
+
+        for inds, samp in l_inds.items():
+            n_els = self.max - len(samp) + 1  # take out 1?
+            l_inds[inds].extend(l_inds[inds][:n_els])  # max + 1
+
+        ids_splits = defaultdict(list)
+        for inds, samp in l_inds.items():
+            # drop the last < n_cl elements
+            while len(samp) >= self.num_samples:
+                ids_splits[inds].append(l_inds[inds][:self.num_samples])
+                l_inds[inds] = l_inds[inds][self.num_samples:]
+
+        inner_dist_mat = np.array(list(self.inner_dist.values()))
+        dist_mat = sklearn.metrics.pairwise.pairwise_distances(inner_dist_mat)
+        indices = np.argsort(dist_mat, axis=1)
+
+        batches = list()
+        for cl in range(indices.shape[0]):
+            cls = indices[cl, :self.num_classes-1]
+            cls.append(cl)
+            batch = [s for c in cls for s in random.sample(l_inds[c], self.num_samples)]
+            batches.append(batch)
+
+        random.shuffle(batches)
+        self.flat_list = [s for batch in batches for s in batch]
+        return (iter(self.flat_list))
 
     def __len__(self):
         return len(self.flat_list)
