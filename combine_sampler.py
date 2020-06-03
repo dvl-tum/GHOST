@@ -28,8 +28,9 @@ class CombineSampler(Sampler):
 
         # add elements till every class has the same num of obs
         for inds in l_inds:
-            n_els = self.max - len(inds) + 1  # take out 1?
-            inds.extend(inds[:n_els])  # max + 1
+            choose = copy.deepcopy(inds)
+            while len(inds) < self.max:
+                inds += [random.choice(choose)]
 
         # split lists of a class every n_cl elements
         split_list_of_indices = []
