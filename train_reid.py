@@ -287,6 +287,7 @@ class PreTrainer():
                 trans=self.args.trans)
         else:
             running_corrects = 0
+            denom = 0
             dl_tr = data_utility.create_loaders(size_batch=64,
                                                 data_root=self.args.cub_root,
                                                 num_workers=self.args.nb_workers,
@@ -344,6 +345,7 @@ class PreTrainer():
     
                     else:
                         _, preds = torch.max(probs, 1)
+                        denom += Y.shape[0]
                         running_corrects += torch.sum(
                             preds == Y.data).cpu().data.item()
     
@@ -405,9 +407,12 @@ class PreTrainer():
             else:
                 logger.info(
                     'Loss {}, Accuracy {}'.format(torch.mean(loss.cpu()),
-                                                  running_corrects / len(
-                                                      dl_tr)))
-                scores.append(running_corrects / len(dl_tr))
+                                                  running_corrects / denom))
+                print('Loss {}, Accuracy {}'.format(torch.mean(loss.cpu()),
+                                                  running_corrects / denom))
+                scores.append(running_corrects / denom)
+                denom = 0
+                running_corrects = 0
                 if scores[-1] > best_accuracy:
                     best_accuracy = scores[-1]
                     torch.save(model.state_dict(),
