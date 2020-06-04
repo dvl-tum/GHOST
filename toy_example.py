@@ -168,7 +168,8 @@ def main():
 
     import matplotlib.pyplot as plt
     plt.plot(x, y)
-    plt.show()
+    plt.savefig("vis.png")
+    plt.close()
 
 if __name__ == '__main__':
     main()
