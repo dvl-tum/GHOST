@@ -139,7 +139,7 @@ def init_args():
                         help='without detected/labeled')
     parser.add_argument('--oversampling', default=1, type=int,
                         help='If oversampling shoulf be used')
-    parser.add_argument('--nb_epochs', default=30, type=int)
+    parser.add_argument('--nb_epochs', default=100, type=int)
 
     parser.add_argument('--cub-root', default=hyperparams.get_path(),
                         help='Path to dataset folder')
@@ -509,7 +509,6 @@ def main():
             mode = 'finetuned_'
         else:
             mode = ''
-
         if trainer.args.neck:
             mode = mode + 'neck_'
 
@@ -518,13 +517,11 @@ def main():
             load_path = os.path.join('save_trained_nets', mode + trainer.args.net_type + '_' + trainer.args.dataset_name + '.pth')
         else:
             load_path = os.path.join('net', 'finetuned_' + mode + trainer.args.dataset_short + '_' + trainer.args.net_type + '.pth')
-        print(load_path)
 
         if args.use_pretrained:
             logger.info('Load model from {}'.format(load_path))
         else:
             logger.info('Using model only pretrained on ImageNet')
-
 
         logger.info('Search iteration {}'.format(i + 1))
 
@@ -536,6 +533,16 @@ def main():
                       'num_labeled_points_class': random.randint(1, 3),
                       'num_iter_gtg': random.randint(1, 3),
                       'temperature': random.randint(10, 80)}
+            trainer.args.nb_epochs = 30
+        elif args.pretraining:
+            config = {'lr': 0.0002,
+                      'weight_decay': 0, # rest does not matter
+                      'num_classes_iter': 0,
+                      'num_elements_class': 0,
+                      'num_labeled_points_class': 0,
+                      'num_iter_gtg': 0,
+                      'temperature': 0}
+            trainer.args.nb_epochs = 10
         else:
             config = {'lr': args.lr_net,
                       'weight_decay': args.weight_decay,
@@ -545,7 +552,7 @@ def main():
                       'num_iter_gtg': args.num_iter_gtg,
                       'temperature': args.temperature}
 
-        best_accuracy, model = trainer.train_model(timer, load_path)
+        best_accuracy, model = trainer.train_model(config, timer, load_path)
 
         logger.info('Used Parameters: ' + args)
 
