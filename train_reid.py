@@ -140,7 +140,7 @@ def init_args():
                         default=hyperparams.get_number_classes(), type=int,
                         help='Number of first [0, N] classes used for training and ' +
                              'next [N, N * 2] classes used for evaluating with max(N) = 100.')
-    parser.add_argument('--pretraining', default=1, type=int,
+    parser.add_argument('--pretraining', default=0, type=int,
                         help='If pretraining or fine tuning is executed')
     parser.add_argument('--num_classes_iter',
                         default=hyperparams.get_number_classes_iteration(),
@@ -235,7 +235,6 @@ class PreTrainer():
         file_name = self.args.dataset_name + '_intermediate_model_' + str(
             timer)
         # add last stride and bottleneck
-        print(self.args.bn_GL)
         model = net.load_net(dataset=self.args.dataset_short,
                              net_type=self.args.net_type,
                              nb_classes=self.args.nb_classes,
@@ -467,30 +466,30 @@ def main():
 
     best_recall = 0
     best_hypers = None
-    num_iter = 6 #30
+    num_iter = 10 #30
 
     lab_smooth = [1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
     trans = ['norm', 'bot', 'bot', 'bot', 'bot', 'bot', 'bot', 'bot', 'bot', 'bot']
     neck = [0, 0, 1, 1, 1, 1, 1, 1, 1, 1]
     last_stride = [0, 0, 0, 1, 1, 1, 0, 0, 1, 0]
-    neck_test = [0, 0, 0, 0, 1, 1, 1, 1, 0, 0]
+    test_option = ['norm', 'norm', 'norm', 'norm', 'neck', 'neck', 'neck', 'neck', 'norm', 'norm']
     center = [0, 0, 0, 0, 0, 1, 1, 0, 1, 1]
 
-    trans = ['bot', 'bot', 'appearance', 'appearance', 'bot', 'appearance'] # --> test without bot
-    test_option = ['neck', 'norm', 'neck', 'norm', 'plain', 'plain'] # --> test with bot (with and without lab smooth) and higher temperatur
-    bn_GL = [1, 1, 1, 1, 0, 0]
-    neck = [1, 1, 1, 1, 0, 0]
+    #trans = ['bot', 'bot', 'appearance', 'appearance', 'bot', 'appearance'] # --> test without bot
+    #test_option = ['neck', 'norm', 'neck', 'norm', 'plain', 'plain'] # --> test with bot (with and without lab smooth) and higher temperatur
+    #bn_GL = [1, 1, 1, 1, 0, 0]
+    #neck = [1, 1, 1, 1, 0, 0]
     # --> test without bot and higher temperatur
 
     # Random search
     for i in range(num_iter):
-        trainer.args.lab_smooth = 0 #lab_smooth[i]
-        trainer.args.trans = 'norm' #trans[i]
-        trainer.args.neck = 0 #neck[i]
-        trainer.args.last_stride = 0 #last_stride[i]
-        trainer.args.test_option = 'norm' #test_option[i] #neck_test[i]
+        trainer.args.lab_smooth = lab_smooth[i]
+        trainer.args.trans = trans[i]
+        trainer.args.neck = neck[i]
+        trainer.args.last_stride = last_stride[i]
+        trainer.args.test_option = test_option[i] #neck_test[i]
         trainer.args.bn_GL = 0 # bn_GL[i]
-        trainer.args.center = 0 #center[i]
+        trainer.args.center = center[i]
         
         if args.pretraining:
             mode = 'finetuned_'
@@ -498,9 +497,7 @@ def main():
             mode = ''
 
         if trainer.args.neck:
-            print('args')
             mode = mode + 'neck_'
-            print(mode)
 
         if args.test:
             trainer.args.nb_epochs = 1
@@ -519,13 +516,13 @@ def main():
 
         # random search for hyperparameters
         # Market #cuhk03 # search
-        lr = 2.6628700218967546e-05 # 10 ** random.uniform(-8, -3) # 1.289377564403867e-05 #4.4819286767613e-05 #10 ** random.uniform(-8, -3) 
-        weight_decay = 7.652037428744117e-13 # 10 ** random.uniform(-15, -6) #1.9250447877921047e-14 #1.5288509425482333e-13 #10 ** random.uniform(-15, -6)  
+        lr =  1.289377564403867e-05 # 10 ** random.uniform(-8, -3) # 1.289377564403867e-05 #4.4819286767613e-05 #10 ** random.uniform(-8, -3) 
+        weight_decay = 1.9250447877921047e-14 # 10 ** random.uniform(-15, -6) #1.9250447877921047e-14 #1.5288509425482333e-13 #10 ** random.uniform(-15, -6)  
         num_classes_iter = 3 #random.randint(2, 5) #3 #5 #random.randint(2, 5)  
-        num_elements_classes = 8 #random.randint(4, 9) #4 #5 #random.randint(4, 9)  
-        num_labeled_class = 1 #random.randint(1, 3) #3 #2 #random.randint(1, 3) 
-        num_iter_gtg = 0 #1 #2 #1 #random.randint(1, 3)  # --> Hyperparam to search?
-        temp = 78 #random.randint(10, 80) #100 #61 #80 #random.randint(10, 80) 
+        num_elements_classes = 4 #random.randint(4, 9) #4 #5 #random.randint(4, 9)  
+        num_labeled_class = 3 #random.randint(1, 3) #3 #2 #random.randint(1, 3) 
+        num_iter_gtg = 2 #1 #2 #1 #random.randint(1, 3)  # --> Hyperparam to search?
+        temp = 80 #random.randint(10, 80) #100 #61 #80 #random.randint(10, 80) 
 
         config = {'lr': lr,
                   'weight_decay': weight_decay,
