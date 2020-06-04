@@ -54,33 +54,46 @@ class Hyperparameters():
             self.dataset_path = '../../datasets/cuhk03-np/labeled'
             self.dataset_short = 'cuhk03-np'
 
-        self.num_classes = {'Market': 751, 'cuhk03-labeled': 1367,
-                            'cuhk03-np-labeled': 767, 'cuhk03-detected': 1367,
-                            'cuhk03-np-detected': 767}
-        self.num_classes_iteration = {'Market': 5, 'cuhk03-labeled': 5,
-                                      'cuhk03-np-labeled': 5,
+        self.num_classes = {'Market': 751,
+                            'cuhk03-detected': 1367,
+                            'cuhk03-np-detected': 767,
+                            'cuhk03-labeled': 1367,
+                            'cuhk03-np-labeled': 767}
+        self.num_classes_iteration = {'Market': 3,
                                       'cuhk03-detected': 5,
-                                      'cuhk03-np-detected': 5}
-        self.num_elemens_class = {'Market': 7, 'cuhk03-labeled': 7,
-                                  'cuhk03-np-labeled': 7, 'cuhk03-detected': 7,
-                                  'cuhk03-np-detected': 7}
-        self.get_num_labeled_class = {'Market': 2, 'cuhk03-labeled': 2,
-                                      'cuhk03-np-labeled': 2,
+                                      'cuhk03-np-detected': 5,
+                                      'cuhk03-labeled': 5,
+                                      'cuhk03-np-labeled': 5}
+        self.num_elemens_class = {'Market': 4,
+                                  'cuhk03-detected': 5,
+                                  'cuhk03-np-detected': 5,
+                                  'cuhk03-labeled': 5,
+                                  'cuhk03-np-labeled': 5}
+        self.get_num_labeled_class = {'Market': 3,
                                       'cuhk03-detected': 2,
-                                      'cuhk03-np-detected': 2}
-        self.learning_rate = {'Market': 0.0002, 'cuhk03-labeled': 0.0002,
-                              'cuhk03-np-labeled': 0.0002,
-                              'cuhk03-detected': 0.0002,
-                              'cuhk03-np-detected': 0.0002}
-        self.weight_decay = {'Market': 4.863656728256105e-07,
-                             'cuhk03-detected': 4.863656728256105e-07,
+                                      'cuhk03-np-detected': 2,
+                                      'cuhk03-labeled': 2,
+                                      'cuhk03-np-labeled': 2}
+        self.learning_rate = {'Market': 1.289377564403867e-05,
+                              'cuhk03-detected': 4.4819286767613e-05,
+                              'cuhk03-np-detected': 0.0002,
+                              'cuhk03-labeled': 0.0002,
+                              'cuhk03-np-labeled': 0.0002}
+        self.weight_decay = {'Market': 1.9250447877921047e-14,
+                             'cuhk03-detected': 1.5288509425482333e-13,
                              'cuhk03-np-detected': 4.863656728256105e-07,
                              'cuhk03-labeled': 4.863656728256105e-07,
                              'cuhk03-np-labeled': 4.863656728256105e-07}
-        self.softmax_temperature = {'Market': 79, 'cuhk03-labeled': 79,
-                                    'cuhk03-np-labeled': 79,
-                                    'cuhk03-detected': 79,
-                                    'cuhk03-np-detected': 79}
+        self.softmax_temperature = {'Market': 80,
+                                    'cuhk03-detected': 80,
+                                    'cuhk03-np-detected': 80,
+                                    'cuhk03-labeled': 80,
+                                    'cuhk03-np-labeled': 80}
+        self.num_iter_gtg = {'Market': 2,
+                             'cuhk03-detected': 1,
+                             'cuhk03-np-detected': 1,
+                             'cuhk03-labeled': 1,
+                             'cuhk03-np-labeled': 1}
 
     def get_path(self):
         return self.dataset_path
@@ -107,7 +120,7 @@ class Hyperparameters():
         return 70
 
     def get_num_gtg_iterations(self):
-        return 1
+        return self.num_iter_gtg[self.dataset_name]
 
     def get_softmax_temperature(self):
         return self.softmax_temperature[self.dataset_name]
@@ -211,10 +224,12 @@ def init_args():
                              'where best recall did not improve')
     parser.add_argument('--test', default=0, type=int, 
                         help='If net should only be tested, not trained')
-    parser.add_argument('--use_pretrained', default=0, type=int,
+    parser.add_argument('--use_pretrained', default=1, type=int,
                         help='If weights pretrained for 10 epochs, lr=0.0002 using cross entropy should be used')
     parser.add_argument('--bn_GL', default=0, type=int, 
                         help='if features after batchnorm layer should be used for group loss')
+    parser.add_argument('--hyper_search', default=0, type=int,
+                        help='If hyper parameter search is done or not')
 
     return parser.parse_args()
 
@@ -466,20 +481,19 @@ def main():
 
     best_recall = 0
     best_hypers = None
-    num_iter = 10 #30
 
-    lab_smooth = [1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
-    trans = ['norm', 'bot', 'bot', 'bot', 'bot', 'bot', 'bot', 'bot', 'bot', 'bot']
-    neck = [0, 0, 1, 1, 1, 1, 1, 1, 1, 1]
-    last_stride = [0, 0, 0, 1, 1, 1, 0, 0, 1, 0]
-    test_option = ['norm', 'norm', 'norm', 'norm', 'neck', 'neck', 'neck', 'neck', 'norm', 'norm']
-    center = [0, 0, 0, 0, 0, 1, 1, 0, 1, 1]
+    if args.hyper_search:
+        num_iter = 30
+    else:
+        num_iter = 8
 
-    #trans = ['bot', 'bot', 'appearance', 'appearance', 'bot', 'appearance'] # --> test without bot
-    #test_option = ['neck', 'norm', 'neck', 'norm', 'plain', 'plain'] # --> test with bot (with and without lab smooth) and higher temperatur
-    #bn_GL = [1, 1, 1, 1, 0, 0]
-    #neck = [1, 1, 1, 1, 0, 0]
-    # --> test without bot and higher temperatur
+    lab_smooth = [1, 1, 1, 1, 0, 0, 1, 1]
+    trans = ['bot', 'bot', 'bot', 'bot', 'norm', 'norm', 'bot', 'bot']
+    neck = [1, 1, 1, 0, 0, 0, 0, 0]
+    last_stride = [0, 0, 0, 0, 0, 0, 0, 0]
+    test_option = ['norm', 'norm', 'neck', 'plain', 'plain', 'norm', 'plain', 'norm']
+    bn_GL = [0, 1, 1, 0, 0, 0, 0, 0]
+    center = [0, 0, 0, 0, 0, 0, 0, 0]
 
     # Random search
     for i in range(num_iter):
@@ -488,7 +502,7 @@ def main():
         trainer.args.neck = neck[i]
         trainer.args.last_stride = last_stride[i]
         trainer.args.test_option = test_option[i] #neck_test[i]
-        trainer.args.bn_GL = 0 # bn_GL[i]
+        trainer.args.bn_GL = bn_GL[i]
         trainer.args.center = center[i]
         
         if args.pretraining:
@@ -514,28 +528,26 @@ def main():
 
         logger.info('Search iteration {}'.format(i + 1))
 
-        # random search for hyperparameters
-        # Market #cuhk03 # search
-        lr =  1.289377564403867e-05 # 10 ** random.uniform(-8, -3) # 1.289377564403867e-05 #4.4819286767613e-05 #10 ** random.uniform(-8, -3) 
-        weight_decay = 1.9250447877921047e-14 # 10 ** random.uniform(-15, -6) #1.9250447877921047e-14 #1.5288509425482333e-13 #10 ** random.uniform(-15, -6)  
-        num_classes_iter = 3 #random.randint(2, 5) #3 #5 #random.randint(2, 5)  
-        num_elements_classes = 4 #random.randint(4, 9) #4 #5 #random.randint(4, 9)  
-        num_labeled_class = 3 #random.randint(1, 3) #3 #2 #random.randint(1, 3) 
-        num_iter_gtg = 2 #1 #2 #1 #random.randint(1, 3)  # --> Hyperparam to search?
-        temp = 80 #random.randint(10, 80) #100 #61 #80 #random.randint(10, 80) 
+        if args.hyper_search:
+            config = {'lr': 10 ** random.uniform(-8, -3),
+                      'weight_decay': 10 ** random.uniform(-15, -6),
+                      'num_classes_iter': random.randint(2, 5),
+                      'num_elements_class': random.randint(4, 9),
+                      'num_labeled_points_class': random.randint(1, 3),
+                      'num_iter_gtg': random.randint(1, 3),
+                      'temperature': random.randint(10, 80)}
+        else:
+            config = {'lr': args.lr_net,
+                      'weight_decay': args.weight_decay,
+                      'num_classes_iter': args.num_classes_iter,
+                      'num_elements_class': args.num_elements_class,
+                      'num_labeled_points_class': args.num_labeled_points_class,
+                      'num_iter_gtg': args.num_iter_gtg,
+                      'temperature': args.temperature}
 
-        config = {'lr': lr,
-                  'weight_decay': weight_decay,
-                  'num_classes_iter': num_classes_iter,
-                  'num_elements_class': num_elements_classes,
-                  'num_labeled_points_class': num_labeled_class,
-                  'num_iter_gtg': num_iter_gtg,
-                  'temperature': temp}
+        best_accuracy, model = trainer.train_model(timer, load_path)
 
-        best_accuracy, model = trainer.train_model(config, timer, load_path)
-
-        hypers = ', '.join([k + ': ' + str(v) for k, v in config.items()])
-        logger.info('Used Parameters: ' + hypers)
+        logger.info('Used Parameters: ' + args)
 
         logger.info('Best Recall: {}'.format(best_accuracy))
 
