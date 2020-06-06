@@ -11,7 +11,7 @@ import random
 import torch.nn.functional as F
 import sys
 import logging
-
+from collections import defaultdict
 from RAdam import RAdam
 import gtg as gtg_module
 import net
@@ -230,6 +230,9 @@ def init_args():
                         help='if features after batchnorm layer should be used for group loss')
     parser.add_argument('--hyper_search', default=0, type=int,
                         help='If hyper parameter search is done or not')
+    parser.add_argument('--distance_sampling', default=0, type=int,
+                        help='if distance sampling should be applied')
+
 
     return parser.parse_args()
 
@@ -298,7 +301,8 @@ class PreTrainer():
                 size_batch=config['num_classes_iter'] * config[
                     'num_elements_class'],
                 both=self.args.both,
-                trans=self.args.trans)
+                trans=self.args.trans,
+                distance_sampler=self.args.distanca_sampling)
         else:
             running_corrects = 0
             denom = 0
@@ -311,6 +315,8 @@ class PreTrainer():
 
         since = time.time()
         best_accuracy = 0
+        if self.args.distanca_sampling:
+            feature_dict = defaultdict()
         scores = []
         for e in range(1, self.args.nb_epochs + 1):
             if not self.args.test:
@@ -328,11 +334,17 @@ class PreTrainer():
                         g['lr'] = config['lr'] / 10.
 
                 i = 0
+                if self.args.distanca_sampling:
+                    dl_tr.feature_dict = feature_dict
+                    feature_dict = defaultdict()
                 for x, Y in dl_tr:
                     Y = Y.to(self.device)
                     opt.zero_grad()
 
                     probs, fc7 = model(x.to(self.device))
+                    if self.args.distanca_sampling:
+                        for y, f in zip(Y, fc7):
+                            feature_dict[y.data.item()].append(f)
                     loss = criterion2(probs, Y)
 
                     if not self.args.pretraining:
