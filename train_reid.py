@@ -139,7 +139,7 @@ def init_args():
                         help='without detected/labeled')
     parser.add_argument('--oversampling', default=1, type=int,
                         help='If oversampling shoulf be used')
-    parser.add_argument('--nb_epochs', default=100, type=int)
+    parser.add_argument('--nb_epochs', default=30, type=int)
 
     parser.add_argument('--cub-root', default=hyperparams.get_path(),
                         help='Path to dataset folder')
@@ -334,7 +334,7 @@ class PreTrainer():
 
                     probs, fc7 = model(x.to(self.device))
                     loss = criterion2(probs, Y)
-    
+
                     if not self.args.pretraining:
                         labs, L, U = data_utility.get_labeled_and_unlabeled_points(
                             labels=Y,
@@ -362,7 +362,7 @@ class PreTrainer():
                         denom += Y.shape[0]
                         running_corrects += torch.sum(
                             preds == Y.data).cpu().data.item()
-    
+
                     i += 1
     
                     # check possible net divergence
@@ -381,7 +381,7 @@ class PreTrainer():
             # compute recall and NMI at the end of each epoch (for Stanford NMI takes forever so skip it)
             if not self.args.pretraining:
                 with torch.no_grad():
-                    logging.info('EVALUATION')
+                    logger.info('EVALUATION')
                     mAP, top = utils.evaluate_reid(model, dl_ev,
                                                    query=query,
                                                    gallery=gallery,
@@ -391,6 +391,10 @@ class PreTrainer():
                     logger.info('Mean AP: {:4.1%}'.format(mAP))
 
                     logger.info('CMC Scores{:>12}{:>12}{:>12}'
+                                .format('allshots', 'cuhk03', 'Market'))
+                    print('Mean AP: {:4.1%}'.format(mAP))
+
+                    print('CMC Scores{:>12}{:>12}{:>12}'
                                 .format('allshots', 'cuhk03', 'Market'))
 
                     for k in (1, 5, 10):
@@ -485,15 +489,34 @@ def main():
     if args.hyper_search:
         num_iter = 30
     else:
-        num_iter = 8
+        num_iter = 6
+    
+    # NORM VS PLAIN
+    lab_smooth = [1, 1, 1, 1, 0, 0, 1, 1, 1, 1, 1, 1, 0, 0, 1, 1]
+    trans = ['bot', 'bot', 'bot', 'bot', 'norm', 'norm', 'bot', 'bot', 'bot', 'bot', 'bot', 'bot', 'norm', 'norm', 'bot', 'bot']
+    neck = [1, 1, 1, 0, 0, 0, 0, 0, 1, 1, 1, 0, 0, 0, 0, 0]
+    last_stride = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    test_option = ['norm', 'norm', 'neck', 'plain', 'plain', 'norm', 'plain', 'norm', 'norm', 'norm', 'neck', 'plain', 'plain', 'norm', 'plain', 'norm']
+    bn_GL = [0, 1, 1, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0]
+    center = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    use_pretrained = [1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0] 
+    
+    # BOT EXPERIMENT
+    lab_smooth = [1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
+    trans = ['norm', 'bot', 'bot', 'bot', 'bot', 'bot', 'bot', 'bot', 'bot', 'bot']
+    neck = [0, 0, 1, 1, 1, 1, 1, 1, 1, 1]
+    last_stride = [0, 0, 0, 1, 1, 1, 0, 0, 1, 0]
+    test_option = ['norm', 'norm', 'norm', 'norm', 'neck', 'neck', 'neck', 'neck', 'norm', 'norm']
+    center = [0, 0, 0, 0, 0, 1, 1, 0, 1, 1]
 
-    lab_smooth = [1, 1, 1, 1, 0, 0, 1, 1]
-    trans = ['bot', 'bot', 'bot', 'bot', 'norm', 'norm', 'bot', 'bot']
-    neck = [1, 1, 1, 0, 0, 0, 0, 0]
-    last_stride = [0, 0, 0, 0, 0, 0, 0, 0]
-    test_option = ['norm', 'norm', 'neck', 'plain', 'plain', 'norm', 'plain', 'norm']
-    bn_GL = [0, 1, 1, 0, 0, 0, 0, 0]
-    center = [0, 0, 0, 0, 0, 0, 0, 0]
+    #appearance test
+    lab_smooth = [1, 1, 1, 1, 1, 1]
+    trans = ['appearance', 'appearance', 'appearance', 'appearance', 'appearance', 'appearance']
+    neck = [1, 1, 0, 0, 1, 1]
+    last_stride = [0, 0, 0, 0, 0, 0]
+    test_option = ['norm', 'neck', 'norm', 'plain', 'norm', 'neck']
+    center = [0, 0, 0, 0, 0, 0]
+    bn_GL = [0, 0, 0, 0, 1, 1]
 
     # Random search
     for i in range(num_iter):
@@ -504,7 +527,8 @@ def main():
         trainer.args.test_option = test_option[i] #neck_test[i]
         trainer.args.bn_GL = bn_GL[i]
         trainer.args.center = center[i]
-        
+        trainer.args.use_pretrained = 0 #use_pretrained[i]
+
         if args.pretraining:
             mode = 'finetuned_'
         else:
@@ -517,7 +541,7 @@ def main():
             load_path = os.path.join('save_trained_nets', mode + trainer.args.net_type + '_' + trainer.args.dataset_name + '.pth')
         else:
             load_path = os.path.join('net', 'finetuned_' + mode + trainer.args.dataset_short + '_' + trainer.args.net_type + '.pth')
-
+        print(load_path)
         if args.use_pretrained:
             logger.info('Load model from {}'.format(load_path))
         else:
@@ -554,7 +578,8 @@ def main():
 
         best_accuracy, model = trainer.train_model(config, timer, load_path)
 
-        logger.info('Used Parameters: ' + args)
+        hypers = ', '.join([k + ': ' + str(v) for k, v in config.items()])
+        logger.info('Used Parameters: ' + hypers)
 
         logger.info('Best Recall: {}'.format(best_accuracy))
 

@@ -225,23 +225,23 @@ def appearance_proportional_augmentation1(sz_crop=[384, 128],
                     # Apply affine transformations to some of the images
                     sometimes(iaa.OneOf([
                         iaa.Affine(
-                            scale={"x": (0.9, 1.1), "y": (0.9, 1.1)},
+                            scale={"x": (0.7, 1.3), "y": (0.7, 1.3)},
                             order=[0, 1],
                             cval=0,
                             mode=ia.ALL),
                         iaa.Affine(
-                            translate_percent={"x": (-0.1, 0.1),
-                                               "y": (-0.1, 0.1)},
+                            translate_percent={"x": (-0.2, 0.2),
+                                               "y": (-0.2, 0.2)},
                             order=[0, 1],
                             cval=0,
                             mode=ia.ALL),
                         iaa.Affine(
-                            rotate=(-5, 5),
+                            rotate=(-15, 15),
                             order=[0, 1],
                             cval=0,
                             mode=ia.ALL),
                         iaa.Affine(
-                            shear=(-5, 5),
+                            shear=(-10, 10),
                             order=[0, 1],
                             cval=0,
                             mode=ia.ALL)])
