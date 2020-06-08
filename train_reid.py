@@ -139,7 +139,7 @@ def init_args():
                         help='without detected/labeled')
     parser.add_argument('--oversampling', default=1, type=int,
                         help='If oversampling shoulf be used')
-    parser.add_argument('--nb_epochs', default=30, type=int)
+    parser.add_argument('--nb_epochs', default=100, type=int)
 
     parser.add_argument('--cub-root', default=hyperparams.get_path(),
                         help='Path to dataset folder')
@@ -316,7 +316,7 @@ class PreTrainer():
         since = time.time()
         best_accuracy = 0
         if self.args.distance_sampling:
-            feature_dict = defaultdict()
+            feature_dict = dict()
         scores = []
         for e in range(1, self.args.nb_epochs + 1):
             if not self.args.test:
@@ -336,7 +336,7 @@ class PreTrainer():
                 i = 0
                 if self.args.distance_sampling:
                     dl_tr.feature_dict = feature_dict
-                    feature_dict = defaultdict()
+                    feature_dict = dict()
                 for x, Y in dl_tr:
                     Y = Y.to(self.device)
                     opt.zero_grad()
@@ -344,9 +344,12 @@ class PreTrainer():
                     probs, fc7 = model(x.to(self.device))
                     if self.args.distance_sampling:
                         for y, f in zip(Y, fc7):
-                            feature_dict[y.data.item()].append(f)
+                            if y.data.item() in feature_dict.keys():
+                                feature_dict[y.data.item()].append(f)
+                            else:
+                                feature_dict[y.data.item()] = [f]
                     loss = criterion2(probs, Y)
-
+                    
                     if not self.args.pretraining:
                         labs, L, U = data_utility.get_labeled_and_unlabeled_points(
                             labels=Y,
@@ -374,7 +377,7 @@ class PreTrainer():
                         denom += Y.shape[0]
                         running_corrects += torch.sum(
                             preds == Y.data).cpu().data.item()
-
+                    
                     i += 1
     
                     # check possible net divergence
@@ -537,15 +540,25 @@ def main():
 
     #distance sampler
     lab_smooth = [0]
-    trans = ['appearance']
+    trans = ['bot']
     neck = [0]
     last_stride = [0]
     test_option = ['norm']
     center = [0]
     bn_GL = [0]
     distance_sampling = [1]
-    
-    print("EXPERIMENT: AFFINE BACK TO ONE DATA AUGMENTATION")
+
+    #best we can
+    #lab_smooth = [1, 1, 1]
+    #trans = ['bot', 'bot', 'bot']
+    #neck = [1, 0, 1]
+    #last_stride = [0, 0, 0]
+    #test_option = ['norm', 'plain', 'neck']
+    #bn_GL = [0, 0, 1]
+    #center = [0, 0, 0]
+    #distance_sampling = [0, 0, 0]
+
+    print("EXPERIMENT: Distance Sampling")
 
     # Random search
     for i in range(num_iter):
@@ -557,8 +570,8 @@ def main():
         trainer.args.bn_GL = bn_GL[i]
         trainer.args.center = center[i]
         trainer.args.use_pretrained = 0 #use_pretrained[i]
-        trainer.args.distance_sampling = 1 #distance_sampling[i]
-        print(trainer.args)
+        trainer.args.distance_sampling = distance_sampling[i]
+
         if args.pretraining:
             mode = 'finetuned_'
         else:
