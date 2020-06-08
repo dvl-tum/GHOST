@@ -293,16 +293,38 @@ class PreTrainer():
 
         # add bag of trick transformation
         if not self.args.pretraining:
-            dl_tr, dl_ev, query, gallery = data_utility.create_loaders(
-                data_root=self.args.cub_root,
-                num_workers=self.args.nb_workers,
-                num_classes_iter=config['num_classes_iter'],
-                num_elements_class=config['num_elements_class'],
-                size_batch=config['num_classes_iter'] * config[
-                    'num_elements_class'],
-                both=self.args.both,
-                trans=self.args.trans,
-                distance_sampler=self.args.distance_sampling)
+            if self.args.distance_sampling:
+                dl_tr2, dl_ev2, query2, gallery2 = data_utility.create_loaders(
+                    data_root=self.args.cub_root,
+                    num_workers=self.args.nb_workers,
+                    num_classes_iter=config['num_classes_iter'],
+                    num_elements_class=config['num_elements_class'],
+                    size_batch=config['num_classes_iter'] * config[
+                        'num_elements_class'],
+                    both=self.args.both,
+                    trans=self.args.trans,
+                    distance_sampler=self.args.distance_sampling)
+                dl_tr1, dl_ev1, query1, gallery1 = data_utility.create_loaders(
+                    data_root=self.args.cub_root,
+                    num_workers=self.args.nb_workers,
+                    num_classes_iter=config['num_classes_iter'],
+                    num_elements_class=config['num_elements_class'],
+                    size_batch=config['num_classes_iter'] * config[
+                        'num_elements_class'],
+                    both=self.args.both,
+                    trans=self.args.trans,
+                    distance_sampler=0)
+            else:
+                dl_tr, dl_ev, query, gallery = data_utility.create_loaders(
+                    data_root=self.args.cub_root,
+                    num_workers=self.args.nb_workers,
+                    num_classes_iter=config['num_classes_iter'],
+                    num_elements_class=config['num_elements_class'],
+                    size_batch=config['num_classes_iter'] * config[
+                        'num_elements_class'],
+                    both=self.args.both,
+                    trans=self.args.trans,
+                    distance_sampler=0)
         else:
             running_corrects = 0
             denom = 0
@@ -337,6 +359,20 @@ class PreTrainer():
                 if self.args.distance_sampling:
                     dl_tr.feature_dict = feature_dict
                     feature_dict = defaultdict()
+
+                # after 30 epochs use distance
+                if self.args.distance_sampling:
+                    if e > 30:
+                        dl_tr = dl_tr2
+                        dl_ev = dl_ev2
+                        gallery = gallery2
+                        query = query2
+                    else:
+                        dl_tr = dl_tr1
+                        dl_ev = dl_ev1
+                        gallery = gallery1
+                        query = query1
+
                 for x, Y in dl_tr:
                     Y = Y.to(self.device)
                     opt.zero_grad()
