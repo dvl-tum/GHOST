@@ -149,9 +149,9 @@ if __name__ == '__main__':
              '../../datasets/cuhk03/detected']
 
     for root in roots:
-        dl_tr, dl_ev, q, g = create_loaders(data_root=root, size_batch=4,
+        dl_tr, dl_ev, q, g = create_loaders(data_root=root, size_batch=20,
                                             pretraining=False,
-                                            num_workers=2, num_classes_iter=2,
+                                            num_workers=2, num_classes_iter=10,
                                             num_elements_class=2,
                                             both=0, trans='appearance',
                                             distance_sampler=1)
