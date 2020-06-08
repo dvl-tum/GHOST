@@ -302,7 +302,7 @@ class PreTrainer():
                     'num_elements_class'],
                 both=self.args.both,
                 trans=self.args.trans,
-                distance_sampler=self.distance_sampling)
+                distance_sampler=self.args.distance_sampling)
         else:
             running_corrects = 0
             denom = 0
@@ -544,6 +544,8 @@ def main():
     center = [0]
     bn_GL = [0]
     distance_sampling = [1]
+    
+    print("EXPERIMENT: AFFINE BACK TO ONE DATA AUGMENTATION")
 
     # Random search
     for i in range(num_iter):
@@ -555,8 +557,8 @@ def main():
         trainer.args.bn_GL = bn_GL[i]
         trainer.args.center = center[i]
         trainer.args.use_pretrained = 0 #use_pretrained[i]
-        trainer.distance_sampling = 1 #distance_sampling[i]
-
+        trainer.args.distance_sampling = 1 #distance_sampling[i]
+        print(trainer.args)
         if args.pretraining:
             mode = 'finetuned_'
         else:
@@ -608,9 +610,10 @@ def main():
 
         hypers = ', '.join([k + ': ' + str(v) for k, v in config.items()])
         logger.info('Used Parameters: ' + hypers)
+        print('Used Parameters: ' + hypers)
 
         logger.info('Best Recall: {}'.format(best_accuracy))
-
+        print('Best Recall: {}'.format(best_accuracy))
         if best_accuracy > best_recall and not args.test:
             os.rename(os.path.join(save_folder_nets,
                 args.dataset_name + '_intermediate_model_' + str(
