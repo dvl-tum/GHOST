@@ -302,7 +302,7 @@ class PreTrainer():
                     'num_elements_class'],
                 both=self.args.both,
                 trans=self.args.trans,
-                distance_sampler=self.args.distanca_sampling)
+                distance_sampler=self.distance_sampling)
         else:
             running_corrects = 0
             denom = 0
@@ -315,7 +315,7 @@ class PreTrainer():
 
         since = time.time()
         best_accuracy = 0
-        if self.args.distanca_sampling:
+        if self.args.distance_sampling:
             feature_dict = defaultdict()
         scores = []
         for e in range(1, self.args.nb_epochs + 1):
@@ -334,7 +334,7 @@ class PreTrainer():
                         g['lr'] = config['lr'] / 10.
 
                 i = 0
-                if self.args.distanca_sampling:
+                if self.args.distance_sampling:
                     dl_tr.feature_dict = feature_dict
                     feature_dict = defaultdict()
                 for x, Y in dl_tr:
@@ -342,7 +342,7 @@ class PreTrainer():
                     opt.zero_grad()
 
                     probs, fc7 = model(x.to(self.device))
-                    if self.args.distanca_sampling:
+                    if self.args.distance_sampling:
                         for y, f in zip(Y, fc7):
                             feature_dict[y.data.item()].append(f)
                     loss = criterion2(probs, Y)
@@ -414,6 +414,11 @@ class PreTrainer():
                                     .format(k, top['allshots'][k - 1],
                                             top['cuhk03'][k - 1],
                                             top['Market'][k - 1]))
+                        print('  top-{:<4}{:12.1%}{:12.1%}{:12.1%}'
+                                    .format(k, top['allshots'][k - 1],
+                                            top['cuhk03'][k - 1],
+                                            top['Market'][k - 1]))
+
 
                     scores.append((mAP,
                                    [top[self.args.dataset_short][k - 1] for k
@@ -501,7 +506,7 @@ def main():
     if args.hyper_search:
         num_iter = 30
     else:
-        num_iter = 6
+        num_iter = 1
     
     # NORM VS PLAIN
     lab_smooth = [1, 1, 1, 1, 0, 0, 1, 1, 1, 1, 1, 1, 0, 0, 1, 1]
@@ -530,6 +535,16 @@ def main():
     center = [0, 0, 0, 0, 0, 0]
     bn_GL = [0, 0, 0, 0, 1, 1]
 
+    #distance sampler
+    lab_smooth = [0]
+    trans = ['appearance']
+    neck = [0]
+    last_stride = [0]
+    test_option = ['norm']
+    center = [0]
+    bn_GL = [0]
+    distance_sampling = [1]
+
     # Random search
     for i in range(num_iter):
         trainer.args.lab_smooth = lab_smooth[i]
@@ -540,6 +555,7 @@ def main():
         trainer.args.bn_GL = bn_GL[i]
         trainer.args.center = center[i]
         trainer.args.use_pretrained = 0 #use_pretrained[i]
+        trainer.distance_sampling = 1 #distance_sampling[i]
 
         if args.pretraining:
             mode = 'finetuned_'
