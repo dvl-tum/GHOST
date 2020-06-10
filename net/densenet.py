@@ -58,6 +58,29 @@ class _Transition(nn.Sequential):
         self.add_module('pool', nn.AvgPool2d(kernel_size=2, stride=2))
 
 
+def weights_init_kaiming(m):
+    classname = m.__class__.__name__
+    if classname.find('Linear') != -1:
+        nn.init.kaiming_normal_(m.weight, a=0, mode='fan_out')
+        nn.init.constant_(m.bias, 0.0)
+    elif classname.find('Conv') != -1:
+        nn.init.kaiming_normal_(m.weight, a=0, mode='fan_in')
+        if m.bias is not None:
+            nn.init.constant_(m.bias, 0.0)
+    elif classname.find('BatchNorm') != -1:
+        if m.affine:
+            nn.init.constant_(m.weight, 1.0)
+            nn.init.constant_(m.bias, 0.0)
+
+
+def weights_init_classifier(m):
+    classname = m.__class__.__name__
+    if classname.find('Linear') != -1:
+        nn.init.normal_(m.weight, std=0.001)
+        if m.bias:
+            nn.init.constant_(m.bias, 0.0)
+
+
 class DenseNet(nn.Module):
     r"""Densenet-BC model class, based on
     `"Densely Connected Convolutional Networks" <https://arxiv.org/pdf/1608.06993.pdf>`_
@@ -103,8 +126,19 @@ class DenseNet(nn.Module):
         # Final batch norm
         self.features.add_module('norm5', nn.BatchNorm2d(num_features))
 
+        if self.neck:
+            self.bottleneck = nn.BatchNorm1d(num_features)
+            self.bottleneck.bias.requires_grad_(False)  # no shift
+            self.classifier = nn.Linear(num_features, num_classes,
+                                        bias=False)
+
+            self.bottleneck.apply(weights_init_kaiming)
+            self.classifier.apply(weights_init_classifier)
+        else:
+            self.classifier = nn.Linear(num_features, num_classes)
+
         # Linear layer
-        self.classifier = nn.Linear(num_features, num_classes)
+        # self.classifier = nn.Linear(num_features, num_classes)
 
         # Official init from torch repo.
         for m in self.modules():
