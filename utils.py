@@ -2,6 +2,8 @@ import evaluation
 import torch
 import net
 import data_utility
+from torch import nn
+from torch.autograd import Variable
 
 
 def predict_batchwise_reid(model, dataloader, test_option='norm'):
@@ -112,8 +114,48 @@ class CenterLoss(torch.nn.Module):
         return loss
 
 
-if __name__ == '__main__':
+class TripletLoss(nn.Module):
+    def __init__(self, margin=0):
+        super(TripletLoss, self).__init__()
+        self.margin = margin
+        self.ranking_loss = nn.MarginRankingLoss(margin=margin)
 
+    def forward(self, inputs, targets):
+        # Compute pairwise distance
+        m, n = inputs.size(0), inputs.size(0)
+        x = inputs.view(m, -1)
+        y = inputs.view(n, -1)
+        dist = torch.pow(x, 2).sum(dim=1, keepdim=True).expand(m, n) + \
+               torch.pow(y, 2).sum(dim=1, keepdim=True).expand(n, m).t()
+
+        dist.addmm_(1, -2, x, y.t())
+
+        mask = targets.type(torch.ByteTensor).cuda()
+
+        # for numerical stability
+        # For each anchor, find the hardest positive and negative
+        #mask = targets.expand(n, n).eq(targets.expand(n, n).t())
+        dist_ap, dist_an = [], []
+        for i in range(n):
+            mask = targets == targets[i]
+            dist_ap.append(dist[i][mask].max()) #hp
+            dist_an.append(dist[i][mask == 0].min()) #hn
+        dist_ap = torch.cat(dist_ap)
+        dist_an = torch.cat(dist_an)
+        # Compute ranking hinge loss
+        y = dist_an.data.new()
+
+        y.resize_as_(dist_an.data)
+        y.fill_(1)
+        y = Variable(y)
+        loss = self.ranking_loss(dist_an, dist_ap, y)
+        prec = (dist_an.data > dist_ap.data).sum() * 1. / y.size(0)
+        return loss, prec
+
+
+if __name__ == '__main__':
+    # test create loader and load net
+    
     model = net.load_net(dataset='cuhk03',
                          net_type='resnet50',
                          nb_classes=751,
