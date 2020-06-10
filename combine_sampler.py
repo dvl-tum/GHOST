@@ -82,6 +82,9 @@ class DistanceSampler(Sampler):
                     continue
                 x = torch.cat(feat_vect1, 0)
                 y = torch.cat(feat_vect2, 0)
+                #print(ind1, ind2)
+                #print(i, j)
+                #print(x, y)
                 m, n = x.size(0), y.size(0)
                 x = x.view(m, -1)
                 y = y.view(n, -1)
@@ -90,13 +93,16 @@ class DistanceSampler(Sampler):
                        torch.pow(y, 2).sum(dim=1, keepdim=True).expand(n,
                                                                        m).t()
                 dist.addmm_(1, -2, x, y.t())
+                pritn(dist, dist.shape, m*n)
                 dist_mat[i, j] = torch.sum(dist).data.item() / (m*n)
+                #print(dist_mat[i, j])
                 j += 1
             i += 1
-
+        #print(dist_mat)
         self.inter_class_dist = dist_mat
 
     def __iter__(self):
+        print('new epoch')
         self.get_inter_class_distances()
         # shuffle elements inside each class
         l_inds = {ind: random.sample(sam, len(sam)) for ind, sam in self.samples.items()}
@@ -107,7 +113,7 @@ class DistanceSampler(Sampler):
                 l_inds[c] += [random.choice(choose)]
         # get clostest classes for each class
         indices = np.argsort(self.inter_class_dist, axis=1)
-
+        #print(indices)
         batches = list()
         for cl in range(indices.shape[0]):
             possible_classes = indices[cl, :].tolist()

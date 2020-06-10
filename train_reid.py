@@ -356,13 +356,10 @@ class PreTrainer():
                         g['lr'] = config['lr'] / 10.
 
                 i = 0
-                if self.args.distance_sampling:
-                    dl_tr.feature_dict = feature_dict
-                    feature_dict = dict()
 
                 # after 30 epochs use distance
                 if self.args.distance_sampling:
-                    if e > 30:
+                    if e > 15:
                         dl_tr = dl_tr2
                         dl_ev = dl_ev2
                         gallery = gallery2
@@ -372,6 +369,8 @@ class PreTrainer():
                         dl_ev = dl_ev1
                         gallery = gallery1
                         query = query1
+                    dl_tr.feature_dict = feature_dict
+                    feature_dict = dict()
 
                 for x, Y in dl_tr:
                     Y = Y.to(self.device)
@@ -385,7 +384,7 @@ class PreTrainer():
                             else:
                                 feature_dict[y.data.item()] = [f]
                     loss = criterion2(probs, Y)
-                    
+
                     if not self.args.pretraining:
                         labs, L, U = data_utility.get_labeled_and_unlabeled_points(
                             labels=Y,
@@ -413,7 +412,7 @@ class PreTrainer():
                         denom += Y.shape[0]
                         running_corrects += torch.sum(
                             preds == Y.data).cpu().data.item()
-                    
+
                     i += 1
     
                     # check possible net divergence
@@ -576,25 +575,36 @@ def main():
 
     #distance sampler
     lab_smooth = [0]
-    trans = ['bot']
+    trans = ['appearance']
     neck = [0]
     last_stride = [0]
     test_option = ['norm']
     center = [0]
     bn_GL = [0]
     distance_sampling = [1]
-
+    '''
     #best we can
-    #lab_smooth = [1, 1, 1]
-    #trans = ['bot', 'bot', 'bot']
-    #neck = [1, 0, 1]
-    #last_stride = [0, 0, 0]
-    #test_option = ['norm', 'plain', 'neck']
-    #bn_GL = [0, 0, 1]
-    #center = [0, 0, 0]
-    #distance_sampling = [0, 0, 0]
+    lab_smooth = [1, 1, 1]
+    trans = ['bot', 'bot', 'bot']
+    neck = [1, 0, 1]
+    last_stride = [0, 0, 0]
+    test_option = ['norm', 'plain', 'neck']
+    bn_GL = [0, 0, 1]
+    center = [0, 0, 0]
+    distance_sampling = [1, 1, 1]
+    
+    # nothing at all
+    lab_smooth =[0]
+    trans = ['norm']
+    neck = [0]
+    last_stride = [0]
+    test_option = ['norm']
+    bn_GL = [0]
+    center = [0]
+    distance_sampling = [0]
+    '''
 
-    print("EXPERIMENT: Distance Sampling")
+    print("EXPERIMENT: DIST 15 APP NO AFF")
 
     # Random search
     for i in range(num_iter):
