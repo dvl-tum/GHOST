@@ -232,6 +232,12 @@ def init_args():
                         help='If hyper parameter search is done or not')
     parser.add_argument('--distance_sampling', default=0, type=int,
                         help='if distance sampling should be applied')
+    parser.add_argument('--triplet_loss', default=0, type=int,
+                        help='if triplet loss should be applied')
+    parser.add_argument('--scaling_center', default=1, type=1,
+                        help='how center loss should be scaled')
+    parser.add_argument('--scaling_triplet', default=1, type=1,
+                        help='how triplet loss should be scaled')
 
 
     return parser.parse_args()
@@ -286,6 +292,8 @@ class PreTrainer():
         # add center loss
         if self.args.center:
             criterion3 = utils.CenterLoss(num_classes=self.args.nb_classes)
+        if self.args.triplet_loss:
+            criterion4 = utils.TripletLoss(margin=0.5)
 
         # do training in mixed precision
         if self.args.is_apex:
@@ -407,7 +415,9 @@ class PreTrainer():
                         loss = self.args.scaling_loss * loss1 + loss
                         # add center loss
                         if self.args.center:
-                            loss += criterion3(fc7, Y)
+                            loss += self.args.scaling_center * criterion3(fc7, Y)
+                        if self.args.triplet_loss:
+                            loss += self.args.scaling_triplet * cirterion4(fc7, Y)
     
                     else:
                         _, preds = torch.max(probs, 1)
