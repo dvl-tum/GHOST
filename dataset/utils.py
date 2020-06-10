@@ -222,19 +222,6 @@ def appearance_proportional_augmentation1(sz_crop=[384, 128],
                     # crop 0-10 percent on each side
                     sometimes(iaa.Crop(percent=(0, 0.1))),
 
-                    # Apply affine transformations to some of the images
-                    sometimes(iaa.OneOf([
-                        iaa.Affine(
-                            scale={"x": (0.8, 1.2), "y": (0.8, 1.2)},
-                            translate_percent={"x": (-0.1, 0.1),
-                                               "y": (-0.1, 0.1)},
-                            rotate=(-15, 15),
-                            shear=(-5, 5),
-                            order=[0, 1],
-                            cval=0,
-                            mode='constant')])
-                        ),
-
                     sometimes(iaa.SomeOf((0, 1),
                                [
                                    iaa.AdditiveGaussianNoise(
