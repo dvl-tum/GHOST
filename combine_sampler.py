@@ -362,3 +362,12 @@ class CombineSamplerSuperclass2(Sampler):
 
     def __len__(self):
         return len(self.flat_list)
+
+
+if __name__ == '__main__':
+
+    feature_dict = {1008: [torch.tensor([0.3376, 0.4358, 1.0508, 0.5083, 0.4756, 0.2441]),
+                       torch.tensor([0.3079, 0.9692, 0.4834, 0.3521, 0.7603, 0.5337])],
+                654: [torch.tensor([0.8047, 0.4968, 0.3809, 0.8354, 0.5464, 0.1128]),
+                      torch.tensor([0.4136, 0.4592, 0.8535, 0.4343, 0.8022, 0.5010])],
+                890: [torch.tensor([0.4578, 1.0303, 0.5601, 0.3042, 0.0160, 0.1713])]}
