@@ -359,7 +359,7 @@ class PreTrainer():
 
                 # after 30 epochs use distance
                 if self.args.distance_sampling:
-                    if e > 15:
+                    if e > 1:
                         dl_tr = dl_tr2
                         dl_ev = dl_ev2
                         gallery = gallery2
@@ -369,7 +369,8 @@ class PreTrainer():
                         dl_ev = dl_ev1
                         gallery = gallery1
                         query = query1
-                    dl_tr.feature_dict = feature_dict
+                    #print(feature_dict)
+                    dl_tr.sampler.feature_dict = feature_dict
                     feature_dict = dict()
 
                 for x, Y in dl_tr:
@@ -383,6 +384,7 @@ class PreTrainer():
                                 feature_dict[y.data.item()].append(f)
                             else:
                                 feature_dict[y.data.item()] = [f]
+                    #print(feature_dict)
                     loss = criterion2(probs, Y)
 
                     if not self.args.pretraining:
@@ -604,7 +606,7 @@ def main():
     distance_sampling = [0]
     '''
 
-    print("EXPERIMENT: DIST 15 APP NO AFF")
+    print("EXPERIMENT: DIST 1 APP NO AFF PRINT ALL")
 
     # Random search
     for i in range(num_iter):

@@ -74,17 +74,17 @@ class DistanceSampler(Sampler):
         dist_mat = np.zeros([len(self.feature_dict), len(self.feature_dict)])
         i = 0
         for ind1, feat_vect1 in self.feature_dict.items():
+            print(i)
             j = 0
             for ind2, feat_vect2 in self.feature_dict.items():
                 if i > j:
                     dist_mat[i, j] = dist_mat[j, i]
                     j += 1
                     continue
-                x = torch.cat(feat_vect1, 0)
-                y = torch.cat(feat_vect2, 0)
+                x = torch.stack(feat_vect1, 0)
+                y = torch.stack(feat_vect2, 0)
                 #print(ind1, ind2)
                 #print(i, j)
-                #print(x, y)
                 m, n = x.size(0), y.size(0)
                 x = x.view(m, -1)
                 y = y.view(n, -1)
@@ -93,12 +93,12 @@ class DistanceSampler(Sampler):
                        torch.pow(y, 2).sum(dim=1, keepdim=True).expand(n,
                                                                        m).t()
                 dist.addmm_(1, -2, x, y.t())
-                pritn(dist, dist.shape, m*n)
+                #pritn(dist, dist.shape, m*n)
                 dist_mat[i, j] = torch.sum(dist).data.item() / (m*n)
                 #print(dist_mat[i, j])
                 j += 1
             i += 1
-        #print(dist_mat)
+        print(dist_mat)
         self.inter_class_dist = dist_mat
 
     def __iter__(self):
@@ -113,7 +113,69 @@ class DistanceSampler(Sampler):
                 l_inds[c] += [random.choice(choose)]
         # get clostest classes for each class
         indices = np.argsort(self.inter_class_dist, axis=1)
-        #print(indices)
+        print(indices)
+        batches = list()
+        for cl in range(indices.shape[0]):
+            possible_classes = indices[cl, :].tolist()
+            possible_classes.remove(possible_classes.index(cl))
+            cls = possible_classes[:self.num_classes - 1]
+            cls.append(cl)
+            batch = [s for c in cls for s in random.sample(l_inds[c], self.num_samples)]
+            batches.append(batch)
+
+        random.shuffle(batches)
+        self.flat_list = [s for batch in batches for s in batch]
+        return (iter(self.flat_list))
+
+    def __len__(self):
+        return len(self.flat_list)
+
+
+class DistanceSamplerMean(Sampler):
+    def __init__(self, num_classes, num_samples, samples):
+        self.num_classes = num_classes
+        self.num_samples = num_samples
+        self.samples = samples
+        self.max = -1
+        self.feature_dict = dict()
+
+        for inds, samp in samples.items():
+            if len(samp) > self.max:
+                self.max = len(samp)
+        self.inter_class_dist = np.ones([len(samples), len(samples)])
+
+    def get_inter_class_distances(self):
+        if len(self.feature_dict) == 0:
+            return
+        # generate distance mat for all classes as in Hierachrical Triplet Loss
+        features_mean = [torch.mean(torch.stack(self.feature_dict[k], 0), 0) for
+                             k in sorted(self.feature_dict.keys())]
+        x = y = torch.stack(features_mean, 0)
+        m, n = x.size(0), y.size(0)
+        x = x.view(m, -1)
+        y = y.view(n, -1)
+        # use x^TX + y^Ty - 2x^Ty
+        dist = torch.pow(x, 2).sum(dim=1, keepdim=True).expand(m, n) + \
+               torch.pow(y, 2).sum(dim=1, keepdim=True).expand(n,
+                                                               m).t()
+        dist.addmm_(1, -2, x, y.t())
+
+        self.inter_class_dist = dist.cpu().data.numpy()
+
+    def __iter__(self):
+        print("distmean")
+        self.get_inter_class_distances()
+        # shuffle elements inside each class
+        l_inds = {ind: random.sample(sam, len(sam)) for ind, sam in self.samples.items()}
+
+        for c, inds in l_inds.items():
+            choose = copy.deepcopy(inds)
+            while len(inds) < self.max:
+                l_inds[c] += [random.choice(choose)]
+        # get clostest classes for each class
+        print(self.inter_class_dist)
+        indices = np.argsort(self.inter_class_dist, axis=1)
+        print(indices)
         batches = list()
         for cl in range(indices.shape[0]):
             possible_classes = indices[cl, :].tolist()
