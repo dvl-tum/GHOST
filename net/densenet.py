@@ -100,6 +100,8 @@ class DenseNet(nn.Module):
                  neck=0, bn_GL=0):
 
         super(DenseNet, self).__init__()
+        self.neck = neck
+        self.bn_GL = bn_GL
 
         # First convolution
         self.features = nn.Sequential(OrderedDict([
@@ -151,12 +153,32 @@ class DenseNet(nn.Module):
             elif isinstance(m, nn.Linear):
                 nn.init.constant_(m.bias, 0)
 
-    def forward(self, x):
+    def forward(self, x, test_option):
         features = self.features(x)
         out = F.relu(features, inplace=True)
         fc7 = F.adaptive_avg_pool2d(out, (1, 1)).view(features.size(0), -1)
-        out = self.classifier(fc7)
-        return out, fc7
+        #out = self.classifier(fc7)
+        #return out, fc7
+
+        if not self.neck:
+            x = self.classifier(fc7)
+            if test_option == 'norm': # norm always enabled for training
+                return x, fc7 # just return original GL
+            elif test_option == 'plain':
+                feat = F.normalize(fc7, p=2, dim=1)
+                return x, feat # return normalized features instead of fc7
+
+        elif self.neck:
+            feat = self.bottleneck(fc7)  # normalize for angular softmax
+            # TODO: Check for not neck for validation
+            x = self.classifier(feat)
+            if test_option == 'norm': # test option norm always enabled for training
+                if self.bn_GL: # use features after bn layer for GroupLoss
+                    return x, feat
+                return x, fc7 # use fc7 for GroupLoss
+            elif test_option == 'neck':
+                return x, feat # basically same as self.bn_GL, but to enable different settings in training and testing both are required
+
 
 
 def _load_state_dict(model, model_url, progress):
