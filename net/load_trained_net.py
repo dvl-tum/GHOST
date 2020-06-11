@@ -59,7 +59,7 @@ def load_net(dataset, net_type, nb_classes, embed=False, sz_embedding=512, pretr
             model.load_state_dict(torch.load('net/finetuned_' + dataset + '_' + net_type + '.pth'))
 
     elif net_type == 'densenet121':
-        model = net.densenet121(pretrained=True)
+        model = net.densenet121(pretrained=True, last_stride=last_stride, neck=neck, bn_GL=bn_GL)
 
         if neck:
             model.bottleneck = nn.BatchNorm1d(1024)
@@ -75,7 +75,7 @@ def load_net(dataset, net_type, nb_classes, embed=False, sz_embedding=512, pretr
         # model.load_state_dict(torch.load('sop_resnet_new/Stanford_paramRes_16bit_densenet121_0.0002_5.2724883734490575e-12_10_6_2.pth'))
 
     elif net_type == 'densenet161':
-        model = net.densenet161(pretrained=True)
+        model = net.densenet161(pretrained=True, last_stride=last_stride, neck=neck, bn_GL=bn_GL)
         if neck:
             model.bottleneck = nn.BatchNorm1d(2208)
             model.bottleneck.bias.requires_grad_(False)  # no shift
@@ -89,7 +89,7 @@ def load_net(dataset, net_type, nb_classes, embed=False, sz_embedding=512, pretr
         # model.load_state_dict(torch.load('sop_resnet_new/Stanford_paramRes_16bit_densenet161_0.0002_5.2724883734490575e-12_10_6_2.pth'))
 
     elif net_type == 'densenet169':
-        model = net.densenet169(pretrained=True)
+        model = net.densenet169(pretrained=True, last_stride=last_stride, neck=neck, bn_GL=bn_GL)
         if neck:
             model.bottleneck = nn.BatchNorm1d(1664)
             model.bottleneck.bias.requires_grad_(False)  # no shift
@@ -103,7 +103,7 @@ def load_net(dataset, net_type, nb_classes, embed=False, sz_embedding=512, pretr
         # model.load_state_dict(torch.load('sop_resnet_new/Stanford_paramRes_16bit_densenet169_0.0002_5.2724883734490575e-12_10_6_2.pth'))
 
     elif net_type == 'densenet201':
-        model = net.densenet201(pretrained=True)
+        model = net.densenet201(pretrained=True, last_stride=last_stride, neck=neck, bn_GL=bn_GL)
         if neck:
             model.bottleneck = nn.BatchNorm1d(1920)
             model.bottleneck.bias.requires_grad_(False)  # no shift
