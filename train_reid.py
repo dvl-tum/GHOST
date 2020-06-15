@@ -234,11 +234,12 @@ def init_args():
                         help='if distance sampling should be applied')
     parser.add_argument('--triplet_loss', default=0, type=int,
                         help='if triplet loss should be applied')
-    parser.add_argument('--scaling_center', default=1, type=1,
+    parser.add_argument('--scaling_center', default=1, type=int,
                         help='how center loss should be scaled')
-    parser.add_argument('--scaling_triplet', default=1, type=1,
+    parser.add_argument('--scaling_triplet', default=1, type=float,
                         help='how triplet loss should be scaled')
-
+    parser.add_argument('--lab_smooth_GL', default=0, type=float,
+                        help='If label smoothing should be applied to GL')
 
     return parser.parse_args()
 
@@ -281,6 +282,9 @@ class PreTrainer():
             [{'params': list(set(model.parameters())), 'lr': config['lr']}],
             weight_decay=config['weight_decay'])
         criterion = nn.NLLLoss().to(self.device)
+
+        if self.args.lab_smooth_GL:
+            smoother = utils.LabelSmoothGL(num_classes=self.args.nb_classes)
 
         # add label smoothing
         if self.args.lab_smooth:
@@ -411,13 +415,16 @@ class PreTrainer():
                         probs_for_gtg = torch.log(probs_for_gtg + 1e-12)
 
                         # compute the losses
-                        loss1 = criterion(probs_for_gtg, Y)
+                        if self.args.lab_smooth_GL:
+                            loss1 = smoother(probs_for_gtg, Y)
+                        else:
+                            loss1 = criterion(probs_for_gtg, Y)
                         loss = self.args.scaling_loss * loss1 + loss
                         # add center loss
                         if self.args.center:
                             loss += self.args.scaling_center * criterion3(fc7, Y)
                         if self.args.triplet_loss:
-                            loss += self.args.scaling_triplet * cirterion4(fc7, Y)
+                            loss += self.args.scaling_triplet * criterion4(fc7, Y)
     
                     else:
                         _, preds = torch.max(probs, 1)
