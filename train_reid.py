@@ -30,6 +30,9 @@ fh = logging.FileHandler('train_reid.txt')
 fh.setLevel(logging.DEBUG)
 fh.setFormatter(formatter)
 
+logger.addHandler(ch)
+logger.addHandler(fh)
+
 warnings.filterwarnings("ignore")
 
 
@@ -234,9 +237,9 @@ def init_args():
                         help='if distance sampling should be applied')
     parser.add_argument('--triplet_loss', default=0, type=int,
                         help='if triplet loss should be applied')
-    parser.add_argument('--scaling_center', default=1, type=1,
+    parser.add_argument('--scaling_center', default=0.0005, type=float,
                         help='how center loss should be scaled')
-    parser.add_argument('--scaling_triplet', default=1, type=1,
+    parser.add_argument('--scaling_triplet', default=1, type=float,
                         help='how triplet loss should be scaled')
 
 
@@ -351,6 +354,7 @@ class PreTrainer():
         for e in range(1, self.args.nb_epochs + 1):
             if not self.args.test:
                 logger.info('Epoch {}/{}'.format(e, self.args.nb_epochs))
+                print('Epoch {}/{}'.format(e, self.args.nb_epochs))
                 if e == 31:
                     model.load_state_dict(torch.load(
                         os.path.join(self.save_folder_nets, file_name + '.pth')))
@@ -587,24 +591,25 @@ def main():
 
     #distance sampler
     lab_smooth = [0]
-    trans = ['appearance']
+    trans = ['norm']
     neck = [0]
     last_stride = [0]
     test_option = ['norm']
     center = [0]
     bn_GL = [0]
     distance_sampling = [1]
-    '''
+    
     #best we can
     lab_smooth = [1, 1, 1]
-    trans = ['bot', 'bot', 'bot']
-    neck = [1, 0, 1]
+    trans = ['appearance', 'bot', 'bot']
+    neck = [1, 1, 0]
     last_stride = [0, 0, 0]
-    test_option = ['norm', 'plain', 'neck']
-    bn_GL = [0, 0, 1]
+    test_option = ['neck', 'norm', 'plain']
+    bn_GL = [1, 0, 0]
     center = [0, 0, 0]
-    distance_sampling = [1, 1, 1]
+    distance_sampling = [0, 0, 0]
     
+    '''
     # nothing at all
     lab_smooth =[0]
     trans = ['norm']
@@ -616,8 +621,9 @@ def main():
     distance_sampling = [0]
     '''
 
-    print("EXPERIMENT: DIST 1 APP NO AFF PRINT ALL")
-
+    print("EXPERIMENT: Best we can APP")
+    '''densenet121, densenet161, densenet169, densenet201'''
+    trainer.args.net_type = 'densenet161'
     # Random search
     for i in range(num_iter):
         trainer.args.lab_smooth = lab_smooth[i]
