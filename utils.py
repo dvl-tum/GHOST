@@ -64,6 +64,37 @@ class CrossEntropyLabelSmooth(torch.nn.Module):
         return loss
 
 
+class LabelSmoothGL(torch.nn.Module):
+    """label smoothing regularizer.
+        Reference:
+        Szegedy et al. Rethinking the Inception Architecture for Computer Vision. CVPR 2016.
+        Equation: y = (1 - epsilon) * y + epsilon / K.
+        Args:
+            num_classes (int): number of classes.
+            epsilon (float): weight.
+        """
+
+    def __init__(self, num_classes, epsilon=0.1, use_gpu=True):
+        super(LabelSmoothGL, self).__init__()
+        self.num_classes = num_classes
+        self.epsilon = epsilon
+        self.use_gpu = use_gpu
+
+    def forward(self, log_probs, targets):
+        """
+        Args:
+            inputs: prediction matrix (after log Softmax softmax) with shape (batch_size, num_classes)
+            targets: ground truth labels with shape (num_classes)
+        """
+        targets = torch.zeros(log_probs.size()).scatter_(1, targets.unsqueeze(
+            1).data.cpu(), 1)
+        if self.use_gpu: targets = targets.cuda()
+        targets = (
+                              1 - self.epsilon) * targets + self.epsilon / self.num_classes
+        loss = (- targets * log_probs).mean(0).sum()
+        return loss
+
+
 class CenterLoss(torch.nn.Module):
     """Center loss.
     Reference:
@@ -155,7 +186,7 @@ class TripletLoss(nn.Module):
 
 if __name__ == '__main__':
     # test create loader and load net
-    
+
     model = net.load_net(dataset='cuhk03',
                          net_type='resnet50',
                          nb_classes=751,
