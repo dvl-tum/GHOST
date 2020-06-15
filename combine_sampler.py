@@ -55,6 +55,7 @@ class CombineSampler(Sampler):
 
 class DistanceSampler(Sampler):
     def __init__(self, num_classes, num_samples, samples):
+        print("USING DIST")
         self.num_classes = num_classes
         self.num_samples = num_samples
         self.samples = samples
@@ -74,7 +75,6 @@ class DistanceSampler(Sampler):
         dist_mat = np.zeros([len(self.feature_dict), len(self.feature_dict)])
         i = 0
         for ind1, feat_vect1 in self.feature_dict.items():
-            print(i)
             j = 0
             for ind2, feat_vect2 in self.feature_dict.items():
                 if i > j:
@@ -83,8 +83,6 @@ class DistanceSampler(Sampler):
                     continue
                 x = torch.stack(feat_vect1, 0)
                 y = torch.stack(feat_vect2, 0)
-                #print(ind1, ind2)
-                #print(i, j)
                 m, n = x.size(0), y.size(0)
                 x = x.view(m, -1)
                 y = y.view(n, -1)
@@ -93,16 +91,12 @@ class DistanceSampler(Sampler):
                        torch.pow(y, 2).sum(dim=1, keepdim=True).expand(n,
                                                                        m).t()
                 dist.addmm_(1, -2, x, y.t())
-                #pritn(dist, dist.shape, m*n)
                 dist_mat[i, j] = torch.sum(dist).data.item() / (m*n)
-                #print(dist_mat[i, j])
                 j += 1
             i += 1
-        print(dist_mat)
         self.inter_class_dist = dist_mat
 
     def __iter__(self):
-        print('new epoch')
         self.get_inter_class_distances()
         # shuffle elements inside each class
         l_inds = {ind: random.sample(sam, len(sam)) for ind, sam in self.samples.items()}
@@ -113,7 +107,6 @@ class DistanceSampler(Sampler):
                 l_inds[c] += [random.choice(choose)]
         # get clostest classes for each class
         indices = np.argsort(self.inter_class_dist, axis=1)
-        print(indices)
         batches = list()
         for cl in range(indices.shape[0]):
             possible_classes = indices[cl, :].tolist()
@@ -133,6 +126,7 @@ class DistanceSampler(Sampler):
 
 class DistanceSamplerMean(Sampler):
     def __init__(self, num_classes, num_samples, samples):
+        print("USING DIST MEAN")
         self.num_classes = num_classes
         self.num_samples = num_samples
         self.samples = samples
@@ -163,7 +157,6 @@ class DistanceSamplerMean(Sampler):
         self.inter_class_dist = dist.cpu().data.numpy()
 
     def __iter__(self):
-        print("distmean")
         self.get_inter_class_distances()
         # shuffle elements inside each class
         l_inds = {ind: random.sample(sam, len(sam)) for ind, sam in self.samples.items()}
@@ -173,9 +166,7 @@ class DistanceSamplerMean(Sampler):
             while len(inds) < self.max:
                 l_inds[c] += [random.choice(choose)]
         # get clostest classes for each class
-        print(self.inter_class_dist)
         indices = np.argsort(self.inter_class_dist, axis=1)
-        print(indices)
         batches = list()
         for cl in range(indices.shape[0]):
             possible_classes = indices[cl, :].tolist()

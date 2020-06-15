@@ -213,7 +213,30 @@ def appearance_proportional_augmentation1(sz_crop=[384, 128],
     sometimes = lambda aug: iaa.Sometimes(p, aug)
 
     normalize_transform = transforms.Normalize(mean=mean, std=std)
+    '''
+    sometimes(
+                        iaa.Affine(
+                            scale={"x": (0.8, 1.2), "y": (0.8, 1.2)},
+                            translate_percent={"x": (-0.1, 0.1),
+                                               "y": (-0.1, 0.1)},
+                            rotate=(-15, 15),
+                            shear=(-5, 5),
+                            order=[0, 1],
+                            cval=0,mode='constant')
+                        ),
 
+    sometimes(
+                        iaa.Affine(
+                            scale={"x": (0.9, 1.1), "y": (0.9, 1.1)},
+                            translate_percent={"x": (-0.1, 0.1),
+                                               "y": (-0.1, 0.1)},
+                            rotate=(-5, 5),
+                            shear=(-5, 5),
+                            order=[0, 1],
+                            cval=0,mode='constant')
+                        ),
+
+    '''
     if is_train:
         transform = transforms.Compose([
             lambda x: np.array(x),
