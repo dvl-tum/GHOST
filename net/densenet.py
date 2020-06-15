@@ -97,7 +97,7 @@ class DenseNet(nn.Module):
 
     def __init__(self, growth_rate=32, block_config=(6, 12, 24, 16),
                  num_init_features=64, bn_size=4, drop_rate=0, num_classes=1000,
-                 neck=0, bn_GL=0):
+                 neck=0, bn_GL=0, last_stride=0):
 
         super(DenseNet, self).__init__()
         self.neck = neck
@@ -129,16 +129,7 @@ class DenseNet(nn.Module):
         # Final batch norm
         self.features.add_module('norm5', nn.BatchNorm2d(num_features))
 
-        if self.neck:
-            self.bottleneck = nn.BatchNorm1d(num_features)
-            self.bottleneck.bias.requires_grad_(False)  # no shift
-            self.classifier = nn.Linear(num_features, num_classes,
-                                        bias=False)
-
-            self.bottleneck.apply(weights_init_kaiming)
-            self.classifier.apply(weights_init_classifier)
-        else:
-            self.classifier = nn.Linear(num_features, num_classes)
+        self.classifier = nn.Linear(num_features, num_classes)
 
         # Linear layer
         # self.classifier = nn.Linear(num_features, num_classes)
@@ -152,8 +143,19 @@ class DenseNet(nn.Module):
                 nn.init.constant_(m.bias, 0)
             elif isinstance(m, nn.Linear):
                 nn.init.constant_(m.bias, 0)
+        
+        if self.neck:
+            self.bottleneck = nn.BatchNorm1d(num_features)
+            self.bottleneck.bias.requires_grad_(False)  # no shift
+            self.classifier = nn.Linear(num_features, num_classes,
+                                        bias=False)
 
-    def forward(self, x, test_option):
+            self.bottleneck.apply(weights_init_kaiming)
+            self.classifier.apply(weights_init_classifier)
+
+
+
+    def forward(self, x, test_option='norm'):
         features = self.features(x)
         out = F.relu(features, inplace=True)
         fc7 = F.adaptive_avg_pool2d(out, (1, 1)).view(features.size(0), -1)
@@ -181,7 +183,7 @@ class DenseNet(nn.Module):
 
 
 
-def _load_state_dict(model, model_url, progress):
+def _load_state_dict(model, model_url, progress, neck):
     # '.'s are no longer allowed in module names, but previous _DenseLayer
     # has keys 'norm.1', 'relu.1', 'conv.1', 'norm.2', 'relu.2', 'conv.2'.
     # They are also in the checkpoints in model_urls. This pattern is used
@@ -196,14 +198,20 @@ def _load_state_dict(model, model_url, progress):
             new_key = res.group(1) + res.group(2)
             state_dict[new_key] = state_dict[key]
             del state_dict[key]
-    model.load_state_dict(state_dict)
+    if not neck:
+        model.load_state_dict(state_dict)
+    else:
+        for i in state_dict:
+            if 'classifier' in i:
+                continue
+            model.state_dict()[i].copy_(state_dict[i])
 
 
 def _densenet(arch, growth_rate, block_config, num_init_features, pretrained, progress,
-              **kwargs):
-    model = DenseNet(growth_rate, block_config, num_init_features, **kwargs)
+              last_stride=0, neck=0, bn_GL=0,**kwargs):
+    model = DenseNet(growth_rate, block_config, num_init_features, last_stride=last_stride, neck=neck, bn_GL=bn_GL, **kwargs)
     if pretrained:
-        _load_state_dict(model, model_urls[arch], progress)
+        _load_state_dict(model, model_urls[arch], progress, neck)
     return model
 
 

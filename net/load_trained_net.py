@@ -31,17 +31,16 @@ def load_net(dataset, net_type, nb_classes, embed=False, sz_embedding=512, pretr
 
     elif net_type == 'resnet50':
         model = net.resnet50(pretrained=True, last_stride=last_stride, neck=neck, bn_GL=bn_GL)
-        model.fc = nn.Linear(2048, nb_classes)
-        if neck: model.bottleneck = nn.BatchNorm1d(2048)
-
-        '''if neck:
+        #model.fc = nn.Linear(2048, nb_classes)
+        #if neck: model.bottleneck = nn.BatchNorm1d(2048)
+        if neck:
             model.bottleneck = nn.BatchNorm1d(2048)
             model.bottleneck.bias.requires_grad_(False)  # no shift
             model.fc = nn.Linear(2048, nb_classes, bias=False)
 
             model.bottleneck.apply(weights_init_kaiming)
             model.fc.apply(weights_init_classifier)
-        else: model.fc = nn.Linear(2048, nb_classes)'''
+        else: model.fc = nn.Linear(2048, nb_classes)
 
         if not pretraining and use_pretrained:
             model.load_state_dict(torch.load(load_path))
@@ -70,7 +69,7 @@ def load_net(dataset, net_type, nb_classes, embed=False, sz_embedding=512, pretr
             model.classifier.apply(weights_init_classifier)
         else: model.classifier = nn.Linear(1024, nb_classes)
 
-        if not pretraining:
+        if not pretraining and use_pretrained:
             model.load_state_dict(torch.load('net/finetuned_' + dataset + '_' + net_type + '.pth'))
         # model.load_state_dict(torch.load('sop_resnet_new/Stanford_paramRes_16bit_densenet121_0.0002_5.2724883734490575e-12_10_6_2.pth'))
 
@@ -84,7 +83,7 @@ def load_net(dataset, net_type, nb_classes, embed=False, sz_embedding=512, pretr
             model.bottleneck.apply(weights_init_kaiming)
             model.classifier.apply(weights_init_classifier)
         else: model.classifier = nn.Linear(2208, nb_classes)
-        if not pretraining:
+        if not pretraining and use_pretrained:
             model.load_state_dict(torch.load('net/finetuned_' + dataset + '_' + net_type + '.pth'))
         # model.load_state_dict(torch.load('sop_resnet_new/Stanford_paramRes_16bit_densenet161_0.0002_5.2724883734490575e-12_10_6_2.pth'))
 
@@ -98,7 +97,7 @@ def load_net(dataset, net_type, nb_classes, embed=False, sz_embedding=512, pretr
             model.bottleneck.apply(weights_init_kaiming)
             model.classifier.apply(weights_init_classifier)
         else: model.classifier = nn.Linear(1664, nb_classes)
-        if not pretraining:
+        if not pretraining and use_pretrained:
             model.load_state_dict(torch.load('net/finetuned_' + dataset + '_' + net_type + '.pth'))
         # model.load_state_dict(torch.load('sop_resnet_new/Stanford_paramRes_16bit_densenet169_0.0002_5.2724883734490575e-12_10_6_2.pth'))
 
@@ -112,7 +111,7 @@ def load_net(dataset, net_type, nb_classes, embed=False, sz_embedding=512, pretr
             model.bottleneck.apply(weights_init_kaiming)
             model.classifier.apply(weights_init_classifier)
         else: model.classifier = nn.Linear(1920, nb_classes)
-        if not pretraining:
+        if not pretraining and use_pretrained:
             model.load_state_dict(torch.load('net/finetuned_' + dataset + '_' + net_type + '.pth'))
         # model.load_state_dict(torch.load('sop_resnet_new/Stanford_paramRes_16bit_densenet201_0.0002_5.2724883734490575e-12_10_6_2.pth'))
     return model
