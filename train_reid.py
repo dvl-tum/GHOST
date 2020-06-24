@@ -299,6 +299,8 @@ class PreTrainer():
         # add center loss
         if self.args.center:
             criterion3 = utils.CenterLoss(num_classes=self.args.nb_classes)
+        
+        # add triplet loss
         if self.args.triplet_loss:
             criterion4 = utils.TripletLoss(margin=0.5)
 
@@ -306,8 +308,9 @@ class PreTrainer():
         if self.args.is_apex:
             model, opt = amp.initialize(model, opt, opt_level="O1")
 
-        # add bag of trick transformation
+        # is not pretraining
         if not self.args.pretraining:
+            # if distance sampling
             if self.args.distance_sampling:
                 dl_tr2, dl_ev2, query2, gallery2 = data_utility.create_loaders(
                     data_root=self.args.cub_root,
@@ -329,6 +332,7 @@ class PreTrainer():
                     both=self.args.both,
                     trans=self.args.trans,
                     distance_sampler=0)
+            # if testing or normal training
             else:
                 dl_tr, dl_ev, query, gallery = data_utility.create_loaders(
                     data_root=self.args.cub_root,
@@ -340,6 +344,8 @@ class PreTrainer():
                     both=self.args.both,
                     trans=self.args.trans,
                     distance_sampler=0)
+        
+        # pretraining dataloader
         else:
             running_corrects = 0
             denom = 0
@@ -356,9 +362,10 @@ class PreTrainer():
             feature_dict = dict()
         scores = []
         for e in range(1, self.args.nb_epochs + 1):
+            
+            # if not just testing
             if not self.args.test:
                 logger.info('Epoch {}/{}'.format(e, self.args.nb_epochs))
-                print('Epoch {}/{}'.format(e, self.args.nb_epochs))
                 if e == 31:
                     model.load_state_dict(torch.load(
                         os.path.join(self.save_folder_nets, file_name + '.pth')))
@@ -373,7 +380,7 @@ class PreTrainer():
 
                 i = 0
 
-                # after 30 epochs use distance
+                # after 1 epochs use distance
                 if self.args.distance_sampling:
                     if e > 1:
                         dl_tr = dl_tr2
@@ -385,57 +392,64 @@ class PreTrainer():
                         dl_ev = dl_ev1
                         gallery = gallery1
                         query = query1
-                    #print(feature_dict)
+
+                    # set feature dict of samplter to feature dict of previous epoch
                     dl_tr.sampler.feature_dict = feature_dict
                     feature_dict = dict()
+                    dl_tr.sampler.epoch = e
 
                 for x, Y in dl_tr:
                     Y = Y.to(self.device)
+                    
                     opt.zero_grad()
-
                     probs, fc7 = model(x.to(self.device))
+                    
+                    # compute feature vectors if distance sampling
                     if self.args.distance_sampling:
                         for y, f in zip(Y, fc7):
                             if y.data.item() in feature_dict.keys():
                                 feature_dict[y.data.item()].append(f)
                             else:
                                 feature_dict[y.data.item()] = [f]
-                    #print(feature_dict)
+                    
+                    # if distance sampling use first epoch just to get feature vectors
                     loss = criterion2(probs, Y)
-
+                    
                     if not self.args.pretraining:
                         labs, L, U = data_utility.get_labeled_and_unlabeled_points(
                             labels=Y,
                             num_points_per_class=config[
                                 'num_labeled_points_class'],
                             num_classes=self.args.nb_classes)
-    
+
                         # compute the smoothed softmax
                         probs_for_gtg = F.softmax(probs / config['temperature'])
-    
+        
                         # do GTG (iterative process)
                         probs_for_gtg, W = gtg(fc7, fc7.shape[0], labs, L, U,
                                                probs_for_gtg)
                         probs_for_gtg = torch.log(probs_for_gtg + 1e-12)
-
+                        
                         # compute the losses
                         if self.args.lab_smooth_GL:
                             loss1 = smoother(probs_for_gtg, Y)
                         else:
                             loss1 = criterion(probs_for_gtg, Y)
                         loss = self.args.scaling_loss * loss1 + loss
+                        
                         # add center loss
                         if self.args.center:
                             loss += self.args.scaling_center * criterion3(fc7, Y)
                         if self.args.triplet_loss:
-                            loss += self.args.scaling_triplet * criterion4(fc7, Y)
-    
+                            triploss, _ = criterion4(fc7, Y)
+                            loss += self.args.scaling_triplet * triploss
+
                     else:
                         _, preds = torch.max(probs, 1)
                         denom += Y.shape[0]
                         running_corrects += torch.sum(
                             preds == Y.data).cpu().data.item()
-
+                
                     i += 1
     
                     # check possible net divergence
@@ -451,7 +465,8 @@ class PreTrainer():
                         loss.backward()
                     opt.step()
 
-            # compute recall and NMI at the end of each epoch (for Stanford NMI takes forever so skip it)
+            
+            # compute ranks and mAP at the end of each epoch
             if not self.args.pretraining:
                 with torch.no_grad():
                     logger.info('EVALUATION')
@@ -465,17 +480,9 @@ class PreTrainer():
 
                     logger.info('CMC Scores{:>12}{:>12}{:>12}'
                                 .format('allshots', 'cuhk03', 'Market'))
-                    print('Mean AP: {:4.1%}'.format(mAP))
-
-                    print('CMC Scores{:>12}{:>12}{:>12}'
-                                .format('allshots', 'cuhk03', 'Market'))
 
                     for k in (1, 5, 10):
                         logger.info('  top-{:<4}{:12.1%}{:12.1%}{:12.1%}'
-                                    .format(k, top['allshots'][k - 1],
-                                            top['cuhk03'][k - 1],
-                                            top['Market'][k - 1]))
-                        print('  top-{:<4}{:12.1%}{:12.1%}{:12.1%}'
                                     .format(k, top['allshots'][k - 1],
                                             top['cuhk03'][k - 1],
                                             top['Market'][k - 1]))
@@ -504,8 +511,7 @@ class PreTrainer():
                 logger.info(
                     'Loss {}, Accuracy {}'.format(torch.mean(loss.cpu()),
                                                   running_corrects / denom))
-                print('Loss {}, Accuracy {}'.format(torch.mean(loss.cpu()),
-                                                  running_corrects / denom))
+
                 scores.append(running_corrects / denom)
                 denom = 0
                 running_corrects = 0
@@ -694,10 +700,8 @@ def main():
 
         hypers = ', '.join([k + ': ' + str(v) for k, v in config.items()])
         logger.info('Used Parameters: ' + hypers)
-        print('Used Parameters: ' + hypers)
 
         logger.info('Best Recall: {}'.format(best_accuracy))
-        print('Best Recall: {}'.format(best_accuracy))
         if best_accuracy > best_recall and not args.test:
             os.rename(os.path.join(save_folder_nets,
                 args.dataset_name + '_intermediate_model_' + str(
