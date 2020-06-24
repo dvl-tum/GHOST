@@ -134,6 +134,7 @@ class DistanceSamplerMean(Sampler):
         self.samples = samples
         self.max = -1
         self.feature_dict = dict()
+        self.epoch = 0
 
         for inds, samp in samples.items():
             if len(samp) > self.max:
@@ -159,7 +160,10 @@ class DistanceSamplerMean(Sampler):
         self.inter_class_dist = dist.cpu().data.numpy()
 
     def __iter__(self):
-        self.get_inter_class_distances()
+        if self.epoch % 5 == 2:
+            print('recompute dist at epoch {}'.format(self.epoch))
+            self.get_inter_class_distances()
+
         # shuffle elements inside each class
         l_inds = {ind: random.sample(sam, len(sam)) for ind, sam in self.samples.items()}
 
