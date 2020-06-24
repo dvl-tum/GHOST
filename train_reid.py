@@ -237,7 +237,7 @@ def init_args():
                         help='if distance sampling should be applied')
     parser.add_argument('--triplet_loss', default=0, type=int,
                         help='if triplet loss should be applied')
-    parser.add_argument('--scaling_center', default=0.0005, type=float,
+    parser.add_argument('--scaling_center', default=1, type=float,
                         help='how center loss should be scaled')
     parser.add_argument('--scaling_triplet', default=1, type=float,
                         help='how triplet loss should be scaled')
