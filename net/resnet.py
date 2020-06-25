@@ -231,7 +231,7 @@ class ResNet(nn.Module):
 
         return nn.Sequential(*layers)
 
-    def _forward(self, x, test_option='norm'):
+    def _forward(self, x, output_option='norm'):
         x = self.conv1(x)
         x = self.bn1(x)
         x = self.relu(x)
@@ -245,24 +245,23 @@ class ResNet(nn.Module):
         x = self.avgpool(x)
         fc7 = torch.flatten(x, 1)
 
-        if not self.neck:
-            x = self.fc(fc7)
-            if test_option == 'norm': # norm always enabled for training
-                return x, fc7 # just return original GL
-            elif test_option == 'plain':
-                feat = F.normalize(fc7, p=2, dim=1)
-                return x, feat # return normalized features instead of fc7
+        if self.neck:
+            feat = self.bottleneck(fc7)
+        else:
+            feat = fc7
 
-        elif self.neck:
-            feat = self.bottleneck(fc7)  # normalize for angular softmax
-            # TODO: Check for not neck for validation
-            x = self.fc(feat)
-            if test_option == 'norm': # test option norm always enabled for training
-                if self.bn_GL: # use features after bn layer for GroupLoss 
-                    return x, feat 
-                return x, fc7 # use fc7 for GroupLoss
-            elif test_option == 'neck':
-                return x, feat # basically same as self.bn_GL, but to enable different settings in training and testing both are required
+        x = self.fc(feat)
+
+        if output_option == 'norm':
+            return x, fc7
+        elif output_option == 'plain':
+            return x, F.normalize(fc7, p=2, dim=1)
+        elif output_option == 'neck' and self.neck:
+            return x, feat
+        elif output_option == 'neck' and not self.neck:
+            print("Output option neck only avaiable if bottleneck (neck) is "
+                  "enabeled - giving back x and fc7")
+            return x, fc7
 
     # Allow for accessing forward method in a inherited class
     forward = _forward
