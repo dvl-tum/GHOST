@@ -54,11 +54,12 @@ class CombineSampler(Sampler):
 
 
 class DistanceSampler(Sampler):
-    def __init__(self, num_classes, num_samples, samples):
+    def __init__(self, num_classes, num_samples, samples, strategy):
         print("USING DIST")
         self.num_classes = num_classes
         self.num_samples = num_samples
         self.samples = samples
+        self.strategy = strategy
         self.max = -1
         self.feature_dict = dict()
         self.epoch = 0
@@ -115,13 +116,12 @@ class DistanceSampler(Sampler):
         for cl in range(indices.shape[0]):
             possible_classes = indices[cl, :].tolist()
             possible_classes.remove(possible_classes.index(cl))
-            sample_margin = int(len(possible_classes) * (1-(self.epoch/100)))
-            classes = np.random.randint(sample_margin, size=self.num_classes-1).tolist()
-            print(classes)
-            cls = [possible_classes[i] for i in classes]
-            #cls = possible_classes[:self.num_classes -1]
-            print(cls)
-            print(self.inter_class_dist[cl, cls])
+            if self.strategy == 'only':
+                sample_margin = int(len(possible_classes) * (1-(self.epoch/100)))
+                classes = np.random.randint(sample_margin, size=self.num_classes-1).tolist()
+                cls = [possible_classes[i] for i in classes]
+            elif self.strategy == 'alternating':
+                cls = possible_classes[:self.num_classes -1]
             cls.append(cl)
             batch = [s for c in cls for s in random.sample(l_inds[c], self.num_samples)]
             batches.append(batch)

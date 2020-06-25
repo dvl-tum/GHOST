@@ -215,11 +215,11 @@ def init_args():
     parser.add_argument('--trans', default='bot', type=str,
                         help='wich augmentation shoulb be performed: '
                              'norm, bot, imgaug')
-    parser.add_argument('--last_stride', default=1, type=int,
+    parser.add_argument('--last_stride', default=0, type=int,
                         help='If last stride should be changed to 1')
     parser.add_argument('--neck', default=1, type=int,
                         help='if additional batchnorm layer should be added')
-    parser.add_argument('--center', default=1, type=int,
+    parser.add_argument('--center', default=0, type=int,
                         help='if center loss should be added')
     parser.add_argument('--triplet_loss', default=0, type=int,
                         help='if triplet loss should be applied')
@@ -235,7 +235,7 @@ def init_args():
     parser.add_argument('--output_test', default='norm', type=str,
                         help='If neck enableled: norm, plain, neck'
                              'If not: norm, plain.')
-    parser.add_argument('--output_train', default=0, type=int,
+    parser.add_argument('--output_train', default='norm', type=str,
                         help='If neck enableled: norm, plain, neck'
                              'If not: norm, plain.')
 
@@ -340,7 +340,7 @@ class PreTrainer():
                         'num_elements_class'],
                     both=self.args.both,
                     trans=self.args.trans,
-                    distance_sampler=0)
+                    distance_sampler='no')
             # If testing or normal training
             else:
                 dl_tr, dl_ev, query, gallery = data_utility.create_loaders(
@@ -352,7 +352,7 @@ class PreTrainer():
                         'num_elements_class'],
                     both=self.args.both,
                     trans=self.args.trans,
-                    distance_sampler=0)
+                    distance_sampler=self.args.distance_sampling)
 
         # Pretraining dataloader
         else:
@@ -431,7 +431,7 @@ class PreTrainer():
                         Y = Y.to(self.device)
                         opt.zero_grad()
                         probs, fc7 = model(x.to(self.device),
-                                           ouput_option=self.args.output_train)
+                                           output_option=self.args.output_train)
 
                         # Add feature vectors to dict if distance sampling
                         if self.args.distance_sampling != 'no':
@@ -616,13 +616,13 @@ def main():
         trainer.args.neck = 1 #neck[i]
         #trainer.args.test_option = 'norm' #test_option[i] #neck_test[i]
         #trainer.args.bn_GL = 0 #bn_GL[i]
-        #trainer.args.distance_sampling = 1 #distance_sampling[i]
+        trainer.args.distance_sampling = 'only' #distance_sampling[i]
         #trainer.args.lab_smooth_GL = 1
         #trainer.args.triplet_loss = 1
-        trainer.args.GL_pretrained = 0
+        trainer.args.pretrained = 'no'
         #trainer.args.scaling_triplet = 0.7
-        trainer.args.output_train = 'plain'
-        trainer.args.output_test = 'plain'
+        #trainer.args.output_train = 'plain'
+        #trainer.args.output_test = 'plain'
 
         if args.pretraining:
             mode = 'finetuned_'
