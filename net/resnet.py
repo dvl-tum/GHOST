@@ -266,8 +266,8 @@ class ResNet(nn.Module):
     forward = _forward
 
 
-def _resnet(arch, block, layers, pretrained, progress, last_stride=0, neck=0, bn_GL=0, **kwargs):
-    model = ResNet(block, layers, last_stride=last_stride, neck=neck, bn_GL=bn_GL, **kwargs)
+def _resnet(arch, block, layers, pretrained, progress, last_stride=0, neck=0, **kwargs):
+    model = ResNet(block, layers, last_stride=last_stride, neck=neck, **kwargs)
     if pretrained:
         if not neck:
             state_dict = load_state_dict_from_url(model_urls[arch],
@@ -306,7 +306,7 @@ def resnet34(pretrained=False, progress=True, **kwargs):
                    **kwargs)
 
 
-def resnet50(pretrained=False, progress=True, last_stride=0, neck=0, bn_GL=0, **kwargs):
+def resnet50(pretrained=False, progress=True, last_stride=0, neck=0, **kwargs):
     r"""ResNet-50 model from
     `"Deep Residual Learning for Image Recognition" <https://arxiv.org/pdf/1512.03385.pdf>`_
     Args:
@@ -314,7 +314,7 @@ def resnet50(pretrained=False, progress=True, last_stride=0, neck=0, bn_GL=0, **
         progress (bool): If True, displays a progress bar of the download to stderr
     """
     return _resnet('resnet50', Bottleneck, [3, 4, 6, 3], pretrained, progress,
-                   last_stride, neck, bn_GL, **kwargs)
+                   last_stride, neck, **kwargs)
 
 
 def resnet101(pretrained=False, progress=True, **kwargs):

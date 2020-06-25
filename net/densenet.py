@@ -205,8 +205,8 @@ def _load_state_dict(model, model_url, progress, neck):
 
 
 def _densenet(arch, growth_rate, block_config, num_init_features, pretrained, progress,
-              last_stride=0, neck=0, bn_GL=0,**kwargs):
-    model = DenseNet(growth_rate, block_config, num_init_features, last_stride=last_stride, neck=neck, bn_GL=bn_GL, **kwargs)
+              last_stride=0, neck=0, **kwargs):
+    model = DenseNet(growth_rate, block_config, num_init_features, last_stride=last_stride, neck=neck, **kwargs)
     if pretrained:
         _load_state_dict(model, model_urls[arch], progress, neck)
     return model
