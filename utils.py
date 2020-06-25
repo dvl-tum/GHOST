@@ -6,14 +6,14 @@ from torch import nn
 from torch.autograd import Variable
 
 
-def predict_batchwise_reid(model, dataloader, test_option='norm'):
+def predict_batchwise_reid(model, dataloader, output_test='norm'):
     fc7s, L = [], []
     features = dict()
     labels = dict()
     with torch.no_grad():
         for X, Y, P in dataloader:
             if torch.cuda.is_available(): X = X.cuda()
-            _, fc7 = model(X, test_option=test_option)
+            _, fc7 = model(X, output_option=output_test)
             for path, out, y in zip(P, fc7, Y):
                 features[path] = out
                 labels[path] = y
@@ -24,10 +24,10 @@ def predict_batchwise_reid(model, dataloader, test_option='norm'):
 
 
 def evaluate_reid(model, dataloader, query=None, gallery=None, root=None,
-                  test_option='norm'):
+                  output_test='norm'):
     model_is_training = model.training
     model.eval()
-    _, _, features, _ = predict_batchwise_reid(model, dataloader, test_option)
+    _, _, features, _ = predict_batchwise_reid(model, dataloader, output_test)
     mAP, cmc = evaluation.calc_mean_average_precision(features, query,
                                                       gallery, root)
     model.train(model_is_training)
