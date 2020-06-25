@@ -279,8 +279,7 @@ class PreTrainer():
                              last_stride=self.args.last_stride,
                              neck=self.args.neck,
                              load_path=load_path,
-                             use_pretrained=self.args.pretrained,
-                             bn_GL=self.args.bn_GL)
+                             use_pretrained=self.args.pretrained)
         model = model.to(self.device)
 
         gtg = gtg_module.GTG(self.args.nb_classes,
