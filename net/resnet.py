@@ -144,10 +144,9 @@ class ResNet(nn.Module):
 
     def __init__(self, block, layers, last_stride, neck, num_classes=1000,
                  zero_init_residual=False, groups=1, width_per_group=64,
-                 replace_stride_with_dilation=None, norm_layer=None, bn_GL=0):
+                 replace_stride_with_dilation=None, norm_layer=None):
         super(ResNet, self).__init__()
         self.neck = neck
-        self.bn_GL = bn_GL
         if norm_layer is None:
             norm_layer = nn.BatchNorm2d
         self._norm_layer = norm_layer

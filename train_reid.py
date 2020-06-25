@@ -279,8 +279,7 @@ class PreTrainer():
                              last_stride=self.args.last_stride,
                              neck=self.args.neck,
                              load_path=load_path,
-                             use_pretrained=self.args.pretrained,
-                             bn_GL=self.args.bn_GL)
+                             use_pretrained=self.args.pretrained)
         model = model.to(self.device)
 
         gtg = gtg_module.GTG(self.args.nb_classes,
@@ -616,7 +615,6 @@ def main():
         trainer.args.trans = 'bot' #trans[i]
         trainer.args.neck = 1 #neck[i]
         #trainer.args.test_option = 'norm' #test_option[i] #neck_test[i]
-        #trainer.args.bn_GL = 0 #bn_GL[i]
         trainer.args.distance_sampling = 1 #distance_sampling[i]
         #trainer.args.lab_smooth_GL = 1
         #trainer.args.triplet_loss = 1
