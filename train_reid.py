@@ -617,7 +617,7 @@ def main():
         trainer.args.neck = 1 #neck[i]
         #trainer.args.test_option = 'norm' #test_option[i] #neck_test[i]
         #trainer.args.bn_GL = 0 #bn_GL[i]
-        trainer.args.distance_sampling = 1 #distance_sampling[i]
+        #trainer.args.distance_sampling = 1 #distance_sampling[i]
         #trainer.args.lab_smooth_GL = 1
         #trainer.args.triplet_loss = 1
         trainer.args.GL_pretrained = 0
