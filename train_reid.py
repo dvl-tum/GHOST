@@ -622,6 +622,8 @@ def main():
         #trainer.args.triplet_loss = 1
         trainer.args.GL_pretrained = 0
         #trainer.args.scaling_triplet = 0.7
+        trainer.args.output_train = 'plain'
+        trainer.args.output_test = 'plain'
 
         if args.pretraining:
             mode = 'finetuned_'
