@@ -133,17 +133,13 @@ def init_args():
     dataset = 'cuhk03-detected'
     hyperparams = Hyperparameters(dataset)
     parser = argparse.ArgumentParser(
-        description='Pretraining for Person Re-ID with Group Loss')
+        description='Person Re-ID with Group Loss')
     parser.add_argument('--dataset_name', default=hyperparams.dataset_name,
-                        type=str,
-                        help='The name of the dataset')
+                        type=str, help='The name of the dataset')
     parser.add_argument('--dataset_short', default=hyperparams.dataset_short,
-                        type=str,
-                        help='without detected/labeled')
-    parser.add_argument('--oversampling', default=1, type=int,
-                        help='If oversampling shoulf be used')
-    parser.add_argument('--nb_epochs', default=100, type=int)
-
+                        type=str, help='without detected/labeled')
+    parser.add_argument('--nb_epochs', default=100, type=int,
+                        help='Number of epochs for training')
     parser.add_argument('--cub-root', default=hyperparams.get_path(),
                         help='Path to dataset folder')
     parser.add_argument('--cub-is-extracted', action='store_true',
@@ -157,19 +153,16 @@ def init_args():
                         help='Number of first [0, N] classes used for training and ' +
                              'next [N, N * 2] classes used for evaluating with max(N) = 100.')
     parser.add_argument('--pretraining', default=0, type=int,
-                        help='If pretraining or fine tuning is executed')
+                        help='If pretraining using only CE is executed')
     parser.add_argument('--num_classes_iter',
                         default=hyperparams.get_number_classes_iteration(),
-                        type=int,
-                        help='Number of classes in the minibatch')
+                        type=int, help='Number of classes in the minibatch')
     parser.add_argument('--num_elements_class',
                         default=hyperparams.get_number_elements_class(),
-                        type=int,
-                        help='Number of samples per each class')
+                        type=int, help='Number of samples per each class')
     parser.add_argument('--num_labeled_points_class',
                         default=hyperparams.get_number_labeled_elements_class(),
-                        type=int,
-                        help='Number of labeled samples per each class')
+                        type=int, help='Number of labeled samples per each class')
     parser.add_argument('--lr-net', default=hyperparams.get_learning_rate(),
                         type=float, help='The learning rate')
     parser.add_argument('--weight-decay',
@@ -197,17 +190,26 @@ def init_args():
                         help='Number of iterations we want to do for GTG')
     parser.add_argument('--embed', default=0, type=int,
                         help='boolean controling if we want to do embedding or not')
-    parser.add_argument('--scaling_loss', default=1, type=int,
-                        dest='scaling_loss',
-                        help='Scaling parameter for the loss')
     parser.add_argument('--decrease_learning_rate', default=10., type=float,
                         help='Number to divide the learnign rate with')
     parser.add_argument('--id', default=1, type=int,
                         help='id, in case you run multiple independent nets, for example if you want an ensemble of nets')
     parser.add_argument('--is_apex', default=1, type=int,
                         help='if 1 use apex to do mixed precision training')
+
+    # scaling parameters
+    parser.add_argument('--scaling_loss', default=1, type=int,
+                        dest='scaling_loss',
+                        help='Scaling parameter for the group loss')
+    parser.add_argument('--scaling_center', default=1, type=float,
+                        help='how center loss should be scaled')
+    parser.add_argument('--scaling_triplet', default=1, type=float,
+                        help='how triplet loss should be scaled')
+
     parser.add_argument('--both', default=0, type=int,
                         help='if labeled and detected of cuhk03 should be taken')
+
+    # training tricks
     parser.add_argument('--lab_smooth', default=1, type=int,
                         help='if label smoothing should be applied')
     parser.add_argument('--trans', default='bot', type=str,
@@ -219,32 +221,32 @@ def init_args():
                         help='if additional batchnorm layer should be added')
     parser.add_argument('--center', default=1, type=int,
                         help='if center loss should be added')
-    parser.add_argument('--test_option', default='norm', type=str,
-                        help='If features after BN or before should be taken for test if neck is enabled, '
-                        'if plain normalization should be applied when neck is not enabeled: neck/norm, plain/norm .')
+    parser.add_argument('--triplet_loss', default=0, type=int,
+                        help='if triplet loss should be applied')
     parser.add_argument('--early_thresh', default=20, type=int,
                         help='threshold when to stop, i.e. after 7 epochs, '
                              'where best recall did not improve')
-    parser.add_argument('--test', default=0, type=int, 
-                        help='If net should only be tested, not trained')
-    parser.add_argument('--use_pretrained', default=1, type=int,
-                        help='If weights pretrained for 10 epochs, lr=0.0002 using cross entropy should be used')
-    parser.add_argument('--bn_GL', default=0, type=int, 
-                        help='if features after batchnorm layer should be used for group loss')
-    parser.add_argument('--hyper_search', default=0, type=int,
-                        help='If hyper parameter search is done or not')
-    parser.add_argument('--distance_sampling', default=0, type=int,
-                        help='if distance sampling should be applied')
-    parser.add_argument('--triplet_loss', default=0, type=int,
-                        help='if triplet loss should be applied')
-    parser.add_argument('--scaling_center', default=1, type=float,
-                        help='how center loss should be scaled')
-    parser.add_argument('--scaling_triplet', default=1, type=float,
-                        help='how triplet loss should be scaled')
+    parser.add_argument('--distance_sampling', default='No', type=str,
+                        help='no/alternating/only')
     parser.add_argument('--lab_smooth_GL', default=0, type=int,
                         help='If label smoothing should be applied to GL')
-    parser.add_argument('--GL_pretrained', default=1, type=int,
-                        help='If net that was already trained with GL should be loaded')
+
+    # option for fc7 during test and training
+    parser.add_argument('--output_test', default='norm', type=str,
+                        help='If neck enableled: norm, plain, neck'
+                             'If not: norm, plain.')
+    parser.add_argument('--output_train', default=0, type=int,
+                        help='If neck enableled: norm, plain, neck'
+                             'If not: norm, plain.')
+
+    # options for running model
+    parser.add_argument('--pretrained', default='no', type=str,
+                        help='If pretrained model should be taken: no/GL/fine')
+    parser.add_argument('--test', default=0, type=int,
+                        help='If net should only be tested, not trained')
+    parser.add_argument('--hyper_search', default=0, type=int,
+                        help='If hyper parameter search is done or not')
+
     return parser.parse_args()
 
 
@@ -259,14 +261,15 @@ class PreTrainer():
     
     def train_model(self, config, timer, load_path):
         print(self.args)
-        if self.args.GL_pretrained:
+        if self.args.pretrained == 'GL':
             config['lr'] = config['lr'] / 10.
 
         early_thresh_counter = 0
 
         file_name = self.args.dataset_name + '_intermediate_model_' + str(
             timer)
-        # add last stride and bottleneck
+
+        # load model
         model = net.load_net(dataset=self.args.dataset_short,
                              net_type=self.args.net_type,
                              nb_classes=self.args.nb_classes,
@@ -274,9 +277,9 @@ class PreTrainer():
                              sz_embedding=self.args.sz_embedding,
                              pretraining=self.args.pretraining,
                              last_stride=self.args.last_stride,
-                             neck=self.args.neck, 
+                             neck=self.args.neck,
                              load_path=load_path,
-                             use_pretrained=self.args.use_pretrained,
+                             use_pretrained=self.args.pretrained,
                              bn_GL=self.args.bn_GL)
         model = model.to(self.device)
 
@@ -288,34 +291,37 @@ class PreTrainer():
         opt = RAdam(
             [{'params': list(set(model.parameters())), 'lr': config['lr']}],
             weight_decay=config['weight_decay'])
+
+        # Loss for GroupLoss
         criterion = nn.NLLLoss().to(self.device)
 
+        # Label Smoothing for GroupLoss
         if self.args.lab_smooth_GL:
             smoother = utils.LabelSmoothGL(num_classes=self.args.nb_classes)
 
-        # add label smoothing
+        # Label smoothing for CrossEntropy Loss
         if self.args.lab_smooth:
             criterion2 = utils.CrossEntropyLabelSmooth(
                 num_classes=self.args.nb_classes)
         else:
             criterion2 = nn.CrossEntropyLoss().to(self.device)
 
-        # add center loss
+        # Add Center Loss
         if self.args.center:
             criterion3 = utils.CenterLoss(num_classes=self.args.nb_classes)
-        
-        # add triplet loss
+
+        # Add triplet loss
         if self.args.triplet_loss:
             criterion4 = utils.TripletLoss(margin=0.5)
 
-        # do training in mixed precision
+        # Do training in mixed precision
         if self.args.is_apex:
             model, opt = amp.initialize(model, opt, opt_level="O1")
 
-        # is not pretraining
+        # If not pretraining
         if not self.args.pretraining:
-            # if distance sampling
-            if self.args.distance_sampling:
+            # If distance sampling
+            if self.args.distance_sampling != 'no':
                 dl_tr2, dl_ev2, query2, gallery2 = data_utility.create_loaders(
                     data_root=self.args.cub_root,
                     num_workers=self.args.nb_workers,
@@ -336,7 +342,7 @@ class PreTrainer():
                     both=self.args.both,
                     trans=self.args.trans,
                     distance_sampler=0)
-            # if testing or normal training
+            # If testing or normal training
             else:
                 dl_tr, dl_ev, query, gallery = data_utility.create_loaders(
                     data_root=self.args.cub_root,
@@ -348,8 +354,8 @@ class PreTrainer():
                     both=self.args.both,
                     trans=self.args.trans,
                     distance_sampler=0)
-        
-        # pretraining dataloader
+
+        # Pretraining dataloader
         else:
             running_corrects = 0
             denom = 0
@@ -362,13 +368,14 @@ class PreTrainer():
 
         since = time.time()
         best_accuracy = 0
-        if self.args.distance_sampling:
-            feature_dict = dict()
         scores = []
 
-        for e in range(1, self.args.nb_epochs + 1):
+        # feature dict for distance sampling
+        if self.args.distance_sampling:
+            feature_dict = dict()
 
-            # if not just testing
+        for e in range(1, self.args.nb_epochs + 1):
+            # If not testing
             if not self.args.test:
                 logger.info('Epoch {}/{}'.format(e, self.args.nb_epochs))
                 if e == 31:
@@ -383,27 +390,29 @@ class PreTrainer():
                     for g in opt.param_groups:
                         g['lr'] = config['lr'] / 10.
 
-                i = 0
-
-                # after 1 epochs use distance
-                if self.args.distance_sampling:
-                    if e > 1:
-                        dl_tr = dl_tr2
-                        dl_ev = dl_ev2
-                        gallery = gallery2
-                        query = query2
-                    else:
-                        dl_tr = dl_tr1
-                        dl_ev = dl_ev1
-                        gallery = gallery1
-                        query = query1
-
-                    # set feature dict of samplter to feature dict of previous epoch
+                # Different Distance Sampling Strategies
+                if (self.args.distance_sampling == 'only' and e > 1)\
+                        or (self.args.distance_sampling == 'alternating'
+                            and e % 2 == 0):
+                    dl_tr = dl_tr2
+                    dl_ev = dl_ev2
+                    gallery = gallery2
+                    query = query2
+                elif (self.args.distance_sampling == 'only' and e == 1)\
+                        or (self.args.distance_sampling == 'alternating'
+                            and e % 2 != 0):
+                    dl_tr = dl_tr1
+                    dl_ev = dl_ev1
+                    gallery = gallery1
+                    query = query1
+                if self.args.distance_sampling != 'no':
+                    # set feature dict of sampler = feat dict of previous epoch
                     dl_tr.sampler.feature_dict = feature_dict
                     feature_dict = dict()
                     dl_tr.sampler.epoch = e
-                
-                if self.args.distance_sampling and e == 1:
+
+                # If distance_sampling == only, use first epoch to get features
+                if self.args.distance_sampling == 'only' and e == 1:
                     model_is_training = model.training
                     model.eval()
                     with torch.no_grad():
@@ -415,78 +424,82 @@ class PreTrainer():
                                     feature_dict[y.data.item()].append(f)
                                 else:
                                     feature_dict[y.data.item()] = [f]
+
+
+                # Normal training with backpropagation
                 else:
                     for x, Y in dl_tr:
-                    
                         Y = Y.to(self.device)
-                        
                         opt.zero_grad()
-                        probs, fc7 = model(x.to(self.device))
-                    
-                        # compute feature vectors if distance sampling
-                        if self.args.distance_sampling:
+                        probs, fc7 = model(x.to(self.device),
+                                           ouput_option=self.args.output_train)
+
+                        # Add feature vectors to dict if distance sampling
+                        if self.args.distance_sampling != 'no':
                             for y, f in zip(Y, fc7):
                                 if y.data.item() in feature_dict.keys():
                                     feature_dict[y.data.item()].append(f)
                                 else:
                                     feature_dict[y.data.item()] = [f]
-                    
-                        # if distance sampling use first epoch just to get feature vectors
+
+                        # Compute CE Loss
                         loss = criterion2(probs, Y)
-                        
+
+                        # Add other losses of not pretraining
                         if not self.args.pretraining:
+                            # Compute Group Loss
                             labs, L, U = data_utility.get_labeled_and_unlabeled_points(
                                 labels=Y,
                                 num_points_per_class=config[
                                     'num_labeled_points_class'],
                                 num_classes=self.args.nb_classes)
 
-                            # compute the smoothed softmax
-                            probs_for_gtg = F.softmax(probs / config['temperature'])
-        
-                            # do GTG (iterative process)
+                            probs_for_gtg = F.softmax(probs /
+                                                      config['temperature'])
                             probs_for_gtg, W = gtg(fc7, fc7.shape[0], labs, L, U,
-                                               probs_for_gtg)
+                                                   probs_for_gtg)
                             probs_for_gtg = torch.log(probs_for_gtg + 1e-12)
-                        
-                            # compute the losses
+
                             if self.args.lab_smooth_GL:
                                 loss1 = smoother(probs_for_gtg, Y)
                             else:
                                 loss1 = criterion(probs_for_gtg, Y)
+
                             loss = self.args.scaling_loss * loss1 + loss
-                        
-                            # add center loss
+
+                            # Compute center loss
                             if self.args.center:
                                 loss += self.args.scaling_center * criterion3(fc7, Y)
+
+                            # Compute Triplet Loss
                             if self.args.triplet_loss:
                                 triploss, _ = criterion4(fc7, Y)
                                 loss += self.args.scaling_triplet * triploss
 
                         else:
+                            # For pretraining just use acc as evaluation
                             _, preds = torch.max(probs, 1)
                             denom += Y.shape[0]
                             running_corrects += torch.sum(
                                 preds == Y.data).cpu().data.item()
-                
-                        i += 1
-    
-                        # check possible net divergence
+
+                        # Check possible net divergence
                         if torch.isnan(loss):
                             logger.error("We have NaN numbers, closing\n\n\n")
                             sys.exit(0)
 
-                        # backprop
+                        # Backpropagation
                         if self.args.is_apex:
                             with amp.scale_loss(loss, opt) as scaled_loss:
                                 scaled_loss.backward()
                         else:
                             loss.backward()
                         opt.step()
-            
-                if self.args.distance_sampling and e == 1:
+
+                # Set model to training mode again, if first epoch and only
+                if self.args.distance_sampling == 'only' and e == 1:
                     model.train(model_is_training)
-            
+
             # compute ranks and mAP at the end of each epoch
             if not self.args.pretraining:
                 with torch.no_grad():
@@ -495,7 +508,7 @@ class PreTrainer():
                                                    query=query,
                                                    gallery=gallery,
                                                    root=self.data_dir,
-                                                   test_option=self.args.test_option)
+                                                   output_test=self.args.output_test)
 
                     logger.info('Mean AP: {:4.1%}'.format(mAP))
 
@@ -507,7 +520,6 @@ class PreTrainer():
                                     .format(k, top['allshots'][k - 1],
                                             top['cuhk03'][k - 1],
                                             top['Market'][k - 1]))
-
 
                     scores.append((mAP,
                                    [top[self.args.dataset_short][k - 1] for k
@@ -556,7 +568,7 @@ class PreTrainer():
             config['num_elements_class']) + '_' + str(
             config['num_labeled_points_class'])
         if self.args.test:
-            file_name = 'test_' + file_name 
+            file_name = 'test_' + file_name
         if not self.args.pretraining:
             with open(
                     os.path.join(self.save_folder_results, file_name + '.txt'),
@@ -595,96 +607,24 @@ def main():
         num_iter = 30
     else:
         num_iter = 1
-    
-    # NORM VS PLAIN
-    lab_smooth = [1, 1, 1, 1, 0, 0, 1, 1, 1, 1, 1, 1, 0, 0, 1, 1]
-    trans = ['bot', 'bot', 'bot', 'bot', 'norm', 'norm', 'bot', 'bot', 'bot', 'bot', 'bot', 'bot', 'norm', 'norm', 'bot', 'bot']
-    neck = [1, 1, 1, 0, 0, 0, 0, 0, 1, 1, 1, 0, 0, 0, 0, 0]
-    last_stride = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
-    test_option = ['norm', 'norm', 'neck', 'plain', 'plain', 'norm', 'plain', 'norm', 'norm', 'norm', 'neck', 'plain', 'plain', 'norm', 'plain', 'norm']
-    bn_GL = [0, 1, 1, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0]
-    center = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
-    use_pretrained = [1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0] 
-    
-    # BOT EXPERIMENT
-    lab_smooth = [1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
-    trans = ['norm', 'bot', 'bot', 'bot', 'bot', 'bot', 'bot', 'bot', 'bot', 'bot']
-    neck = [0, 0, 1, 1, 1, 1, 1, 1, 1, 1]
-    last_stride = [0, 0, 0, 1, 1, 1, 0, 0, 1, 0]
-    test_option = ['norm', 'norm', 'norm', 'norm', 'neck', 'neck', 'neck', 'neck', 'norm', 'norm']
-    center = [0, 0, 0, 0, 0, 1, 1, 0, 1, 1]
 
-    #appearance test
-    lab_smooth = [1, 1, 1, 1, 1, 1]
-    trans = ['appearance', 'appearance', 'appearance', 'appearance', 'appearance', 'appearance']
-    neck = [1, 1, 0, 0, 1, 1]
-    last_stride = [0, 0, 0, 0, 0, 0]
-    test_option = ['norm', 'neck', 'norm', 'plain', 'norm', 'neck']
-    center = [0, 0, 0, 0, 0, 0]
-    bn_GL = [0, 0, 0, 0, 1, 1]
-
-    #distance sampler
-    lab_smooth = [0]
-    trans = ['norm']
-    neck = [0]
-    last_stride = [0]
-    test_option = ['norm']
-    center = [0]
-    bn_GL = [0]
-    distance_sampling = [1]
-    
-    #best we can
-    lab_smooth = [1, 1, 1]
-    trans = ['appearance', 'appearance', 'appearance']
-    neck = [1, 1, 0]
-    last_stride = [0, 0, 0]
-    test_option = ['neck', 'norm', 'plain']
-    bn_GL = [1, 0, 0]
-    center = [0, 0, 0]
-    distance_sampling = [0, 0, 0]
-    
-    '''
-    # nothing at all
-    lab_smooth =[0]
-    trans = ['norm']
-    neck = [0]
-    last_stride = [0]
-    test_option = ['norm']
-    bn_GL = [0]
-    center = [0]
-    distance_sampling = [0]
-    '''
-    '''
-    #missing
-    lab_smooth = [1, 1, 1, 1]
-    trans = ['bot', 'bot', 'bot', 'bot']
-    neck = [1, 1, 1, 1]
-    last_stride = [0, 0, 1, 0]
-    test_option = ['neck', 'neck', 'norm', 'norm']
-    bn_GL = [0, 0, 0, 0]
-    center = [1, 0, 1, 1]
-    ''' 
-
-    print("EXPERIMENTS: LabS GL")
-    '''densenet121, densenet161, densenet169, densenet201'''
+    # densenet121, densenet161, densenet169, densenet201
     #trainer.args.net_type = 'densenet161'
     # Random search
     for i in range(num_iter):
         trainer.args.lab_smooth = 1 #lab_smooth[i]
         trainer.args.trans = 'bot' #trans[i]
         trainer.args.neck = 1 #neck[i]
-        #trainer.args.last_stride = 0 #last_stride[i]
         #trainer.args.test_option = 'norm' #test_option[i] #neck_test[i]
         #trainer.args.bn_GL = 0 #bn_GL[i]
-        #trainer.args.center = 0 #center[i]
-        trainer.args.use_pretrained = 0 #use_pretrained[i]
         trainer.args.distance_sampling = 1 #distance_sampling[i]
         #trainer.args.lab_smooth_GL = 1
         #trainer.args.triplet_loss = 1
         trainer.args.GL_pretrained = 0
         #trainer.args.scaling_triplet = 0.7
-        #trainer.args.test = 1
-        
+        trainer.args.output_train = 'plain'
+        trainer.args.output_test = 'plain'
+
         if args.pretraining:
             mode = 'finetuned_'
         else:
@@ -692,16 +632,14 @@ def main():
         if trainer.args.neck:
             mode = mode + 'neck_'
 
-        if trainer.args.test or trainer.args.GL_pretrained:
-            if trainer.args.test:
-                trainer.args.nb_epochs = 1
+        if trainer.args.test or trainer.args.pretrained == 'GL':
             load_path = os.path.join('save_trained_nets', mode + trainer.args.net_type + '_' + trainer.args.dataset_name + '.pth')
-        else:
+            logger.info('Load model from {}'.format(load_path))
+        elif trainer.args.pretrained == 'fine':
             load_path = os.path.join('net', 'finetuned_' + mode + trainer.args.dataset_short + '_' + trainer.args.net_type + '.pth')
-        print(load_path)
-        if trainer.args.use_pretrained:
             logger.info('Load model from {}'.format(load_path))
         else:
+            load_path = None
             logger.info('Using model only pretrained on ImageNet')
 
         logger.info('Search iteration {}'.format(i + 1))
@@ -732,6 +670,8 @@ def main():
                       'num_labeled_points_class': args.num_labeled_points_class,
                       'num_iter_gtg': args.num_iter_gtg,
                       'temperature': args.temperature}
+            if trainer.args.test:
+                trainer.args.nb_epochs = 1
 
         best_accuracy, model = trainer.train_model(config, timer, load_path)
 
