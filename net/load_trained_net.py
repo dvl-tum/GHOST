@@ -43,6 +43,7 @@ def load_net(dataset, net_type, nb_classes, embed=False, sz_embedding=512, pretr
         else: model.fc = nn.Linear(2048, nb_classes)
 
         if not pretraining and use_pretrained:
+            print(load_path)
             model.load_state_dict(torch.load(load_path))
 
     elif net_type == 'resnet101':
@@ -84,7 +85,8 @@ def load_net(dataset, net_type, nb_classes, embed=False, sz_embedding=512, pretr
             model.classifier.apply(weights_init_classifier)
         else: model.classifier = nn.Linear(2208, nb_classes)
         if not pretraining and use_pretrained:
-            model.load_state_dict(torch.load('net/finetuned_' + dataset + '_' + net_type + '.pth'))
+            print(load_path)
+            model.load_state_dict(torch.load(load_path))
         # model.load_state_dict(torch.load('sop_resnet_new/Stanford_paramRes_16bit_densenet161_0.0002_5.2724883734490575e-12_10_6_2.pth'))
 
     elif net_type == 'densenet169':
