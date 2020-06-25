@@ -118,7 +118,7 @@ class DistanceSampler(Sampler):
             sample_margin = int(len(possible_classes) * (1-(self.epoch/100)))
             classes = np.random.randint(sample_margin, size=self.num_classes-1).tolist()
             print(classes)
-            cls = possible_classes[classes]
+            cls = [possible_classes[i] for i in classes]
             #cls = possible_classes[:self.num_classes -1]
             print(cls)
             print(self.inter_class_dist[cl, cls])
