@@ -31,6 +31,7 @@ class CombineSampler(Sampler):
         l_inds = list(map(lambda a: random.sample(a, len(a)), self.l_inds))
 
         # add elements till every class has the same num of obs
+        # np.random.choice(idxs, size=self.num_instances, replace=True)
         for inds in l_inds:
             choose = copy.deepcopy(inds)
             while len(inds) < self.max:
