@@ -269,29 +269,14 @@ def appearance_proportional_augmentation1(sz_crop=[384, 128],
                 [
                     # crop 0-10 percent on each side
                     sometimes(iaa.Crop(percent=(0, 0.1))),
-
                     sometimes(iaa.SomeOf((0, 4),
                         [iaa.MultiplyBrightness((0.5, 1.5)),
                         iaa.MultiplyHue((0.5, 1.5)),
                         iaa.MultiplySaturation((0.5, 1.5)),
                         iaa.GammaContrast(gamma=(0.5, 1.1))],
-                                         random_order=True)
-
-                    ),
-
-                    sometimes(iaa.SomeOf((0, 1),
-                               [
-                                   iaa.AdditiveGaussianNoise(
-                                       loc=0, scale=(0.0, 0.03 * 255),
-                                       per_channel=0.5),
-                                   iaa.Solarize(p=0.5),
-                                   iaa.BlendAlpha((0.0, 1.0), iaa.Grayscale(1.0)),
-                                   iaa.GaussianBlur(sigma=(0, 0.2)),
-                                   iaa.imgcorruptlike.ZoomBlur(severity=(1, 2))
-                               ], random_order=True
-                               ))
-                ],
-                # do all of the above augmentations in random order
+                                         random_order=True))
+                    
+                ], # do all of the above augmentations in random order
                 random_order=True
             ).augment_image,
             lambda x: PIL.Image.fromarray(x),
