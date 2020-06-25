@@ -4,7 +4,7 @@ import net
 import torch.nn as nn
 
 
-def load_net(dataset, net_type, nb_classes, embed=False, sz_embedding=512, pretraining=False, last_stride=0, neck=0, load_path=None, use_pretrained=0):
+def load_net(dataset, net_type, nb_classes, embed=False, sz_embedding=512, pretraining=False, last_stride=0, neck=0, load_path=None, use_pretrained='no'):
 
     if net_type == 'bn_inception':
         model = net.bn_inception(pretrained=True)
@@ -42,7 +42,7 @@ def load_net(dataset, net_type, nb_classes, embed=False, sz_embedding=512, pretr
             model.fc.apply(weights_init_classifier)
         else: model.fc = nn.Linear(2048, nb_classes)
 
-        if not pretraining and use_pretrained:
+        if not pretraining and use_pretrained != 'no':
             print(load_path)
             model.load_state_dict(torch.load(load_path))
 
@@ -70,7 +70,7 @@ def load_net(dataset, net_type, nb_classes, embed=False, sz_embedding=512, pretr
             model.classifier.apply(weights_init_classifier)
         else: model.classifier = nn.Linear(1024, nb_classes)
 
-        if not pretraining and use_pretrained:
+        if not pretraining and use_pretrained != 'no':
             model.load_state_dict(torch.load('net/finetuned_' + dataset + '_' + net_type + '.pth'))
         # model.load_state_dict(torch.load('sop_resnet_new/Stanford_paramRes_16bit_densenet121_0.0002_5.2724883734490575e-12_10_6_2.pth'))
 
@@ -84,7 +84,7 @@ def load_net(dataset, net_type, nb_classes, embed=False, sz_embedding=512, pretr
             model.bottleneck.apply(weights_init_kaiming)
             model.classifier.apply(weights_init_classifier)
         else: model.classifier = nn.Linear(2208, nb_classes)
-        if not pretraining and use_pretrained:
+        if not pretraining and use_pretrained != 'no':
             print(load_path)
             model.load_state_dict(torch.load(load_path))
         # model.load_state_dict(torch.load('sop_resnet_new/Stanford_paramRes_16bit_densenet161_0.0002_5.2724883734490575e-12_10_6_2.pth'))
@@ -99,7 +99,7 @@ def load_net(dataset, net_type, nb_classes, embed=False, sz_embedding=512, pretr
             model.bottleneck.apply(weights_init_kaiming)
             model.classifier.apply(weights_init_classifier)
         else: model.classifier = nn.Linear(1664, nb_classes)
-        if not pretraining and use_pretrained:
+        if not pretraining and use_pretrained != 'no':
             model.load_state_dict(torch.load('net/finetuned_' + dataset + '_' + net_type + '.pth'))
         # model.load_state_dict(torch.load('sop_resnet_new/Stanford_paramRes_16bit_densenet169_0.0002_5.2724883734490575e-12_10_6_2.pth'))
 
@@ -113,7 +113,7 @@ def load_net(dataset, net_type, nb_classes, embed=False, sz_embedding=512, pretr
             model.bottleneck.apply(weights_init_kaiming)
             model.classifier.apply(weights_init_classifier)
         else: model.classifier = nn.Linear(1920, nb_classes)
-        if not pretraining and use_pretrained:
+        if not pretraining and use_pretrained  != 'no':
             model.load_state_dict(torch.load('net/finetuned_' + dataset + '_' + net_type + '.pth'))
         # model.load_state_dict(torch.load('sop_resnet_new/Stanford_paramRes_16bit_densenet201_0.0002_5.2724883734490575e-12_10_6_2.pth'))
     return model

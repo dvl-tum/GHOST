@@ -226,7 +226,7 @@ def init_args():
     parser.add_argument('--early_thresh', default=20, type=int,
                         help='threshold when to stop, i.e. after 7 epochs, '
                              'where best recall did not improve')
-    parser.add_argument('--distance_sampling', default='No', type=str,
+    parser.add_argument('--distance_sampling', default='no', type=str,
                         help='no/alternating/only')
     parser.add_argument('--lab_smooth_GL', default=0, type=int,
                         help='If label smoothing should be applied to GL')
