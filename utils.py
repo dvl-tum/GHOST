@@ -4,6 +4,7 @@ import net
 import data_utility
 from torch import nn
 from torch.autograd import Variable
+import numpy as np
 
 
 def predict_batchwise_reid(model, dataloader, output_test='norm'):
@@ -24,12 +25,12 @@ def predict_batchwise_reid(model, dataloader, output_test='norm'):
 
 
 def evaluate_reid(model, dataloader, query=None, gallery=None, root=None,
-                  output_test='norm'):
+                  output_test='norm', re_rank=False):
     model_is_training = model.training
     model.eval()
     _, _, features, _ = predict_batchwise_reid(model, dataloader, output_test)
     mAP, cmc = evaluation.calc_mean_average_precision(features, query,
-                                                      gallery, root)
+                                                      gallery, re_rank)
     model.train(model_is_training)
     return mAP, cmc
 

@@ -230,6 +230,8 @@ def init_args():
                         help='no/alternating/only')
     parser.add_argument('--lab_smooth_GL', default=0, type=int,
                         help='If label smoothing should be applied to GL')
+    parser.add_argument('--re_rank', default=0, type=int,
+                        help='If re-ranking should be added')
 
     # option for fc7 during test and training
     parser.add_argument('--output_test', default='norm', type=str,
@@ -506,8 +508,8 @@ class PreTrainer():
                     mAP, top = utils.evaluate_reid(model, dl_ev,
                                                    query=query,
                                                    gallery=gallery,
-                                                   root=self.data_dir,
-                                                   output_test=self.args.output_test)
+                                                   output_test=self.args.output_test,
+                                                   re_rank=self.args.re_rank)
 
                     logger.info('Mean AP: {:4.1%}'.format(mAP))
 
@@ -623,6 +625,7 @@ def main():
         #trainer.args.scaling_triplet = 0.7
         trainer.args.output_train = 'plain'
         trainer.args.output_test = 'plain'
+        #trainer.args.re_rank = 1
 
         if args.pretraining:
             mode = 'finetuned_'
