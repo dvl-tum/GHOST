@@ -169,8 +169,8 @@ class TripletLoss(nn.Module):
         dist_ap, dist_an = [], []
         for i in range(n):
             mask = targets == targets[i]
-            dist_ap.append(dist[i][mask].max()) #hp
-            dist_an.append(dist[i][mask == 0].min()) #hn
+            dist_ap.append(dist[i][mask].max().unsqueeze(dim=0)) #hp
+            dist_an.append(dist[i][mask == 0].min().unsqueeze(dim=0)) #hn
         dist_ap = torch.cat(dist_ap)
         dist_an = torch.cat(dist_an)
         # Compute ranking hinge loss
