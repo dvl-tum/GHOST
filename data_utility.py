@@ -67,7 +67,7 @@ def create_loaders(data_root, num_workers, size_batch, num_classes_iter=None,
         sampler = PretraingSampler(list_of_indices_for_each_class)
         drop_last = False
     elif distance_sampler:
-        sampler = DistanceSamplerMean(num_classes_iter, num_elements_class, ddict)
+        sampler = DistanceSampler(num_classes_iter, num_elements_class, ddict)
         drop_last = True
     else:
         sampler = CombineSampler(list_of_indices_for_each_class,
