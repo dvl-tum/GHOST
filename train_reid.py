@@ -243,7 +243,8 @@ def init_args():
                         help='how triplet loss should be scaled')
     parser.add_argument('--lab_smooth_GL', default=0, type=int,
                         help='If label smoothing should be applied to GL')
-
+    parser.add_argument('--GL_pretrained', default=1, type=int,
+                        help='If net that was already trained with GL should be loaded')
     return parser.parse_args()
 
 
@@ -258,6 +259,9 @@ class PreTrainer():
     
     def train_model(self, config, timer, load_path):
         print(self.args)
+        if self.args.GL_pretrained:
+            config['lr'] = config['lr'] / 10.
+
         early_thresh_counter = 0
 
         file_name = self.args.dataset_name + '_intermediate_model_' + str(
@@ -272,7 +276,7 @@ class PreTrainer():
                              last_stride=self.args.last_stride,
                              neck=self.args.neck, 
                              load_path=load_path,
-                             use_pretrained=self.args.use_pretrained, 
+                             use_pretrained=self.args.use_pretrained,
                              bn_GL=self.args.bn_GL)
         model = model.to(self.device)
 
@@ -361,8 +365,9 @@ class PreTrainer():
         if self.args.distance_sampling:
             feature_dict = dict()
         scores = []
+
         for e in range(1, self.args.nb_epochs + 1):
-            
+
             # if not just testing
             if not self.args.test:
                 logger.info('Epoch {}/{}'.format(e, self.args.nb_epochs))
@@ -397,74 +402,90 @@ class PreTrainer():
                     dl_tr.sampler.feature_dict = feature_dict
                     feature_dict = dict()
                     dl_tr.sampler.epoch = e
-
-                for x, Y in dl_tr:
-                    Y = Y.to(self.device)
-                    
-                    opt.zero_grad()
-                    probs, fc7 = model(x.to(self.device))
-                    
-                    # compute feature vectors if distance sampling
-                    if self.args.distance_sampling:
-                        for y, f in zip(Y, fc7):
-                            if y.data.item() in feature_dict.keys():
-                                feature_dict[y.data.item()].append(f)
-                            else:
-                                feature_dict[y.data.item()] = [f]
-                    
-                    # if distance sampling use first epoch just to get feature vectors
-                    loss = criterion2(probs, Y)
-                    
-                    if not self.args.pretraining:
-                        labs, L, U = data_utility.get_labeled_and_unlabeled_points(
-                            labels=Y,
-                            num_points_per_class=config[
-                                'num_labeled_points_class'],
-                            num_classes=self.args.nb_classes)
-
-                        # compute the smoothed softmax
-                        probs_for_gtg = F.softmax(probs / config['temperature'])
-        
-                        # do GTG (iterative process)
-                        probs_for_gtg, W = gtg(fc7, fc7.shape[0], labs, L, U,
-                                               probs_for_gtg)
-                        probs_for_gtg = torch.log(probs_for_gtg + 1e-12)
-                        
-                        # compute the losses
-                        if self.args.lab_smooth_GL:
-                            loss1 = smoother(probs_for_gtg, Y)
-                        else:
-                            loss1 = criterion(probs_for_gtg, Y)
-                        loss = self.args.scaling_loss * loss1 + loss
-                        
-                        # add center loss
-                        if self.args.center:
-                            loss += self.args.scaling_center * criterion3(fc7, Y)
-                        if self.args.triplet_loss:
-                            triploss, _ = criterion4(fc7, Y)
-                            loss += self.args.scaling_triplet * triploss
-
-                    else:
-                        _, preds = torch.max(probs, 1)
-                        denom += Y.shape[0]
-                        running_corrects += torch.sum(
-                            preds == Y.data).cpu().data.item()
                 
-                    i += 1
+                if self.args.distance_sampling and e == 1:
+                    model_is_training = model.training
+                    model.eval()
+                    with torch.no_grad():
+                        for x, Y in dl_tr:
+                            Y = Y.to(self.device)
+                            probs, fc7 = model(x.to(self.device))
+                            for y, f in zip(Y, fc7):
+                                if y.data.item() in feature_dict.keys():
+                                    feature_dict[y.data.item()].append(f)
+                                else:
+                                    feature_dict[y.data.item()] = [f]
+                else:
+                    for x, Y in dl_tr:
+                    
+                        Y = Y.to(self.device)
+                        
+                        opt.zero_grad()
+                        probs, fc7 = model(x.to(self.device))
+                    
+                        # compute feature vectors if distance sampling
+                        if self.args.distance_sampling:
+                            for y, f in zip(Y, fc7):
+                                if y.data.item() in feature_dict.keys():
+                                    feature_dict[y.data.item()].append(f)
+                                else:
+                                    feature_dict[y.data.item()] = [f]
+                    
+                        # if distance sampling use first epoch just to get feature vectors
+                        loss = criterion2(probs, Y)
+                        
+                        if not self.args.pretraining:
+                            labs, L, U = data_utility.get_labeled_and_unlabeled_points(
+                                labels=Y,
+                                num_points_per_class=config[
+                                    'num_labeled_points_class'],
+                                num_classes=self.args.nb_classes)
+
+                            # compute the smoothed softmax
+                            probs_for_gtg = F.softmax(probs / config['temperature'])
+        
+                            # do GTG (iterative process)
+                            probs_for_gtg, W = gtg(fc7, fc7.shape[0], labs, L, U,
+                                               probs_for_gtg)
+                            probs_for_gtg = torch.log(probs_for_gtg + 1e-12)
+                        
+                            # compute the losses
+                            if self.args.lab_smooth_GL:
+                                loss1 = smoother(probs_for_gtg, Y)
+                            else:
+                                loss1 = criterion(probs_for_gtg, Y)
+                            loss = self.args.scaling_loss * loss1 + loss
+                        
+                            # add center loss
+                            if self.args.center:
+                                loss += self.args.scaling_center * criterion3(fc7, Y)
+                            if self.args.triplet_loss:
+                                triploss, _ = criterion4(fc7, Y)
+                                loss += self.args.scaling_triplet * triploss
+
+                        else:
+                            _, preds = torch.max(probs, 1)
+                            denom += Y.shape[0]
+                            running_corrects += torch.sum(
+                                preds == Y.data).cpu().data.item()
+                
+                        i += 1
     
-                    # check possible net divergence
-                    if torch.isnan(loss):
-                        logger.error("We have NaN numbers, closing\n\n\n")
-                        sys.exit(0)
+                        # check possible net divergence
+                        if torch.isnan(loss):
+                            logger.error("We have NaN numbers, closing\n\n\n")
+                            sys.exit(0)
 
-                    # backprop
-                    if self.args.is_apex:
-                        with amp.scale_loss(loss, opt) as scaled_loss:
-                            scaled_loss.backward()
-                    else:
-                        loss.backward()
-                    opt.step()
-
+                        # backprop
+                        if self.args.is_apex:
+                            with amp.scale_loss(loss, opt) as scaled_loss:
+                                scaled_loss.backward()
+                        else:
+                            loss.backward()
+                        opt.step()
+            
+                if self.args.distance_sampling and e == 1:
+                    model.train(model_is_training)
             
             # compute ranks and mAP at the end of each epoch
             if not self.args.pretraining:
@@ -614,7 +635,7 @@ def main():
     
     #best we can
     lab_smooth = [1, 1, 1]
-    trans = ['appearance', 'bot', 'bot']
+    trans = ['appearance', 'appearance', 'appearance']
     neck = [1, 1, 0]
     last_stride = [0, 0, 0]
     test_option = ['neck', 'norm', 'plain']
@@ -633,22 +654,37 @@ def main():
     center = [0]
     distance_sampling = [0]
     '''
+    '''
+    #missing
+    lab_smooth = [1, 1, 1, 1]
+    trans = ['bot', 'bot', 'bot', 'bot']
+    neck = [1, 1, 1, 1]
+    last_stride = [0, 0, 1, 0]
+    test_option = ['neck', 'neck', 'norm', 'norm']
+    bn_GL = [0, 0, 0, 0]
+    center = [1, 0, 1, 1]
+    ''' 
 
-    print("EXPERIMENT: Best we can APP")
+    print("EXPERIMENTS: LabS GL")
     '''densenet121, densenet161, densenet169, densenet201'''
-    trainer.args.net_type = 'densenet161'
+    #trainer.args.net_type = 'densenet161'
     # Random search
     for i in range(num_iter):
-        trainer.args.lab_smooth = lab_smooth[i]
-        trainer.args.trans = trans[i]
-        trainer.args.neck = neck[i]
-        trainer.args.last_stride = last_stride[i]
-        trainer.args.test_option = test_option[i] #neck_test[i]
-        trainer.args.bn_GL = bn_GL[i]
-        trainer.args.center = center[i]
+        trainer.args.lab_smooth = 1 #lab_smooth[i]
+        trainer.args.trans = 'bot' #trans[i]
+        trainer.args.neck = 1 #neck[i]
+        #trainer.args.last_stride = 0 #last_stride[i]
+        #trainer.args.test_option = 'norm' #test_option[i] #neck_test[i]
+        #trainer.args.bn_GL = 0 #bn_GL[i]
+        #trainer.args.center = 0 #center[i]
         trainer.args.use_pretrained = 0 #use_pretrained[i]
-        trainer.args.distance_sampling = distance_sampling[i]
-
+        trainer.args.distance_sampling = 1 #distance_sampling[i]
+        #trainer.args.lab_smooth_GL = 1
+        #trainer.args.triplet_loss = 1
+        trainer.args.GL_pretrained = 0
+        #trainer.args.scaling_triplet = 0.7
+        #trainer.args.test = 1
+        
         if args.pretraining:
             mode = 'finetuned_'
         else:
@@ -656,20 +692,21 @@ def main():
         if trainer.args.neck:
             mode = mode + 'neck_'
 
-        if args.test:
-            trainer.args.nb_epochs = 1
+        if trainer.args.test or trainer.args.GL_pretrained:
+            if trainer.args.test:
+                trainer.args.nb_epochs = 1
             load_path = os.path.join('save_trained_nets', mode + trainer.args.net_type + '_' + trainer.args.dataset_name + '.pth')
         else:
             load_path = os.path.join('net', 'finetuned_' + mode + trainer.args.dataset_short + '_' + trainer.args.net_type + '.pth')
         print(load_path)
-        if args.use_pretrained:
+        if trainer.args.use_pretrained:
             logger.info('Load model from {}'.format(load_path))
         else:
             logger.info('Using model only pretrained on ImageNet')
 
         logger.info('Search iteration {}'.format(i + 1))
 
-        if args.hyper_search:
+        if trainer.args.hyper_search:
             config = {'lr': 10 ** random.uniform(-8, -3),
                       'weight_decay': 10 ** random.uniform(-15, -6),
                       'num_classes_iter': random.randint(2, 5),
@@ -678,7 +715,7 @@ def main():
                       'num_iter_gtg': random.randint(1, 3),
                       'temperature': random.randint(10, 80)}
             trainer.args.nb_epochs = 30
-        elif args.pretraining:
+        elif trainer.args.pretraining:
             config = {'lr': 0.0002,
                       'weight_decay': 0, # rest does not matter
                       'num_classes_iter': 0,
