@@ -674,6 +674,8 @@ def main():
                       'temperature': args.temperature}
             if trainer.args.test:
                 trainer.args.nb_epochs = 1
+            if trainer.args.distance_sampling == 'alternating':
+                trainer.args.nb_epochs = 130
 
         best_accuracy, model = trainer.train_model(config, timer, load_path)
 

@@ -111,8 +111,8 @@ class DistanceSampler(Sampler):
                 l_inds[c] += [random.choice(choose)]
         # get clostest classes for each class
         indices = np.argsort(self.inter_class_dist, axis=1)
-        print(indices)
-        print(self.inter_class_dist)
+        #print(indices)
+        #print(self.inter_class_dist)
         batches = list()
         for cl in range(indices.shape[0]):
             possible_classes = indices[cl, :].tolist()
@@ -122,7 +122,10 @@ class DistanceSampler(Sampler):
                 classes = np.random.randint(sample_margin, size=self.num_classes-1).tolist()
                 cls = [possible_classes[i] for i in classes]
             elif self.strategy == 'alternating':
-                cls = possible_classes[:self.num_classes -1]
+                sample_margin = max(int(len(possible_classes) * (1-(self.epoch/100))), self.num_classes - 1)
+                classes = np.random.randint(sample_margin, size=self.num_classes-1).tolist()
+                cls = [possible_classes[i] for i in classes]
+                #cls = possible_classes[:self.num_classes -1]
             cls.append(cl)
             batch = [s for c in cls for s in random.sample(l_inds[c], self.num_samples)]
             batches.append(batch)
