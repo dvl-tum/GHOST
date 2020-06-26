@@ -34,7 +34,8 @@ def cmc(distmat, query_ids=None, gallery_ids=None,
         single_gallery_shot=False,
         first_match_break=False):
     junk = gallery_ids != -1
-    distmat = distmat.cpu().numpy()
+    if type(distmat) != np.ndarray:
+        distmat = distmat.cpu().numpy()
     m, n = distmat.shape
 
     # Sort and find correct matches
@@ -93,7 +94,8 @@ def cmc(distmat, query_ids=None, gallery_ids=None,
 def mean_ap(dist, ql, qc, gl, gc):
     # TODO: same camera out?
     junk = gl != -1
-    dist = dist.cpu().numpy()
+    if type(dist) != np.ndarray:
+        dist = dist.cpu().numpy()
 
     indices = np.argsort(dist, axis=1)
     matches = (gl[indices] == ql[:, np.newaxis])
