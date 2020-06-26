@@ -37,9 +37,11 @@ warnings.filterwarnings("ignore")
 
 
 class Hyperparameters():
-    def __init__(self, dataset_name='cub'):
+    def __init__(self, dataset_name='cub', net_type='densenet161'):
         self.dataset_name = dataset_name
+        self.net_type = net_type
         print(self.dataset_name)
+        print(self.net_type)
         # print('Without GL')
         if dataset_name == 'Market':
             self.dataset_path = '../../datasets/Market-1501-v15.09.15'
@@ -62,76 +64,77 @@ class Hyperparameters():
                             'cuhk03-np-detected': 767,
                             'cuhk03-labeled': 1367,
                             'cuhk03-np-labeled': 767}
-        self.num_classes_iteration = {'Market': 3,
-                                      'cuhk03-detected': 5,
-                                      'cuhk03-np-detected': 5,
-                                      'cuhk03-labeled': 5,
-                                      'cuhk03-np-labeled': 5}
-        self.num_elemens_class = {'Market': 4,
-                                  'cuhk03-detected': 5,
-                                  'cuhk03-np-detected': 5,
-                                  'cuhk03-labeled': 5,
-                                  'cuhk03-np-labeled': 5}
-        self.get_num_labeled_class = {'Market': 3,
-                                      'cuhk03-detected': 2,
-                                      'cuhk03-np-detected': 2,
-                                      'cuhk03-labeled': 2,
-                                      'cuhk03-np-labeled': 2}
-        self.learning_rate = {'Market': 1.289377564403867e-05,
-                              'cuhk03-detected': 4.4819286767613e-05,
-                              'cuhk03-np-detected': 0.0002,
-                              'cuhk03-labeled': 0.0002,
-                              'cuhk03-np-labeled': 0.0002}
-        self.weight_decay = {'Market': 1.9250447877921047e-14,
-                             'cuhk03-detected': 1.5288509425482333e-13,
-                             'cuhk03-np-detected': 4.863656728256105e-07,
-                             'cuhk03-labeled': 4.863656728256105e-07,
-                             'cuhk03-np-labeled': 4.863656728256105e-07}
-        self.softmax_temperature = {'Market': 80,
-                                    'cuhk03-detected': 80,
-                                    'cuhk03-np-detected': 80,
-                                    'cuhk03-labeled': 80,
-                                    'cuhk03-np-labeled': 80}
-        self.num_iter_gtg = {'Market': 2,
-                             'cuhk03-detected': 1,
-                             'cuhk03-np-detected': 1,
-                             'cuhk03-labeled': 1,
-                             'cuhk03-np-labeled': 1}
+        self.num_classes_iteration = {'Market': {'resnet50': 3, 'densenet161': 5},
+                                      'cuhk03-detected': {'resnet50': 5, 'densenet161': 5},
+                                      'cuhk03-np-detected': {'resnet50': 5, 'densenet161': 5},
+                                      'cuhk03-labeled': {'resnet50': 5, 'densenet161': 5},
+                                      'cuhk03-np-labeled': {'resnet50': 5, 'densenet161': 5}}
+        self.num_elemens_class = {'Market': {'resnet50': 4, 'densenet161': 6},
+                                  'cuhk03-detected': {'resnet50': 5, 'densenet161': 8},
+                                  'cuhk03-np-detected': {'resnet50': 5, 'densenet161': 8},
+                                  'cuhk03-labeled': {'resnet50': 5, 'densenet161': 8},
+                                  'cuhk03-np-labeled': {'resnet50': 5, 'densenet161': 8}}
+        self.get_num_labeled_class = {'Market': {'resnet50': 3, 'densenet161': 1},
+                                      'cuhk03-detected': {'resnet50': 2, 'densenet161': 1},
+                                      'cuhk03-np-detected': {'resnet50': 2, 'densenet161': 1},
+                                      'cuhk03-labeled': {'resnet50': 2, 'densenet161': 1},
+                                      'cuhk03-np-labeled': {'resnet50': 2, 'densenet161': 1}}
+        self.learning_rate = {'Market': {'resnet50': 1.289377564403867e-05, 'densenet161': 8.201555304285775e-05},
+                              'cuhk03-detected': {'resnet50': 4.4819286767613e-05, 'densenet161': 6.938966913758872e-05},
+                              'cuhk03-np-detected': {'resnet50': 4.4819286767613e-05, 'densenet161': 6.938966913758872e-05},
+                              'cuhk03-labeled': {'resnet50': 4.4819286767613e-05, 'densenet161': 6.938966913758872e-05},
+                              'cuhk03-np-labeled': {'resnet50': 4.4819286767613e-05, 'densenet161': 6.938966913758872e-05}}
+        self.weight_decay = {'Market': {'resnet50': 1.9250447877921047e-14, 'densenet161': 4.883141881206216e-11},
+                             'cuhk03-detected': {'resnet50': 1.5288509425482333e-13, 'densenet161': 6.938966913758872e-05},
+                             'cuhk03-np-detected': {'resnet50': 1.5288509425482333e-13, 'densenet161': 6.938966913758872e-05},
+                             'cuhk03-labeled': {'resnet50': 1.5288509425482333e-13, 'densenet161': 6.938966913758872e-05},
+                             'cuhk03-np-labeled': {'resnet50': 1.5288509425482333e-13, 'densenet161': 6.938966913758872e-05}}
+        self.softmax_temperature = {'Market': {'resnet50': 80, 'densenet161': 37},
+                                    'cuhk03-detected': {'resnet50': 80, 'densenet161': 34},
+                                    'cuhk03-np-detected': {'resnet50': 80, 'densenet161': 34},
+                                    'cuhk03-labeled': {'resnet50': 80, 'densenet161': 34},
+                                    'cuhk03-np-labeled': {'resnet50': 80, 'densenet161': 34}}
+        self.num_iter_gtg = {'Market': {'resnet50': 2, 'densenet161': 3},
+                             'cuhk03-detected': {'resnet50': 1, 'densenet161': 2},
+                             'cuhk03-np-detected': {'resnet50': 1, 'densenet161': 2},
+                             'cuhk03-labeled': {'resnet50': 1, 'densenet161': 2},
+                             'cuhk03-np-labeled': {'resnet50': 1, 'densenet161': 2}}
 
     def get_path(self):
         return self.dataset_path
 
     def get_number_classes(self):
-        return self.num_classes[self.dataset_name]
+        return self.num_classes[self.dataset_name][self.net_type]
 
     def get_number_classes_iteration(self):
-        return self.num_classes_iteration[self.dataset_name]
+        return self.num_classes_iteration[self.dataset_name][self.net_type]
 
     def get_number_elements_class(self):
-        return self.num_elemens_class[self.dataset_name]
+        return self.num_elemens_class[self.dataset_name][self.net_type]
 
     def get_number_labeled_elements_class(self):
-        return self.get_num_labeled_class[self.dataset_name]
+        return self.get_num_labeled_class[self.dataset_name][self.net_type]
 
     def get_learning_rate(self):
-        return self.learning_rate[self.dataset_name]
+        return self.learning_rate[self.dataset_name][self.net_type]
 
     def get_weight_decay(self):
-        return self.weight_decay[self.dataset_name]
+        return self.weight_decay[self.dataset_name][self.net_type]
 
     def get_epochs(self):
         return 70
 
     def get_num_gtg_iterations(self):
-        return self.num_iter_gtg[self.dataset_name]
+        return self.num_iter_gtg[self.dataset_name][self.net_type]
 
     def get_softmax_temperature(self):
-        return self.softmax_temperature[self.dataset_name]
+        return self.softmax_temperature[self.dataset_name][self.net_type]
 
 
 def init_args():
     dataset = 'cuhk03-detected'
-    hyperparams = Hyperparameters(dataset)
+    net_type = 'resnet50' #'densenet161'
+    hyperparams = Hyperparameters(dataset, net_type)
     parser = argparse.ArgumentParser(
         description='Person Re-ID with Group Loss')
     parser.add_argument('--dataset_name', default=hyperparams.dataset_name,
