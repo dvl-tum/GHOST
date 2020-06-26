@@ -12,8 +12,8 @@ import matplotlib.pyplot as plt
 def create_loaders(data_root, num_workers, size_batch, num_classes_iter=None,
                    num_elements_class=None, pretraining=False,
                    input_size=[384, 128], both=0, trans= 'norm',
-                   distance_sampler='only'):
-    labels, paths = dataset.load_data(root=data_root, both=both)
+                   distance_sampler='only', val=0):
+    labels, paths = dataset.load_data(root=data_root, both=both, val=val)
     labels = labels[0]
     paths = paths[0]
 

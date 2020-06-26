@@ -33,7 +33,7 @@ query: used as query images for testing
 '''
 
 
-def load_data(root: str = None, both: int = 0):
+def load_data(root: str = None, both: int = 0, val=0):
     image_dir = os.path.join(root, 'images')
 
     # check if json file already exists --> if not: generate image folders
@@ -107,6 +107,12 @@ def load_data(root: str = None, both: int = 0):
         
         with open(os.path.join(root, 'labels.json'), 'r') as file:
             labels = json.load(file)
+
+        if val and os.path.basename(os.path.dirname(root)) == 'cuhk03':
+            for i in range(len(data)):
+                ind = np.random.randint(len(data[i]), size=100).tolist()
+                data[i] = [data[i][j] for j in range(len(data[i])) if j not in ind]
+                labels[i] = [labels[i][j] for j in range(len(labels[i])) if j not in ind]
 
         # make list if not, for cuhk03 classic split is list
         if type(data) != list:

@@ -85,10 +85,10 @@ class Hyperparameters():
                               'cuhk03-labeled': {'resnet50': 4.4819286767613e-05, 'densenet161': 6.938966913758872e-05},
                               'cuhk03-np-labeled': {'resnet50': 4.4819286767613e-05, 'densenet161': 6.938966913758872e-05}}
         self.weight_decay = {'Market': {'resnet50': 1.9250447877921047e-14, 'densenet161': 4.883141881206216e-11},
-                             'cuhk03-detected': {'resnet50': 1.5288509425482333e-13, 'densenet161': 6.938966913758872e-05},
-                             'cuhk03-np-detected': {'resnet50': 1.5288509425482333e-13, 'densenet161': 6.938966913758872e-05},
-                             'cuhk03-labeled': {'resnet50': 1.5288509425482333e-13, 'densenet161': 6.938966913758872e-05},
-                             'cuhk03-np-labeled': {'resnet50': 1.5288509425482333e-13, 'densenet161': 6.938966913758872e-05}}
+                             'cuhk03-detected': {'resnet50': 1.5288509425482333e-13, 'densenet161': 1.6553076469649952e-07},
+                             'cuhk03-np-detected': {'resnet50': 1.5288509425482333e-13, 'densenet161': 1.6553076469649952e-07},
+                             'cuhk03-labeled': {'resnet50': 1.5288509425482333e-13, 'densenet161': 1.6553076469649952e-07},
+                             'cuhk03-np-labeled': {'resnet50': 1.5288509425482333e-13, 'densenet161': 1.6553076469649952e-07}}
         self.softmax_temperature = {'Market': {'resnet50': 80, 'densenet161': 37},
                                     'cuhk03-detected': {'resnet50': 80, 'densenet161': 34},
                                     'cuhk03-np-detected': {'resnet50': 80, 'densenet161': 34},
@@ -104,7 +104,7 @@ class Hyperparameters():
         return self.dataset_path
 
     def get_number_classes(self):
-        return self.num_classes[self.dataset_name][self.net_type]
+        return self.num_classes[self.dataset_name]
 
     def get_number_classes_iteration(self):
         return self.num_classes_iteration[self.dataset_name][self.net_type]
@@ -132,7 +132,7 @@ class Hyperparameters():
 
 
 def init_args():
-    dataset = 'cuhk03-detected'
+    dataset = 'Market'
     net_type = 'resnet50' #'densenet161'
     hyperparams = Hyperparameters(dataset, net_type)
     parser = argparse.ArgumentParser(
@@ -176,7 +176,7 @@ def init_args():
                         help='Temperature parameter for the softmax')
     parser.add_argument('--nb_workers', default=4, type=int,
                         help='Number of workers for dataloader.')
-    parser.add_argument('--net_type', default='resnet50', type=str,
+    parser.add_argument('--net_type', default=net_type, type=str,
                         choices=['bn_inception', 'densenet121', 'densenet161',
                                  'densenet169', 'densenet201',
                                  'resnet18', 'resnet34', 'resenet50',
@@ -253,6 +253,9 @@ def init_args():
                         help='If net should only be tested, not trained')
     parser.add_argument('--hyper_search', default=0, type=int,
                         help='If hyper parameter search is done or not')
+    
+    parser.add_argument('--val', default=0, type=int, 
+                        help='If val should be excluded from dataset or not')
 
     return parser.parse_args()
 
@@ -339,7 +342,8 @@ class PreTrainer():
                         'num_elements_class'],
                     both=self.args.both,
                     trans=self.args.trans,
-                    distance_sampler=self.args.distance_sampling)
+                    distance_sampler=self.args.distance_sampling,
+                    val=self.args.val)
                 dl_tr1, dl_ev1, query1, gallery1 = data_utility.create_loaders(
                     data_root=self.args.cub_root,
                     num_workers=self.args.nb_workers,
@@ -349,7 +353,8 @@ class PreTrainer():
                         'num_elements_class'],
                     both=self.args.both,
                     trans=self.args.trans,
-                    distance_sampler='no')
+                    distance_sampler='no',
+                    val=self.args.val)
             # If testing or normal training
             else:
                 dl_tr, dl_ev, query, gallery = data_utility.create_loaders(
@@ -361,7 +366,8 @@ class PreTrainer():
                         'num_elements_class'],
                     both=self.args.both,
                     trans=self.args.trans,
-                    distance_sampler=self.args.distance_sampling)
+                    distance_sampler=self.args.distance_sampling,
+                    val=self.args.val)
 
         # Pretraining dataloader
         else:
@@ -632,12 +638,12 @@ def main():
         trainer.args.neck = 1 #neck[i]
         #trainer.args.test_option = 'norm' #test_option[i] #neck_test[i]
         #trainer.args.bn_GL = 0 #bn_GL[i]
-        #trainer.args.distance_sampling = 'alternating' #distance_sampling[i]
+        trainer.args.distance_sampling = 'alternating' #distance_sampling[i]
         #trainer.args.lab_smooth_GL = 1
         #trainer.args.triplet_loss = 1
         trainer.args.pretrained = 'no'
         #trainer.args.scaling_triplet = 0.7
-        #trainer.args.re_rank = 1
+        trainer.args.re_rank = 1
         #trainer.args.output_train = 'plain'
         #trainer.args.output_test = 'plain'
         #trainer.args.center = 1
