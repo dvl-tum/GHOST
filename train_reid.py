@@ -439,7 +439,8 @@ class PreTrainer():
                     for x, Y in dl_tr:
                         Y = Y.to(self.device)
                         opt.zero_grad()
-                        opt_center.zero_grad()
+                        if self.args.center:
+                            opt_center.zero_grad()
                         probs, fc7 = model(x.to(self.device),
                                            output_option=self.args.output_train)
 
@@ -506,7 +507,7 @@ class PreTrainer():
                         opt.step()
                         if self.args.center:
                             for param in criterion3.parameters():
-                                param.grad.data *= (1. / self.args.center_scaling)
+                                param.grad.data *= (1. / self.args.scaling_center)
                             opt_center.step()
 
                 # Set model to training mode again, if first epoch and only
