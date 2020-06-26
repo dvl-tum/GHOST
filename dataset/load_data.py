@@ -1,8 +1,8 @@
 import os
 import json
-from .extract_market import marketlike
-from .extract_cuhk import cuhk03
-
+from extract_market import marketlike
+from extract_cuhk import cuhk03
+import random
 
 '''
 Naming conventions:
@@ -43,11 +43,14 @@ def load_data(root: str = None, both: int = 0, val=0):
 
         # names of zip files
         if os.path.basename(os.path.dirname(root)) == 'cuhk03':
-            check_zip = os.path.join(os.path.dirname(os.path.dirname(root)), 'cuhk03_release.zip')
+            check_zip = os.path.join(os.path.dirname(os.path.dirname(root)),
+                                     'cuhk03_release.zip')
         elif os.path.basename(os.path.dirname(root)) == 'cuhk03-np':
-            check_zip = os.path.join(os.path.dirname(os.path.dirname(root)), 'cuhk03-np.zip')
+            check_zip = os.path.join(os.path.dirname(os.path.dirname(root)),
+                                     'cuhk03-np.zip')
         elif os.path.basename(root) == 'Market-1501-v15.09.15':
-            check_zip = os.path.join(os.path.dirname(root), 'Market-1501-v15.09.15.zip')
+            check_zip = os.path.join(os.path.dirname(root),
+                                     'Market-1501-v15.09.15.zip')
 
         # check if zip file or extracted directory exists
         if not os.path.isfile(check_zip) and not os.path.isdir(root):
@@ -86,7 +89,8 @@ def load_data(root: str = None, both: int = 0, val=0):
 
         # make list if not, for cuhk03 classic split is list
         if type(data_lab) != list:
-            data_lab, labels_lab, data_det, labels_det = [data_lab], [labels_lab], [data_det], [labels_det]
+            data_lab, labels_lab, data_det, labels_det = [data_lab], [
+                labels_lab], [data_det], [labels_det]
 
         data, labels = list(), list()
         for dl, ll, dd, ld in zip(data_lab, labels_lab, data_det, labels_det):
@@ -104,15 +108,24 @@ def load_data(root: str = None, both: int = 0, val=0):
         # load image paths and labels for splits
         with open(os.path.join(root, 'info.json'), 'r') as file:
             data = json.load(file)
-        
+
         with open(os.path.join(root, 'labels.json'), 'r') as file:
             labels = json.load(file)
 
         if val and os.path.basename(os.path.dirname(root)) == 'cuhk03':
             for i in range(len(data)):
-                ind = np.random.randint(len(data[i]), size=100).tolist()
-                data[i] = [data[i][j] for j in range(len(data[i])) if j not in ind]
-                labels[i] = [labels[i][j] for j in range(len(labels[i])) if j not in ind]
+                ind = random.sample(
+                    set(labels[i]['bounding_box_train']), 100)
+
+                data[i]['bounding_box_train'] = [
+                    data[i]['bounding_box_train'][j] for j in
+                    range(len(data[i]['bounding_box_train'])) if
+                    labels[i]['bounding_box_train'][j] not in ind]
+
+                labels[i]['bounding_box_train'] = [
+                    labels[i]['bounding_box_train'][j] for j in
+                    range(len(labels[i]['bounding_box_train'])) if
+                    labels[i]['bounding_box_train'][j] not in ind]
 
         # make list if not, for cuhk03 classic split is list
         if type(data) != list:
@@ -128,6 +141,7 @@ def load_data(root: str = None, both: int = 0, val=0):
 
 if __name__ == '__main__':
     # test
+    '''
     lab, data = load_data(root='../../../datasets/cuhk03-np/detected', both=0)
     print(len(lab))
     lab, data = load_data(root='../../../datasets/cuhk03/labeled', both=1)
@@ -138,8 +152,11 @@ if __name__ == '__main__':
     lab, data = load_data(root='../../../datasets/cuhk03-np/labeled')
     print(len(lab))
     lab, data = load_data(root='../../../datasets/Market-1501-v15.09.15')
-    print(len(lab))
-    lab, data = load_data(root='../../../datasets/cuhk03/detected')
+    print(len(lab))'''
+
+    lab, data = load_data(root='../../../datasets/cuhk03/detected', val=1)
+    print(len(set(lab[0]['bounding_box_train'])))
+    quit()
     print(len(lab))
     lab, data = load_data(root='../../../datasets/cuhk03/labeled')
     print(len(lab))
