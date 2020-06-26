@@ -622,20 +622,22 @@ def main():
     # densenet121, densenet161, densenet169, densenet201
     #trainer.args.net_type = 'densenet161'
     # Random search
+    print('50 for distance reduction')
     for i in range(num_iter):
         trainer.args.lab_smooth = 1 #lab_smooth[i]
         trainer.args.trans = 'bot' #trans[i]
         trainer.args.neck = 1 #neck[i]
         #trainer.args.test_option = 'norm' #test_option[i] #neck_test[i]
         #trainer.args.bn_GL = 0 #bn_GL[i]
-        trainer.args.distance_sampling = 'alternating' #distance_sampling[i]
+        #trainer.args.distance_sampling = 'alternating' #distance_sampling[i]
         #trainer.args.lab_smooth_GL = 1
         #trainer.args.triplet_loss = 1
         trainer.args.pretrained = 'no'
         #trainer.args.scaling_triplet = 0.7
-        trainer.args.re_rank = 1
+        #trainer.args.re_rank = 1
         #trainer.args.output_train = 'plain'
         #trainer.args.output_test = 'plain'
+        #trainer.args.center = 1
 
         if args.pretraining:
             mode = 'finetuned_'
