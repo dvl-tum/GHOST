@@ -201,10 +201,12 @@ def init_args():
     parser.add_argument('--scaling_loss', default=1, type=int,
                         dest='scaling_loss',
                         help='Scaling parameter for the group loss')
-    parser.add_argument('--scaling_center', default=1, type=float,
+    parser.add_argument('--scaling_center', default=0.0005, type=float,
                         help='how center loss should be scaled')
     parser.add_argument('--scaling_triplet', default=1, type=float,
                         help='how triplet loss should be scaled')
+    parser.add_argument('--center_lr', default=0.5, type=float,
+                        help='Learning rate for center')
 
     parser.add_argument('--both', default=0, type=int,
                         help='if labeled and detected of cuhk03 should be taken')
@@ -310,6 +312,8 @@ class PreTrainer():
         # Add Center Loss
         if self.args.center:
             criterion3 = utils.CenterLoss(num_classes=self.args.nb_classes)
+            opt_center = torch.optim.SGD(criterion3.parameters(),
+                                         lr=self.args.center_lr)
 
         # Add triplet loss
         if self.args.triplet_loss:
@@ -432,6 +436,7 @@ class PreTrainer():
                     for x, Y in dl_tr:
                         Y = Y.to(self.device)
                         opt.zero_grad()
+                        opt_center.zero_grad()
                         probs, fc7 = model(x.to(self.device),
                                            output_option=self.args.output_train)
 
@@ -496,6 +501,10 @@ class PreTrainer():
                         else:
                             loss.backward()
                         opt.step()
+                        if self.args.center:
+                            for param in criterion3.parameters():
+                                param.grad.data *= (1. / self.args.center_scaling)
+                            opt_center.step()
 
                 # Set model to training mode again, if first epoch and only
                 if self.args.distance_sampling == 'only' and e == 1:
