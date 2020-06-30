@@ -220,6 +220,7 @@ def re_ranking(features, query, gallery, k1=20, k2=6, lambda_value=0.3,
 
         k_reciprocal_expansion_index = np.unique(k_reciprocal_expansion_index)
         weight = np.exp(-original_dist[i, k_reciprocal_expansion_index])
+        # normalize each row
         V[i, k_reciprocal_expansion_index] = weight / np.sum(weight)
     original_dist = original_dist[:query_num, ]
     if k2 != 1:
@@ -242,6 +243,8 @@ def re_ranking(features, query, gallery, k1=20, k2=6, lambda_value=0.3,
         for j in range(len(indNonZero)):
             temp_min[0, indImages[j]] = temp_min[0, indImages[j]] + np.minimum(V[i, indNonZero[j]],
                                                                                V[indImages[j], indNonZero[j]])
+        # jaccard_in = size_in / (size_s1 + size_s2 - size_in)
+        # --> normalized size_1=1 and size_2=1 --> 1+1=2
         jaccard_dist[i] = 1 - temp_min / (2 - temp_min)
 
     final_dist = jaccard_dist * (1 - lambda_value) + original_dist * lambda_value
