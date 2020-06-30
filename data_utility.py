@@ -12,7 +12,7 @@ import matplotlib.pyplot as plt
 def create_loaders(data_root, num_workers, size_batch, num_classes_iter=None,
                    num_elements_class=None, pretraining=False,
                    input_size=[384, 128], both=0, trans= 'norm',
-                   distance_sampler='only', val=0):
+                   distance_sampler='only', val=0, m=100):
     labels, paths = dataset.load_data(root=data_root, both=both, val=val)
     labels = labels[0]
     paths = paths[0]
@@ -68,7 +68,7 @@ def create_loaders(data_root, num_workers, size_batch, num_classes_iter=None,
         drop_last = False
     elif distance_sampler != 'no':
         print(distance_sampler)
-        sampler = DistanceSampler(num_classes_iter, num_elements_class, ddict, distance_sampler)
+        sampler = DistanceSampler(num_classes_iter, num_elements_class, ddict, distance_sampler, m)
         drop_last = True
     else:
         sampler = CombineSampler(list_of_indices_for_each_class,

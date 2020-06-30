@@ -176,7 +176,7 @@ class Hyperparameters():
 
 
 def init_args():
-    dataset = 'Market'
+    dataset = 'cuhk03-detected'
     net_type = 'resnet50' #'densenet161'
     hyperparams = Hyperparameters(dataset, net_type)
     parser = argparse.ArgumentParser(
@@ -277,6 +277,8 @@ def init_args():
                              'where best recall did not improve')
     parser.add_argument('--distance_sampling', default='no', type=str,
                         help='no/alternating/only')
+    parser.add_argument('--m', default=100, type=int, 
+                        help='Margin for distance sampling')
     parser.add_argument('--lab_smooth_GL', default=0, type=int,
                         help='If label smoothing should be applied to GL')
     parser.add_argument('--re_rank', default=0, type=int,
@@ -300,6 +302,7 @@ def init_args():
     
     parser.add_argument('--val', default=0, type=int, 
                         help='If val should be excluded from dataset or not')
+    
 
     return parser.parse_args()
 
@@ -393,7 +396,8 @@ class PreTrainer():
                     both=self.args.both,
                     trans=self.args.trans,
                     distance_sampler=self.args.distance_sampling,
-                    val=self.args.val)
+                    val=self.args.val,
+                    m=self.args.m)
                 dl_tr1, dl_ev1, query1, gallery1 = data_utility.create_loaders(
                     data_root=self.args.cub_root,
                     num_workers=self.args.nb_workers,
@@ -492,7 +496,7 @@ class PreTrainer():
                                     index_dict[y.data.item()].append(i)
                                 else:
                                     feature_dict[y.data.item()] = [f]
-                                    index_dict[y.data.item()].append(i)
+                                    index_dict[y.data.item()] = [i]
 
                 # Normal training with backpropagation
                 else:
@@ -512,7 +516,7 @@ class PreTrainer():
                                     index_dict[y.data.item()].append(i)
                                 else:
                                     feature_dict[y.data.item()] = [f]
-                                    index_dict[y.data.item()].append(i)
+                                    index_dict[y.data.item()] = [i]
 
                         # Compute CE Loss
                         loss = criterion2(probs, Y)

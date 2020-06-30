@@ -55,12 +55,13 @@ class CombineSampler(Sampler):
 
 
 class DistanceSampler(Sampler):
-    def __init__(self, num_classes, num_samples, samples, strategy):
+    def __init__(self, num_classes, num_samples, samples, strategy, m):
         print("USING DIST")
         self.num_classes = num_classes
         self.num_samples = num_samples
         self.samples = samples
         self.strategy = strategy
+        self.m = m
         self.max = -1
         self.feature_dict = dict()
         self.index_dict = dict()
@@ -104,6 +105,7 @@ class DistanceSampler(Sampler):
                     continue
                 row = indicator == i
                 col = indicator == j
+                print(row, col, i, j)
                 mat_ij = dist[row, col]
                 dist_ij = torch.sum(mat_ij).data.item() / (mat_ij.size(0)*mat_ij.size(0))
                 dist_mat[i, j] = dist_ij
@@ -125,7 +127,7 @@ class DistanceSampler(Sampler):
             possible_classes.remove(possible_classes.index(cl))
 
             # get classes
-            sample_margin = max(int(len(possible_classes) * (1-(self.epoch/100))), self.num_classes - 1)
+            sample_margin = max(int(len(possible_classes) * (1-(self.epoch/self.m))), self.num_classes - 1)
             classes = np.random.randint(sample_margin, size=self.num_classes-1).tolist()
             cls = [possible_classes[i] for i in classes]
             #cls = possible_classes[:self.num_classes -1]
@@ -133,6 +135,9 @@ class DistanceSampler(Sampler):
             # randomly sample anchor class samples
             batch = [s for s in random.sample(self.samples[cl], self.num_samples)]
             for c in cls:
+                thresh = self.inter_class_dist[cl, c]
+                print(self.indicator, cl, c)
+                quit()
                 row = self.indicator == cl
                 col = self.indicator == c
                 mat_clc = self.sample_dist[row, col]
@@ -396,6 +401,7 @@ if __name__ == '__main__':
 
     samples = {0: [0, 1], 1: [2, 4], 2: [3]}
 
-    samp = DistanceSampler(num_classes=3, num_samples=5, samples=samples, strategy='alternating')
+    samp = DistanceSampler(num_classes=3, num_samples=5, samples=samples, strategy='alternating', m=100)
     samp.feature_dict = feature_dict
+    samp.index_dict = samples
     samp.get_inter_class_distances()
