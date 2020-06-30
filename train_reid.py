@@ -17,6 +17,8 @@ import gtg as gtg_module
 import net
 import data_utility
 import utils
+import matplotlib.pyplot as plt
+
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -301,14 +303,18 @@ class PreTrainer():
             [{'params': list(set(model.parameters())), 'lr': config['lr']}],
             weight_decay=config['weight_decay'])
 
+        losses = dict()
+        losses['Total Loss'] = list()
         # Loss for GroupLoss
         criterion = nn.NLLLoss().to(self.device)
+        losses['Group Loss'] = list()
 
         # Label Smoothing for GroupLoss
         if self.args.lab_smooth_GL:
             smoother = utils.LabelSmoothGL(num_classes=self.args.nb_classes)
 
         # Label smoothing for CrossEntropy Loss
+        losses['Cross Entropy'] = list()
         if self.args.lab_smooth:
             criterion2 = utils.CrossEntropyLabelSmooth(
                 num_classes=self.args.nb_classes)
@@ -317,12 +323,14 @@ class PreTrainer():
 
         # Add Center Loss
         if self.args.center:
+            losses['Center'] = list()
             criterion3 = utils.CenterLoss(num_classes=self.args.nb_classes)
             opt_center = torch.optim.SGD(criterion3.parameters(),
                                          lr=self.args.center_lr)
 
         # Add triplet loss
         if self.args.triplet_loss:
+            losses['Triplet'] = list()
             criterion4 = utils.TripletLoss(margin=0.5)
 
         # Do training in mixed precision
@@ -387,6 +395,7 @@ class PreTrainer():
         # feature dict for distance sampling
         if self.args.distance_sampling:
             feature_dict = dict()
+            index_dict = dict()
 
         for e in range(1, self.args.nb_epochs + 1):
             # If not testing
@@ -422,7 +431,9 @@ class PreTrainer():
                 if self.args.distance_sampling != 'no':
                     # set feature dict of sampler = feat dict of previous epoch
                     dl_tr.sampler.feature_dict = feature_dict
+                    dl_tr.sampler.index_dict = index_dict
                     feature_dict = dict()
+                    index_dict = dict()
                     dl_tr.sampler.epoch = e
 
                 # If distance_sampling == only, use first epoch to get features
@@ -430,19 +441,20 @@ class PreTrainer():
                     model_is_training = model.training
                     model.eval()
                     with torch.no_grad():
-                        for x, Y in dl_tr:
+                        for x, Y, I in dl_tr:
                             Y = Y.to(self.device)
                             probs, fc7 = model(x.to(self.device))
-                            for y, f in zip(Y, fc7):
+                            for y, f, i in zip(Y, fc7, I):
                                 if y.data.item() in feature_dict.keys():
                                     feature_dict[y.data.item()].append(f)
+                                    index_dict[y.data.item()].append(i)
                                 else:
                                     feature_dict[y.data.item()] = [f]
-
+                                    index_dict[y.data.item()].append(i)
 
                 # Normal training with backpropagation
                 else:
-                    for x, Y in dl_tr:
+                    for x, Y, I in dl_tr:
                         Y = Y.to(self.device)
                         opt.zero_grad()
                         if self.args.center:
@@ -452,14 +464,17 @@ class PreTrainer():
 
                         # Add feature vectors to dict if distance sampling
                         if self.args.distance_sampling != 'no':
-                            for y, f in zip(Y, fc7):
+                            for y, f, i in zip(Y, fc7, I):
                                 if y.data.item() in feature_dict.keys():
                                     feature_dict[y.data.item()].append(f)
+                                    index_dict[y.data.item()].append(i)
                                 else:
                                     feature_dict[y.data.item()] = [f]
+                                    index_dict[y.data.item()].append(i)
 
                         # Compute CE Loss
                         loss = criterion2(probs, Y)
+                        losses['Cross Entropy'].append(loss)
 
                         # Add other losses of not pretraining
                         if not self.args.pretraining:
@@ -480,18 +495,22 @@ class PreTrainer():
                                 loss1 = smoother(probs_for_gtg, Y)
                             else:
                                 loss1 = criterion(probs_for_gtg, Y)
+                            losses['Group Loss'].append(loss1)
 
                             loss = self.args.scaling_loss * loss1 + loss
 
                             # Compute center loss
                             if self.args.center:
-                                loss += self.args.scaling_center * criterion3(fc7, Y)
+                                loss2 = criterion3(fc7, Y)
+                                loss += self.args.scaling_center * loss2
+                                losses['Center'].append(loss2)
 
                             # Compute Triplet Loss
                             if self.args.triplet_loss:
                                 triploss, _ = criterion4(fc7, Y)
                                 loss += self.args.scaling_triplet * triploss
-
+                                losses['Triplet'].append(triploss)
+                            losses['Total Loss'].append(loss)
                         else:
                             # For pretraining just use acc as evaluation
                             _, preds = torch.max(probs, 1)
@@ -601,6 +620,33 @@ class PreTrainer():
                 fp.write('\n'.join('%s %s' % x for x in scores))
                 fp.write("\n\n\n")
 
+        results_dir = os.path.join('results', file_name)
+        if not os.path.isdir(results_dir):
+            os.makedirs(results_dir)
+
+        # plot losses
+        for k, v in losses.items():
+            eps = list(range(len(v)))
+            plt.plot(eps, v)
+            plt.xlim(left=0)
+            plt.ylim(bottom=0)
+            plt.xlabel('Epochs')
+            plt.ylabel(k)
+            plt.grid(True)
+            plt.savefig(os.path.join(results_dir, k + '.png'))
+
+        # plot scores
+        for i, name in enumerate('mAP', 'rank-1', 'rank-5', 'rank-10'):
+            sc = [s[i] for s in scores]
+            eps = list(range(len(sc)))
+            plt.plot(eps, sc)
+            plt.xlim(left=0)
+            plt.ylim(bottom=0)
+            plt.xlabel('Epochs')
+            plt.ylabel(name)
+            plt.grid(True)
+            plt.savefig(os.path.join(results_dir, name + '.png'))
+        
         return best_accuracy, model
 
 
