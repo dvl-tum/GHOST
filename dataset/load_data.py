@@ -1,7 +1,7 @@
 import os
 import json
-from extract_market import marketlike
-from extract_cuhk import cuhk03
+from .extract_market import marketlike
+from .extract_cuhk import cuhk03
 import random
 
 '''
