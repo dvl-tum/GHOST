@@ -63,71 +63,84 @@ class DistanceSampler(Sampler):
         self.strategy = strategy
         self.max = -1
         self.feature_dict = dict()
+        self.index_dict = dict()
         self.epoch = 0
-        for inds, samp in samples.items():
-            if len(samp) > self.max:
-                self.max = len(samp)
+
+        # add until num_samples
+        for c, inds in self.samples.items():
+            choose = copy.deepcopy(inds)
+            while len(inds) < self.num_samples:
+                self.samples[c] += [random.choice(choose)]
+
         self.inter_class_dist = np.ones([len(samples), len(samples)])
 
     def get_inter_class_distances(self):
         if len(self.feature_dict) == 0:
             return
-        # generate distance mat for all classes as in Hierachrical Triplet Loss
+        # sort dicts and generate indicator tensor
         self.feature_dict = {k: self.feature_dict[k] for k in sorted(self.feature_dict.keys())}
+        self.index_dict = {k: self.index_dict[k] for k in sorted(self.feature_dict.keys())}
+        indicator = torch.tensor([k for k, v in self.feature_dict.items() for i in range(len(v))])
+        self.indicator = indicator
+
+        # stack features and generate pairwise sample dist
+        feats = torch.stack([feat for v in self.feature_dict.values() for feat in v])
+        m, n = feats.size(0), feats.size(0)
+        x = feats.view(m, -1)
+        y = feats.view(n, -1)
+        # use x^TX + y^Ty - 2x^Ty
+        dist = torch.pow(x, 2).sum(dim=1, keepdim=True).expand(m, n) + \
+               torch.pow(y, 2).sum(dim=1, keepdim=True).expand(n, m).t()
+        dist.addmm_(1, -2, x, y.t())
+        self.sample_dist = dist
+
+        # generate pairwise class distance
         dist_mat = np.zeros([len(self.feature_dict), len(self.feature_dict)])
-        i = 0
-        for ind1, feat_vect1 in self.feature_dict.items():
-            j = 0
-            for ind2, feat_vect2 in self.feature_dict.items():
+        for i in self.feature_dict.keys():
+            for j in self.feature_dict.keys():
                 if i > j:
                     dist_mat[i, j] = dist_mat[j, i]
                     j += 1
                     continue
-                x = torch.stack(feat_vect1, 0)
-                y = torch.stack(feat_vect2, 0)
-                m, n = x.size(0), y.size(0)
-                x = x.view(m, -1)
-                y = y.view(n, -1)
-                # use x^TX + y^Ty - 2x^Ty
-                dist = torch.pow(x, 2).sum(dim=1, keepdim=True).expand(m, n) + \
-                       torch.pow(y, 2).sum(dim=1, keepdim=True).expand(n,
-                                                                       m).t()
-                dist.addmm_(1, -2, x, y.t())
-                dist_mat[i, j] = torch.sum(dist).data.item() / (m*n)
-                j += 1
-            i += 1
+                row = indicator == i
+                col = indicator == j
+                mat_ij = dist[row, col]
+                dist_ij = torch.sum(mat_ij).data.item() / (mat_ij.size(0)*mat_ij.size(0))
+                dist_mat[i, j] = dist_ij
+                dist_mat[j, i] = dist_ij
         self.inter_class_dist = dist_mat
 
     def __iter__(self):
         if self.epoch % 5 == 2:
             print('recompute dist at epoch {}'.format(self.epoch))
             self.get_inter_class_distances()
-        # shuffle elements inside each class
-        l_inds = {ind: random.sample(sam, len(sam)) for ind, sam in self.samples.items()}
 
-        for c, inds in l_inds.items():
-            choose = copy.deepcopy(inds)
-            while len(inds) < self.max:
-                l_inds[c] += [random.choice(choose)]
-        # get clostest classes for each class
+        # sort class distances
         indices = np.argsort(self.inter_class_dist, axis=1)
-        #print(indices)
-        #print(self.inter_class_dist)
         batches = list()
+
+        # for each anchor class sample hardest classes and hardest features
         for cl in range(indices.shape[0]):
             possible_classes = indices[cl, :].tolist()
             possible_classes.remove(possible_classes.index(cl))
-            if self.strategy == 'only':
-                sample_margin = int(len(possible_classes) * (1-(self.epoch/100)))
-                classes = np.random.randint(sample_margin, size=self.num_classes-1).tolist()
-                cls = [possible_classes[i] for i in classes]
-            elif self.strategy == 'alternating':
-                sample_margin = max(int(len(possible_classes) * (1-(self.epoch/100))), self.num_classes - 1)
-                classes = np.random.randint(sample_margin, size=self.num_classes-1).tolist()
-                cls = [possible_classes[i] for i in classes]
-                #cls = possible_classes[:self.num_classes -1]
-            cls.append(cl)
-            batch = [s for c in cls for s in random.sample(l_inds[c], self.num_samples)]
+
+            # get classes
+            sample_margin = max(int(len(possible_classes) * (1-(self.epoch/100))), self.num_classes - 1)
+            classes = np.random.randint(sample_margin, size=self.num_classes-1).tolist()
+            cls = [possible_classes[i] for i in classes]
+            #cls = possible_classes[:self.num_classes -1]
+
+            # randomly sample anchor class samples
+            batch = [s for s in random.sample(self.samples[cl], self.num_samples)]
+            for c in cls:
+                row = self.indicator == cl
+                col = self.indicator == c
+                mat_clc = self.sample_dist[row, col]
+                indices = np.argsort(mat_clc, axis=1)[:self.num_classes]
+                samples_c = [self.index_dict[i] for i in indices]
+                batch.append(samples_c)
+
+            batch = [s for c in batch for s in c]
             batches.append(batch)
 
         random.shuffle(batches)
@@ -375,8 +388,14 @@ class CombineSamplerSuperclass2(Sampler):
 
 if __name__ == '__main__':
 
-    feature_dict = {1008: [torch.tensor([0.3376, 0.4358, 1.0508, 0.5083, 0.4756, 0.2441]),
+    feature_dict = {0: [torch.tensor([0.3376, 0.4358, 1.0508, 0.5083, 0.4756, 0.2441]),
                        torch.tensor([0.3079, 0.9692, 0.4834, 0.3521, 0.7603, 0.5337])],
-                654: [torch.tensor([0.8047, 0.4968, 0.3809, 0.8354, 0.5464, 0.1128]),
+                1: [torch.tensor([0.8047, 0.4968, 0.3809, 0.8354, 0.5464, 0.1128]),
                       torch.tensor([0.4136, 0.4592, 0.8535, 0.4343, 0.8022, 0.5010])],
-                890: [torch.tensor([0.4578, 1.0303, 0.5601, 0.3042, 0.0160, 0.1713])]}
+                2: [torch.tensor([0.4578, 1.0303, 0.5601, 0.3042, 0.0160, 0.1713])]}
+
+    samples = {0: [0, 1], 1: [2, 4], 2: [3]}
+
+    samp = DistanceSampler(num_classes=3, num_samples=5, samples=samples, strategy='alternating')
+    samp.feature_dict = feature_dict
+    samp.get_inter_class_distances()
