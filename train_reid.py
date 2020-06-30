@@ -58,7 +58,49 @@ class Hyperparameters():
         elif dataset_name == 'cuhk03-np-labeled':
             self.dataset_path = '../../datasets/cuhk03-np/labeled'
             self.dataset_short = 'cuhk03-np'
+        
+        self.num_classes = {'Market': 751,
+                            'cuhk03-detected': 1367,
+                            'cuhk03-np-detected': 767,
+                            'cuhk03-labeled': 1367,
+                            'cuhk03-np-labeled': 767}
+        self.num_classes_iteration = {'Market': 3,
+                                      'cuhk03-detected': 5,
+                                      'cuhk03-np-detected': 5,
+                                      'cuhk03-labeled': 5,
+                                      'cuhk03-np-labeled': 5}
+        self.num_elemens_class = {'Market': 4,
+                                  'cuhk03-detected': 5,
+                                  'cuhk03-np-detected': 5,
+                                  'cuhk03-labeled': 5,
+                                  'cuhk03-np-labeled': 5}
+        self.get_num_labeled_class = {'Market': 3,
+                                      'cuhk03-detected': 2,
+                                      'cuhk03-np-detected': 2,
+                                      'cuhk03-labeled': 2,
+                                      'cuhk03-np-labeled': 2}
+        self.learning_rate = {'Market': 1.289377564403867e-05,
+                              'cuhk03-detected': 4.4819286767613e-05,
+                              'cuhk03-np-detected': 0.0002,
+                              'cuhk03-labeled': 0.0002,
+                              'cuhk03-np-labeled': 0.0002}
+        self.weight_decay = {'Market': 1.9250447877921047e-14,
+                             'cuhk03-detected': 1.5288509425482333e-13,
+                             'cuhk03-np-detected': 4.863656728256105e-07,
+                             'cuhk03-labeled': 4.863656728256105e-07,
+                             'cuhk03-np-labeled': 4.863656728256105e-07}
+        self.softmax_temperature = {'Market': 80,
+                                    'cuhk03-detected': 80,
+                                    'cuhk03-np-detected': 80,
+                                    'cuhk03-labeled': 80,
+                                    'cuhk03-np-labeled': 80}
+        self.num_iter_gtg = {'Market': 2,
+                             'cuhk03-detected': 1,
+                             'cuhk03-np-detected': 1,
+                             'cuhk03-labeled': 1,
+                             'cuhk03-np-labeled': 1}
 
+        '''
         self.num_classes = {'Market': 751,
                             'cuhk03-detected': 1367,
                             'cuhk03-np-detected': 767,
@@ -99,7 +141,7 @@ class Hyperparameters():
                              'cuhk03-np-detected': {'resnet50': 1, 'densenet161': 2},
                              'cuhk03-labeled': {'resnet50': 1, 'densenet161': 2},
                              'cuhk03-np-labeled': {'resnet50': 1, 'densenet161': 2}}
-
+        '''
     def get_path(self):
         return self.dataset_path
 
@@ -107,28 +149,28 @@ class Hyperparameters():
         return self.num_classes[self.dataset_name]
 
     def get_number_classes_iteration(self):
-        return self.num_classes_iteration[self.dataset_name][self.net_type]
+        return self.num_classes_iteration[self.dataset_name]#[self.net_type]
 
     def get_number_elements_class(self):
-        return self.num_elemens_class[self.dataset_name][self.net_type]
+        return self.num_elemens_class[self.dataset_name]#[self.net_type]
 
     def get_number_labeled_elements_class(self):
-        return self.get_num_labeled_class[self.dataset_name][self.net_type]
+        return self.get_num_labeled_class[self.dataset_name]#[self.net_type]
 
     def get_learning_rate(self):
-        return self.learning_rate[self.dataset_name][self.net_type]
+        return self.learning_rate[self.dataset_name]#[self.net_type]
 
     def get_weight_decay(self):
-        return self.weight_decay[self.dataset_name][self.net_type]
+        return self.weight_decay[self.dataset_name]#[self.net_type]
 
     def get_epochs(self):
         return 70
 
     def get_num_gtg_iterations(self):
-        return self.num_iter_gtg[self.dataset_name][self.net_type]
+        return self.num_iter_gtg[self.dataset_name]#[self.net_type]
 
     def get_softmax_temperature(self):
-        return self.softmax_temperature[self.dataset_name][self.net_type]
+        return self.softmax_temperature[self.dataset_name]#[self.net_type]
 
 
 def init_args():
@@ -631,7 +673,7 @@ def main():
     # densenet121, densenet161, densenet169, densenet201
     #trainer.args.net_type = 'densenet161'
     # Random search
-    print('50 for distance reduction')
+    print('NUM ITER GTG__________________')
     for i in range(num_iter):
         trainer.args.lab_smooth = 1 #lab_smooth[i]
         trainer.args.trans = 'bot' #trans[i]
@@ -643,10 +685,14 @@ def main():
         #trainer.args.triplet_loss = 1
         trainer.args.pretrained = 'no'
         #trainer.args.scaling_triplet = 0.7
-        trainer.args.re_rank = 1
-        #trainer.args.output_train = 'plain'
-        #trainer.args.output_test = 'plain'
+        #trainer.args.re_rank = 1
+        #trainer.args.output_train = 'neck'
+        #trainer.args.output_test = 'neck'
         #trainer.args.center = 1
+        #trainer.args.val = 1
+        
+        if trainer.args.val:
+            trainer.args.nb_classes -= 100
 
         if args.pretraining:
             mode = 'finetuned_'
@@ -697,7 +743,7 @@ def main():
                 trainer.args.nb_epochs = 1
             if trainer.args.distance_sampling == 'alternating':
                 trainer.args.nb_epochs = 130
-
+        #config['num_iter_gtg'] = 2
         best_accuracy, model = trainer.train_model(config, timer, load_path)
 
         hypers = ', '.join([k + ': ' + str(v) for k, v in config.items()])
