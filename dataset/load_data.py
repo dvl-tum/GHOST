@@ -2,6 +2,7 @@ import os
 import json
 from .extract_market import marketlike
 from .extract_cuhk import cuhk03
+from .extract_duke import  duke
 import random
 
 '''
@@ -51,6 +52,9 @@ def load_data(root: str = None, both: int = 0, val=0):
         elif os.path.basename(root) == 'Market-1501-v15.09.15':
             check_zip = os.path.join(os.path.dirname(root),
                                      'Market-1501-v15.09.15.zip')
+        elif os.path.basename(root) == 'dukemtmc':
+            check_zip = os.path.join(os.path.dirname(root),
+                                     'dukemtmc.zip')
 
         # check if zip file or extracted directory exists
         if not os.path.isfile(check_zip) and not os.path.isdir(root):
@@ -60,6 +64,8 @@ def load_data(root: str = None, both: int = 0, val=0):
                 path = 'https://drive.google.com/uc?id=0BxJeH3p7Ln48djNVVVJtUXh6bXc&export=download'
             elif os.path.basename(root) == 'Market-1501-v15.09.15':
                 path = 'https://drive.google.com/file/d/0B8-rUzbwVRk0c054eEozWG9COHM/view'
+            elif os.path.basename(root) == 'dukemtmc':
+                path = 'https://drive.google.com/uc?id=1qJ-7-o7OhDYj1T071z9a8uwFMiPhXEQc&export=download'
             print('Please download dataset from ' + path)
             quit()
 
@@ -67,6 +73,8 @@ def load_data(root: str = None, both: int = 0, val=0):
         if os.path.basename(os.path.dirname(root)) == 'cuhk03' or \
                 os.path.basename(root) == 'cuhk03':
             cuhk03(root=root, check_zip=check_zip)
+        elif os.path.basename(root) == 'dukemtmc':
+            duke(root=root, image_dir=image_dir, check_zip=check_zip)
         else:
             marketlike(root=root, image_dir=image_dir, check_zip=check_zip)
 
