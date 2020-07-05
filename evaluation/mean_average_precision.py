@@ -255,9 +255,9 @@ def re_ranking(features, query, gallery, k1=20, k2=6, lambda_value=0.3,
     return final_dist
 
 
-def calc_mean_average_precision(features, query, gallery, re_rank=False):
+def calc_mean_average_precision(features, query, gallery, re_rank=False, lamb=0.3, k1=20, k2=6):
     if re_rank:
-        distmat = re_ranking(features, query, gallery)
+        distmat = re_ranking(features, query, gallery, k1=k1, k2=k2, lambda_value=lamb)
     else:
         distmat = pairwise_distance(features, query, gallery)
     return evaluate_all(distmat, query=query, gallery=gallery)

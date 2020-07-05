@@ -25,12 +25,13 @@ def predict_batchwise_reid(model, dataloader, output_test='norm'):
 
 
 def evaluate_reid(model, dataloader, query=None, gallery=None, root=None,
-                  output_test='norm', re_rank=False):
+                  output_test='norm', re_rank=False, lamb=0.3, k1=20, k2=6):
     model_is_training = model.training
     model.eval()
     _, _, features, _ = predict_batchwise_reid(model, dataloader, output_test)
     mAP, cmc = evaluation.calc_mean_average_precision(features, query,
-                                                      gallery, re_rank)
+                                                      gallery, re_rank, 
+                                                      lamb, k1, k2)
     model.train(model_is_training)
     return mAP, cmc
 

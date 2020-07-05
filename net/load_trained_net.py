@@ -2,9 +2,10 @@ import torch
 import os
 import net
 import torch.nn as nn
+import torch.nn.utils.weight_norm as weightNorm
 
 
-def load_net(dataset, net_type, nb_classes, embed=False, sz_embedding=512, pretraining=False, last_stride=0, neck=0, load_path=None, use_pretrained='no'):
+def load_net(dataset, net_type, nb_classes, embed=False, sz_embedding=512, pretraining=False, last_stride=0, neck=0, load_path=None, use_pretrained='no', weight_norm=0):
 
     if net_type == 'bn_inception':
         model = net.bn_inception(pretrained=True)
@@ -36,11 +37,18 @@ def load_net(dataset, net_type, nb_classes, embed=False, sz_embedding=512, pretr
         if neck:
             model.bottleneck = nn.BatchNorm1d(2048)
             model.bottleneck.bias.requires_grad_(False)  # no shift
-            model.fc = nn.Linear(2048, nb_classes, bias=False)
+            if weight_norm:
+                model.fc = weightNorm(nn.Linear(2048, nb_classes, bias=False), name = "weight")
+            else:
+                model.fc = nn.Linear(2048, nb_classes, bias=False)
 
             model.bottleneck.apply(weights_init_kaiming)
             model.fc.apply(weights_init_classifier)
-        else: model.fc = nn.Linear(2048, nb_classes)
+        else: 
+            if weight_norm:
+                model.fc = weightNorm(nn.Linear(2048, nb_classes), name = "weight")
+            else:
+                model.fc = nn.Linear(2048, nb_classes)
 
         if not pretraining and use_pretrained != 'no':
             print(load_path)

@@ -36,6 +36,18 @@ class CombineSampler(Sampler):
             choose = copy.deepcopy(inds)
             while len(inds) < self.max:
                 inds += [random.choice(choose)]
+        print("NEW MAX")
+
+        #for inds in l_inds:
+        #    n_els = self.max - len(inds) + 1  # take out 1?
+        #    inds.extend(inds[:n_els])  # max + 1
+        #print("OLD MAX")
+
+        #for inds in l_inds:
+        #    choose = copy.deepcopy(inds)
+        #    while len(inds) < self.n_cl:
+        #        inds += [random.choice(choose)]
+        #print("Num samples")
 
         # split lists of a class every n_cl elements
         split_list_of_indices = []
@@ -79,13 +91,38 @@ class DistanceSampler(Sampler):
         if len(self.feature_dict) == 0:
             return
         # sort dicts and generate indicator tensor
-        self.feature_dict = {k: self.feature_dict[k] for k in sorted(self.feature_dict.keys())}
-        self.index_dict = {k: self.index_dict[k] for k in sorted(self.feature_dict.keys())}
-        indicator = torch.tensor([k for k, v in self.feature_dict.items() for i in range(len(v))])
-        self.indicator = indicator
+        self.feats_sorted = defaultdict(list)
+        self.index_sorted = defaultdict(list)
+        self.indicator = list()
+        feats = list()
+        for k in sorted(self.feature_dict.keys()):
+            #print(len(self.feature_dict[k]), self.feature_dict[k].keys())
+            for i, f in self.feature_dict[k].items():
+                self.feats_sorted[k].append(f)
+                self.index_sorted[k].append(i)
+            while len(self.feats_sorted[k]) < self.num_samples:
+                ind = random.sample(range(len(self.feats_sorted[k])), 1)
+                self.feats_sorted[k].append(self.feats_sorted[k][ind[0]])
+                self.index_sorted[k].append(self.index_sorted[k][ind[0]])
+
+            assert len(self.index_sorted[k]) == len(self.feats_sorted[k])
+            self.indicator.append([k]*len(self.index_sorted[k]))
+            feats.append(self.feats_sorted[k])
+        
+        del self.feature_dict
+
+        self.indicator = [i for l in self.indicator for i in l]
+        feats = [f for c in feats for f in c]
+        # self.feature_dict = {k: self.feature_dict[k] for k in sorted(self.feature_dict.keys())}
+        # self.index_dict = {k: self.index_dict[k] for k in sorted(self.feature_dict.keys())}
+        # self.indicator = torch.tensor([k for k, v in self.feature_dict.items() for i in range(len(v))])
+
+        self.indicator = torch.tensor(self.indicator)
 
         # stack features and generate pairwise sample dist
-        feats = torch.stack([feat for v in self.feature_dict.values() for feat in v])
+        #for f in feats:
+        #    print(f, type(f))
+        feats = torch.stack(feats)
         m, n = feats.size(0), feats.size(0)
         x = feats.view(m, -1)
         y = feats.view(n, -1)
@@ -96,19 +133,19 @@ class DistanceSampler(Sampler):
         self.sample_dist = dist
 
         # generate pairwise class distance
-        dist_mat = np.zeros([len(self.feature_dict), len(self.feature_dict)])
-        for i in self.feature_dict.keys():
-            for j in self.feature_dict.keys():
+        dist_mat = np.zeros([len(self.feats_sorted), len(self.feats_sorted)])
+        for i in self.feats_sorted.keys():
+            for j in self.feats_sorted.keys():
                 if i > j:
                     dist_mat[i, j] = dist_mat[j, i]
                     j += 1
                     continue
-                row = indicator == i
-                col = indicator == j
-                r_max, r_min = torch.max(torch.where(row)[0]).item(), \
-                               torch.min(torch.where(row)[0]).item()
-                c_max, c_min = torch.max(torch.where(col)[0]).item(), \
-                               torch.min(torch.where(col)[0]).item()
+                row = self.indicator == i
+                col = self.indicator == j
+                r_max, r_min = torch.max(row.nonzero()).item(), \
+                               torch.min(row.nonzero()).item()
+                c_max, c_min = torch.max(col.nonzero()).item(), \
+                               torch.min(col.nonzero()).item()
                 mat_ij = dist[r_min:r_max+1, c_min:c_max+1]
                 dist_ij = torch.sum(mat_ij).data.item() / (mat_ij.size(0)*mat_ij.size(0))
                 dist_mat[i, j] = dist_ij
@@ -116,63 +153,79 @@ class DistanceSampler(Sampler):
         self.inter_class_dist = dist_mat
 
     def __iter__(self):
-        if self.epoch % 5 == 2:
+
+        if (self.strategy == 'alternating' and self.epoch % 5 == 2) or (
+                self.strategy == 'only' and self.epoch % 5 == 2) or (
+                        self.strategy == 'pre' and self.epoch % 5 == 2) or (
+                                self.strategy == 'pre_soft' and self.epoch % 5 == 1):
             print('recompute dist at epoch {}'.format(self.epoch))
             self.get_inter_class_distances()
-
+        
         # sort class distances
         indices = np.argsort(self.inter_class_dist, axis=1)
         batches = list()
 
         # for each anchor class sample hardest classes and hardest features
-        for cl in range(indices.shape[0]):
-            possible_classes = indices[cl, :].tolist()
-            possible_classes.remove(possible_classes.index(cl))
+        k=2
+        print(k)
+        for i in range(k):
+            for cl in range(indices.shape[0]):
+                possible_classes = indices[cl, :].tolist()
+                possible_classes.remove(possible_classes.index(cl))
 
-            # get classes
-            sample_margin = max(int(len(possible_classes) * (1-(self.epoch/self.m))), self.num_classes - 1)
-            classes = np.random.randint(sample_margin, size=self.num_classes-1).tolist()
-            cls = [possible_classes[i] for i in classes]
-            #cls = possible_classes[:self.num_classes -1]
-
-            # randomly sample anchor class samples
-            ind = [s for s in random.sample(range(len(self.samples[cl])), self.num_samples)]
-            batch = [self.samples[cl][i] for i in ind]
-            for c in cls:
-                # threshold for samples to be sampled
-                thresh = self.inter_class_dist[cl, c]
-
-                # extract pairwise sample distance of anchor and sampled class
-                row = self.indicator == cl
-                col = self.indicator == c
-                r_max, r_min = torch.max(torch.where(row)[0]).item(), \
-                               torch.min(torch.where(row)[0]).item()
-                c_max, c_min = torch.max(torch.where(col)[0]).item(), \
-                               torch.min(torch.where(col)[0]).item()
-                mat_clc = self.sample_dist[r_min:r_max + 1, c_min:c_max + 1]
-
-                # take only the rows corresponding to sampled anchor samples
-                mat_clc = [mat_clc[i, :] for i in range(mat_clc.shape[0]) if i in ind]
-                mat_clc = torch.stack(mat_clc)
-
-                # samples from sampled class only if distance > than thresh
-                possible_samples = torch.unique(torch.where(mat_clc > thresh)[1])
-                if possible_samples.shape >= self.num_samples:
-                    ind = random.sample(range(possible_samples.shape[0]), self.num_samples)
+                # get classes
+                if self.strategy != 'pre':
+                    sample_margin = max(int(len(possible_classes) * (1-(self.epoch/self.m))), self.num_classes - 1)
+                    classes = np.random.randint(sample_margin, size=self.num_classes-1).tolist()
+                    cls = [possible_classes[i] for i in classes]
                 else:
-                    # if not enough samples with distance > tresh --> random
-                    other_samps = [i for i in range(c_max-c_min) if i not in possible_samples]
-                    ind = random.sample(other_samps, self.num_samples-possible_samples.shape[0])
-                    [ind.append(possible_samples[i]) for i in range(possible_samples.shape[0])]
+                    cls = possible_classes[:self.num_classes -1]
+    
+                # randomly sample anchor class samples
+                ind_cl = [s for s in random.sample(range(len(self.index_sorted[cl])), self.num_samples)]
+                batch = [[self.index_sorted[cl][i] for i in ind_cl]]
+                for c in cls:
+                    # threshold for samples to be sampled
+                    thresh = self.inter_class_dist[cl, c]
+    
+                    # extract pairwise sample distance of anchor and sampled class
+                    row = self.indicator == cl
+                    col = self.indicator == c
+                    r_max, r_min = torch.max(row.nonzero()).item(), \
+                                   torch.min(row.nonzero()).item()
+                    c_max, c_min = torch.max(col.nonzero()).item(), \
+                                   torch.min(col.nonzero()).item()
+                    mat_clc = self.sample_dist[r_min:r_max + 1, c_min:c_max + 1]
 
-                samps = [self.index_dict[c][possible_samples[i]] for i in ind]
-                batch.append(samps)
-
-            batch = [s for c in batch for s in c]
-            batches.append(batch)
-
+                    # take only the rows corresponding to sampled anchor samples
+                    mat_clc = [mat_clc[i, :] for i in range(mat_clc.shape[0]) if i in ind_cl]
+                    if len(mat_clc) == 0:
+                        print(mat_clc, ind_cl, r_min, r_max, c_min, c_max)
+                        print("Error: sub matrix can not have zero entries")
+                        quit()
+                
+                    mat_clc = torch.stack(mat_clc)
+    
+                    # samples from sampled class only if distance > than thresh
+                    possible_samples = torch.unique((mat_clc > thresh).nonzero()[:, 1])
+                    #print(possible_samples, ind_cl, r_min, r_max, c_min, c_max, mat_clc.shape)
+                    if possible_samples.shape[0] >= self.num_samples:
+                        ind = random.sample(range(possible_samples.shape[0]), self.num_samples)
+                    elif possible_samples.shape[0] == 0:
+                        ind = random.sample(range(c_max-c_min+1), self.num_samples)
+                    else:
+                        # if not enough samples with distance > tresh --> random
+                        other_samps = [i for i in range(c_max-c_min+1) if i not in possible_samples]
+                        ind = random.sample(other_samps, self.num_samples-possible_samples.shape[0])
+                        [ind.append(possible_samples[i]) for i in range(possible_samples.shape[0])]
+                    
+                    samps = [self.index_sorted[c][i] for i in ind]
+                    batch.append(samps)
+                batch = [s for c in batch for s in c]
+                batches.append(batch)
         random.shuffle(batches)
         self.flat_list = [s for batch in batches for s in batch]
+
         return (iter(self.flat_list))
 
     def __len__(self):

@@ -18,6 +18,7 @@ import net
 import data_utility
 import utils
 import matplotlib.pyplot as plt
+from collections import defaultdict
 
 
 logger = logging.getLogger(__name__)
@@ -60,7 +61,7 @@ class Hyperparameters():
         elif dataset_name == 'cuhk03-np-labeled':
             self.dataset_path = '../../datasets/cuhk03-np/labeled'
             self.dataset_short = 'cuhk03-np'
-        
+        '''
         self.num_classes = {'Market': 751,
                             'cuhk03-detected': 1367,
                             'cuhk03-np-detected': 767,
@@ -103,6 +104,14 @@ class Hyperparameters():
                              'cuhk03-np-labeled': 1}
 
         '''
+        self.lamd = {'Market': 0.3, 'cuhk03-detected': 0.3}
+
+        self.k1 = {'Market': 20, 'cuhk03-detected': 20}
+
+        self.k2 = {'Market': 6, 'cuhk03-detected': 6}
+
+
+        
         self.num_classes = {'Market': 751,
                             'cuhk03-detected': 1367,
                             'cuhk03-np-detected': 767,
@@ -143,7 +152,7 @@ class Hyperparameters():
                              'cuhk03-np-detected': {'resnet50': 1, 'densenet161': 2},
                              'cuhk03-labeled': {'resnet50': 1, 'densenet161': 2},
                              'cuhk03-np-labeled': {'resnet50': 1, 'densenet161': 2}}
-        '''
+        
     def get_path(self):
         return self.dataset_path
 
@@ -151,32 +160,41 @@ class Hyperparameters():
         return self.num_classes[self.dataset_name]
 
     def get_number_classes_iteration(self):
-        return self.num_classes_iteration[self.dataset_name]#[self.net_type]
+        return self.num_classes_iteration[self.dataset_name][self.net_type]
 
     def get_number_elements_class(self):
-        return self.num_elemens_class[self.dataset_name]#[self.net_type]
+        return self.num_elemens_class[self.dataset_name][self.net_type]
 
     def get_number_labeled_elements_class(self):
-        return self.get_num_labeled_class[self.dataset_name]#[self.net_type]
+        return self.get_num_labeled_class[self.dataset_name][self.net_type]
 
     def get_learning_rate(self):
-        return self.learning_rate[self.dataset_name]#[self.net_type]
+        return self.learning_rate[self.dataset_name][self.net_type]
 
     def get_weight_decay(self):
-        return self.weight_decay[self.dataset_name]#[self.net_type]
+        return self.weight_decay[self.dataset_name][self.net_type]
 
     def get_epochs(self):
         return 70
 
     def get_num_gtg_iterations(self):
-        return self.num_iter_gtg[self.dataset_name]#[self.net_type]
+        return self.num_iter_gtg[self.dataset_name][self.net_type]
 
     def get_softmax_temperature(self):
-        return self.softmax_temperature[self.dataset_name]#[self.net_type]
+        return self.softmax_temperature[self.dataset_name][self.net_type]
+    
+    def get_rerank_lambda(self):
+        return self.lamb[self.dataset_name]
+
+    def get_rerank_k1(self):
+        return self.k1[self.dataset_name]
+
+    def get_rerank_k2(self):
+        return self.k2[self.dataset_name]
 
 
 def init_args():
-    dataset = 'cuhk03-detected'
+    dataset = 'Market' #'cuhk03-detected'
     net_type = 'resnet50' #'densenet161'
     hyperparams = Hyperparameters(dataset, net_type)
     parser = argparse.ArgumentParser(
@@ -254,6 +272,8 @@ def init_args():
                         help='how triplet loss should be scaled')
     parser.add_argument('--center_lr', default=0.5, type=float,
                         help='Learning rate for center')
+    parser.add_argument('--scaling_ce', default=1, type=float,
+                        help='Weight for CE Loss')
 
     parser.add_argument('--both', default=0, type=int,
                         help='if labeled and detected of cuhk03 should be taken')
@@ -304,6 +324,13 @@ def init_args():
                         help='If val should be excluded from dataset or not')
     
 
+    parser.add_argument('--lamb', default=0.3, type=float, 
+                        help='reranking')
+    parser.add_argument('--k1', default=20, type=int, help='k1 for re ranking')
+    parser.add_argument('--k2', default=6, type=int, help='k2 for re ranking')
+    parser.add_argument('--weight_norm', default=0, type=int,
+                        help='if classifier weights should be normalized')
+
     return parser.parse_args()
 
 
@@ -336,7 +363,8 @@ class PreTrainer():
                              last_stride=self.args.last_stride,
                              neck=self.args.neck,
                              load_path=load_path,
-                             use_pretrained=self.args.pretrained)
+                             use_pretrained=self.args.pretrained,
+                             weight_norm=self.args.weight_norm)
         model = model.to(self.device)
 
         gtg = gtg_module.GTG(self.args.nb_classes,
@@ -348,18 +376,16 @@ class PreTrainer():
             [{'params': list(set(model.parameters())), 'lr': config['lr']}],
             weight_decay=config['weight_decay'])
 
-        losses = dict()
-        losses['Total Loss'] = list()
+        losses = defaultdict(list)
+        losses_mean = defaultdict(list)
         # Loss for GroupLoss
         criterion = nn.NLLLoss().to(self.device)
-        losses['Group Loss'] = list()
 
         # Label Smoothing for GroupLoss
         if self.args.lab_smooth_GL:
             smoother = utils.LabelSmoothGL(num_classes=self.args.nb_classes)
 
         # Label smoothing for CrossEntropy Loss
-        losses['Cross Entropy'] = list()
         if self.args.lab_smooth:
             criterion2 = utils.CrossEntropyLabelSmooth(
                 num_classes=self.args.nb_classes)
@@ -368,14 +394,12 @@ class PreTrainer():
 
         # Add Center Loss
         if self.args.center:
-            losses['Center'] = list()
             criterion3 = utils.CenterLoss(num_classes=self.args.nb_classes)
             opt_center = torch.optim.SGD(criterion3.parameters(),
                                          lr=self.args.center_lr)
 
         # Add triplet loss
         if self.args.triplet_loss:
-            losses['Triplet'] = list()
             criterion4 = utils.TripletLoss(margin=0.5)
 
         # Do training in mixed precision
@@ -392,7 +416,7 @@ class PreTrainer():
                     num_classes_iter=config['num_classes_iter'],
                     num_elements_class=config['num_elements_class'],
                     size_batch=config['num_classes_iter'] * config[
-                        'num_elements_class'],
+                           'num_elements_class'],
                     both=self.args.both,
                     trans=self.args.trans,
                     distance_sampler=self.args.distance_sampling,
@@ -441,7 +465,6 @@ class PreTrainer():
         # feature dict for distance sampling
         if self.args.distance_sampling:
             feature_dict = dict()
-            index_dict = dict()
 
         for e in range(1, self.args.nb_epochs + 1):
             # If not testing
@@ -462,14 +485,18 @@ class PreTrainer():
                 # Different Distance Sampling Strategies
                 if (self.args.distance_sampling == 'only' and e > 1)\
                         or (self.args.distance_sampling == 'alternating'
-                            and e % 2 == 0):
+                            and e % 2 == 0) or (self.args.distance_sampling
+                                    == 'pre' and e > 1) or (self.args.distance_sampling
+                                            == 'pre_soft' and e > 30):
                     dl_tr = dl_tr2
                     dl_ev = dl_ev2
                     gallery = gallery2
                     query = query2
                 elif (self.args.distance_sampling == 'only' and e == 1)\
                         or (self.args.distance_sampling == 'alternating'
-                            and e % 2 != 0):
+                            and e % 2 != 0) or (self.args.distance_sampling
+                                    == 'pre' and e == 1) or (self.args.distance_sampling
+                                            == 'pre_soft' and e <= 30):
                     dl_tr = dl_tr1
                     dl_ev = dl_ev1
                     gallery = gallery1
@@ -477,13 +504,12 @@ class PreTrainer():
                 if self.args.distance_sampling != 'no':
                     # set feature dict of sampler = feat dict of previous epoch
                     dl_tr.sampler.feature_dict = feature_dict
-                    dl_tr.sampler.index_dict = index_dict
-                    feature_dict = dict()
-                    index_dict = dict()
                     dl_tr.sampler.epoch = e
 
                 # If distance_sampling == only, use first epoch to get features
-                if self.args.distance_sampling == 'only' and e == 1:
+                if (self.args.distance_sampling == 'only' and e == 1)\
+                        or (self.args.distance_sampling == 'pre' and e == 1):
+                    #or self.args.distance_sampling == 'pre_soft' and e == 1:
                     model_is_training = model.training
                     model.eval()
                     with torch.no_grad():
@@ -492,11 +518,9 @@ class PreTrainer():
                             probs, fc7 = model(x.to(self.device))
                             for y, f, i in zip(Y, fc7, I):
                                 if y.data.item() in feature_dict.keys():
-                                    feature_dict[y.data.item()].append(f)
-                                    index_dict[y.data.item()].append(i)
+                                    feature_dict[y.data.item()][i.item()] = f
                                 else:
-                                    feature_dict[y.data.item()] = [f]
-                                    index_dict[y.data.item()] = [i]
+                                    feature_dict[y.data.item()] = {i.item(): f}
 
                 # Normal training with backpropagation
                 else:
@@ -512,15 +536,13 @@ class PreTrainer():
                         if self.args.distance_sampling != 'no':
                             for y, f, i in zip(Y, fc7, I):
                                 if y.data.item() in feature_dict.keys():
-                                    feature_dict[y.data.item()].append(f)
-                                    index_dict[y.data.item()].append(i)
+                                    feature_dict[y.data.item()][i.item()] = f
                                 else:
-                                    feature_dict[y.data.item()] = [f]
-                                    index_dict[y.data.item()] = [i]
+                                    feature_dict[y.data.item()] = {i.item(): f}
 
                         # Compute CE Loss
                         loss = criterion2(probs, Y)
-                        losses['Cross Entropy'].append(loss)
+                        losses['Cross Entropy'].append(loss.item())
 
                         # Add other losses of not pretraining
                         if not self.args.pretraining:
@@ -541,22 +563,22 @@ class PreTrainer():
                                 loss1 = smoother(probs_for_gtg, Y)
                             else:
                                 loss1 = criterion(probs_for_gtg, Y)
-                            losses['Group Loss'].append(loss1)
+                            losses['Group Loss'].append(loss1.item())
 
-                            loss = self.args.scaling_loss * loss1 + loss
+                            loss = self.args.scaling_loss * loss1 + self.args.scaling_ce * loss
 
                             # Compute center loss
                             if self.args.center:
                                 loss2 = criterion3(fc7, Y)
                                 loss += self.args.scaling_center * loss2
-                                losses['Center'].append(loss2)
+                                losses['Center'].append(loss2.item())
 
                             # Compute Triplet Loss
                             if self.args.triplet_loss:
                                 triploss, _ = criterion4(fc7, Y)
                                 loss += self.args.scaling_triplet * triploss
-                                losses['Triplet'].append(triploss)
-                            losses['Total Loss'].append(loss)
+                                losses['Triplet'].append(triploss.item())
+                            losses['Total Loss'].append(loss.item())
                         else:
                             # For pretraining just use acc as evaluation
                             _, preds = torch.max(probs, 1)
@@ -584,7 +606,9 @@ class PreTrainer():
                 # Set model to training mode again, if first epoch and only
                 if self.args.distance_sampling == 'only' and e == 1:
                     model.train(model_is_training)
-
+             
+            [losses_mean[k].append(sum(v)/len(v)) for k, v in losses.items()]
+            losses = defaultdict(list)  
             # compute ranks and mAP at the end of each epoch
             if not self.args.pretraining:
                 with torch.no_grad():
@@ -593,7 +617,9 @@ class PreTrainer():
                                                    query=query,
                                                    gallery=gallery,
                                                    output_test=self.args.output_test,
-                                                   re_rank=self.args.re_rank)
+                                                   re_rank=self.args.re_rank,
+                                                   lamb=self.args.lamb,
+                                                   k1=self.args.k1, k2=self.args.k2)
 
                     logger.info('Mean AP: {:4.1%}'.format(mAP))
 
@@ -671,18 +697,21 @@ class PreTrainer():
             os.makedirs(results_dir)
 
         # plot losses
-        for k, v in losses.items():
+        for k, v in losses_mean.items():
             eps = list(range(len(v)))
             plt.plot(eps, v)
             plt.xlim(left=0)
             plt.ylim(bottom=0)
             plt.xlabel('Epochs')
-            plt.ylabel(k)
-            plt.grid(True)
-            plt.savefig(os.path.join(results_dir, k + '.png'))
+        plt.legend(losses_mean.keys(), loc='upper right')
+        plt.grid(True)
+        print(results_dir, k, k + '.png')
+        plt.savefig(os.path.join(results_dir, k + '.png'))
+        plt.close()
 
         # plot scores
-        for i, name in enumerate('mAP', 'rank-1', 'rank-5', 'rank-10'):
+        scores = [[score[0], score[1][0], score[1][1], score[1][2]] for score in scores] 
+        for i, name in enumerate(['mAP', 'rank-1', 'rank-5', 'rank-10']):
             sc = [s[i] for s in scores]
             eps = list(range(len(sc)))
             plt.plot(eps, sc)
@@ -692,6 +721,7 @@ class PreTrainer():
             plt.ylabel(name)
             plt.grid(True)
             plt.savefig(os.path.join(results_dir, name + '.png'))
+            plt.close()
         
         return best_accuracy, model
 
@@ -708,7 +738,7 @@ def main():
         os.makedirs(save_folder_results)
     if not os.path.isdir(save_folder_nets):
         os.makedirs(save_folder_nets)
-    
+    #args.hyper_search = 1 
     trainer = PreTrainer(args, args.cub_root, device,
                          save_folder_results, save_folder_nets)
 
@@ -730,7 +760,9 @@ def main():
         trainer.args.neck = 1 #neck[i]
         #trainer.args.test_option = 'norm' #test_option[i] #neck_test[i]
         #trainer.args.bn_GL = 0 #bn_GL[i]
-        trainer.args.distance_sampling = 'alternating' #distance_sampling[i]
+        #trainer.args.distance_sampling = 'pre' #'pre_soft' #'pre' #'alternating' #distance_sampling[i]
+        #trainer.args.weight_norm = 1
+        #trainer.args.m = 75
         #trainer.args.lab_smooth_GL = 1
         #trainer.args.triplet_loss = 1
         trainer.args.pretrained = 'no'
@@ -740,7 +772,8 @@ def main():
         #trainer.args.output_test = 'neck'
         #trainer.args.center = 1
         #trainer.args.val = 1
-        
+        trainer.args.scaling_ce = 0.75
+
         if trainer.args.val:
             trainer.args.nb_classes -= 100
 
@@ -754,6 +787,9 @@ def main():
         if trainer.args.test or trainer.args.pretrained == 'GL':
             load_path = os.path.join('save_trained_nets', mode + trainer.args.net_type + '_' + trainer.args.dataset_name + '.pth')
             logger.info('Load model from {}'.format(load_path))
+        elif trainer.args.distance_sampling == 'pre' or trainer.args.distance_sampling == 'pre_soft':
+            load_path = os.path.join('save_trained_nets', '30' + mode + trainer.args.net_type + '_' + trainer.args.dataset_name + '.pth')
+            print(load_path)
         elif trainer.args.pretrained == 'fine':
             load_path = os.path.join('net', 'finetuned_' + mode + trainer.args.dataset_short + '_' + trainer.args.net_type + '.pth')
             logger.info('Load model from {}'.format(load_path))
@@ -771,6 +807,18 @@ def main():
                       'num_labeled_points_class': random.randint(1, 3),
                       'num_iter_gtg': random.randint(1, 3),
                       'temperature': random.randint(10, 80)}
+            '''
+            config = {'lr': args.lr_net,
+                      'weight_decay': args.weight_decay,
+                      'num_classes_iter': args.num_classes_iter,
+                      'num_elements_class': args.num_elements_class,
+                      'num_labeled_points_class': args.num_labeled_points_class,
+                      'num_iter_gtg': args.num_iter_gtg,
+                      'temperature': args.temperature}
+            trainer.args.lamb = random.random()
+            trainer.args.k1 = random.randint(5, 30)
+            trainer.args.k2 = random.randint(0, 15)
+            '''
             trainer.args.nb_epochs = 30
         elif trainer.args.pretraining:
             config = {'lr': 0.0002,
@@ -789,9 +837,10 @@ def main():
                       'num_labeled_points_class': args.num_labeled_points_class,
                       'num_iter_gtg': args.num_iter_gtg,
                       'temperature': args.temperature}
+
             if trainer.args.test:
                 trainer.args.nb_epochs = 1
-            if trainer.args.distance_sampling == 'alternating':
+            if trainer.args.distance_sampling != 'no':
                 trainer.args.nb_epochs = 130
         #config['num_iter_gtg'] = 2
         best_accuracy, model = trainer.train_model(config, timer, load_path)
@@ -804,7 +853,7 @@ def main():
             os.rename(os.path.join(save_folder_nets,
                 args.dataset_name + '_intermediate_model_' + str(
                                        timer) + '.pth'),
-                      mode + args.net_type + '_' + args.dataset_name + '.pth')
+                     '30' +  mode + args.net_type + '_' + args.dataset_name + '.pth')
             best_recall = best_accuracy
             best_hypers = '_'.join(
                 [str(k) + '_' + str(v) for k, v in config.items()])
