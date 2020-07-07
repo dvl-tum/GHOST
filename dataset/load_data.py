@@ -113,7 +113,6 @@ def load_data(root: str = None, mode: str='single', val=0):
             data.append(d)
             labels.append(l)
     elif mode == 'all':
-        root = os.path.basename(root)
         root_cuhk03 = os.path.join(os.path.dirname(root), 'cuhk03', 'detected')
         root_market = os.path.join(os.path.dirname(root), 'Market-1501-v15.09.15')
         # load image paths and labels for splits

@@ -226,7 +226,8 @@ class DistanceSampler(Sampler):
                 batches.append(batch)
         random.shuffle(batches)
         self.flat_list = [s for batch in batches for s in batch]
-
+        print('SAMPLES')
+        print(set(self.flat_list), len(self.flat_list))
         return (iter(self.flat_list))
 
     def __len__(self):

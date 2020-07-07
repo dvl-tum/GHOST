@@ -46,7 +46,7 @@ class Hyperparameters():
         print(self.dataset_name)
         print(self.net_type)
         # print('Without GL')
-        if dataset_name == 'Market':
+        if dataset_name == 'Market' or 'MarketCuhk03':
             self.dataset_path = '../../datasets/Market-1501-v15.09.15'
             self.dataset_short = 'Market'
         elif dataset_name == 'cuhk03-detected':
@@ -118,49 +118,57 @@ class Hyperparameters():
                             'cuhk03-np-detected': 767,
                             'cuhk03-labeled': 1367,
                             'cuhk03-np-labeled': 767,
-                            'dukemtmc': 702}
+                            'dukemtmc': 702, 
+                            'MarketCuhk03': 751 + 1367}
         self.num_classes_iteration = {'Market': {'resnet50': 3, 'densenet161': 5},
                                       'cuhk03-detected': {'resnet50': 5, 'densenet161': 5},
                                       'cuhk03-np-detected': {'resnet50': 5, 'densenet161': 5},
                                       'cuhk03-labeled': {'resnet50': 5, 'densenet161': 5},
                                       'cuhk03-np-labeled': {'resnet50': 5, 'densenet161': 5},
-                                      'dukemtmc': {'resnet50': 5, 'densenet161': 5}}
+                                      'dukemtmc': {'resnet50': 5, 'densenet161': 5},
+                                      'MarketCuhk03': {'resnet50': 5, 'densenet161': 5}}
         self.num_elemens_class = {'Market': {'resnet50': 4, 'densenet161': 6},
                                   'cuhk03-detected': {'resnet50': 5, 'densenet161': 8},
                                   'cuhk03-np-detected': {'resnet50': 5, 'densenet161': 8},
                                   'cuhk03-labeled': {'resnet50': 5, 'densenet161': 8},
                                   'cuhk03-np-labeled': {'resnet50': 5, 'densenet161': 8},
-                                  'dukemtmc': {'resnet50': 5, 'densenet161': 8}}
+                                  'dukemtmc': {'resnet50': 5, 'densenet161': 8},
+                                  'MarketCuhk03': {'resnet50': 5, 'densenet161': 8}}
         self.get_num_labeled_class = {'Market': {'resnet50': 3, 'densenet161': 1},
                                       'cuhk03-detected': {'resnet50': 2, 'densenet161': 1},
                                       'cuhk03-np-detected': {'resnet50': 2, 'densenet161': 1},
                                       'cuhk03-labeled': {'resnet50': 2, 'densenet161': 1},
                                       'cuhk03-np-labeled': {'resnet50': 2, 'densenet161': 1},
-                                      'dukemtmc': {'resnet50': 2, 'densenet161': 1}}
+                                      'dukemtmc': {'resnet50': 2, 'densenet161': 1},
+                                      'MarketCuhk03': {'resnet50': 2, 'densenet161': 1}}
         self.learning_rate = {'Market': {'resnet50': 1.289377564403867e-05, 'densenet161': 8.201555304285775e-05},
                               'cuhk03-detected': {'resnet50': 4.4819286767613e-05, 'densenet161': 6.938966913758872e-05},
                               'cuhk03-np-detected': {'resnet50': 4.4819286767613e-05, 'densenet161': 6.938966913758872e-05},
                               'cuhk03-labeled': {'resnet50': 4.4819286767613e-05, 'densenet161': 6.938966913758872e-05},
                               'cuhk03-np-labeled': {'resnet50': 4.4819286767613e-05, 'densenet161': 6.938966913758872e-05},
-                              'dukemtmc': {'resnet50': 4.4819286767613e-05, 'densenet161': 6.938966913758872e-05}}
+                              'dukemtmc': {'resnet50': 4.4819286767613e-05, 'densenet161': 6.938966913758872e-05}, 
+                              'MarketCuhk03': {'resnet50': 4.4819286767613e-05, 'densenet161': 6.938966913758872e-05}}
         self.weight_decay = {'Market': {'resnet50': 1.9250447877921047e-14, 'densenet161': 4.883141881206216e-11},
                              'cuhk03-detected': {'resnet50': 1.5288509425482333e-13, 'densenet161': 1.6553076469649952e-07},
                              'cuhk03-np-detected': {'resnet50': 1.5288509425482333e-13, 'densenet161': 1.6553076469649952e-07},
                              'cuhk03-labeled': {'resnet50': 1.5288509425482333e-13, 'densenet161': 1.6553076469649952e-07},
                              'cuhk03-np-labeled': {'resnet50': 1.5288509425482333e-13, 'densenet161': 1.6553076469649952e-07},
-                             'dukemtmc': {'resnet50': 1.5288509425482333e-13, 'densenet161': 1.6553076469649952e-07}}
+                             'dukemtmc': {'resnet50': 1.5288509425482333e-13, 'densenet161': 1.6553076469649952e-07}, 
+                             'MarketCuhk03': {'resnet50': 1.5288509425482333e-13, 'densenet161': 1.6553076469649952e-07}}
         self.softmax_temperature = {'Market': {'resnet50': 80, 'densenet161': 37},
                                     'cuhk03-detected': {'resnet50': 80, 'densenet161': 34},
                                     'cuhk03-np-detected': {'resnet50': 80, 'densenet161': 34},
                                     'cuhk03-labeled': {'resnet50': 80, 'densenet161': 34},
                                     'cuhk03-np-labeled': {'resnet50': 80, 'densenet161': 34},
-                                    'dukemtmc': {'resnet50': 80, 'densenet161': 34}}
+                                    'dukemtmc': {'resnet50': 80, 'densenet161': 34}, 
+                                    'MarketCuhk03': {'resnet50': 80, 'densenet161': 34}}
         self.num_iter_gtg = {'Market': {'resnet50': 2, 'densenet161': 3},
                              'cuhk03-detected': {'resnet50': 1, 'densenet161': 2},
                              'cuhk03-np-detected': {'resnet50': 1, 'densenet161': 2},
                              'cuhk03-labeled': {'resnet50': 1, 'densenet161': 2},
                              'cuhk03-np-labeled': {'resnet50': 1, 'densenet161': 2},
-                             'dukemtmc': {'resnet50': 1, 'densenet161': 2}}
+                             'dukemtmc': {'resnet50': 1, 'densenet161': 2}, 
+                             'MarketCuhk03': {'resnet50': 1, 'densenet161': 2}}
         
     def get_path(self):
         return self.dataset_path
@@ -203,7 +211,7 @@ class Hyperparameters():
 
 
 def init_args():
-    dataset = 'cuhk03-detected' #'dukemtmc' #'Market' #'cuhk03-detected'
+    dataset = 'Market' #'dukemtmc' #'Market' #'cuhk03-detected'
     net_type = 'resnet50' #'densenet161'
     hyperparams = Hyperparameters(dataset, net_type)
     parser = argparse.ArgumentParser(
@@ -535,6 +543,7 @@ class PreTrainer():
 
                 # Normal training with backpropagation
                 else:
+                    print('Epoch')
                     for x, Y, I in dl_tr:
                         Y = Y.to(self.device)
                         opt.zero_grad()
@@ -574,6 +583,7 @@ class PreTrainer():
                                 loss1 = smoother(probs_for_gtg, Y)
                             else:
                                 loss1 = criterion(probs_for_gtg, Y)
+                            #print(probs_for_gtg, Y, loss1)
                             losses['Group Loss'].append(loss1.item())
 
                             loss = self.args.scaling_loss * loss1 + self.args.scaling_ce * loss
@@ -619,7 +629,9 @@ class PreTrainer():
                         or (self.args.distance_sampling == 'pre' and e == 1)\
                         or (self.args.distance_sampling == 'pre_soft' and e ==1):
                     model.train(model_is_training)
-             
+            
+            #for k, v in losses.items():
+            #    print(k, v, sum(v), len(v), sum(v)/len(v))
             [losses_mean[k].append(sum(v)/len(v)) for k, v in losses.items()]
             losses = defaultdict(list)  
             # compute ranks and mAP at the end of each epoch
@@ -771,6 +783,7 @@ def main():
         trainer.args.lab_smooth = 1 #lab_smooth[i]
         trainer.args.trans = 'bot' #trans[i]
         trainer.args.neck = 1 #neck[i]
+        #trainer.args.mode = 'all'
         #trainer.args.hyper_search = 1
         #trainer.args.test_option = 'norm' #test_option[i] #neck_test[i]
         #trainer.args.bn_GL = 0 #bn_GL[i]
