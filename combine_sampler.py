@@ -183,18 +183,21 @@ class DistanceSampler(Sampler):
 
                 # randomly sample anchor class samples
                 if len(anchor_samples[cl]) < self.num_samples:
-                    ind_cl = random.sample(self.index_sorted[cl],
+                    ind_cl_1 = [self.index_sorted[cl].index(i) for i in anchor_samples[cl]]
+                    ind_cl = random.sample(range(len(self.index_sorted[cl])),
                                            self.num_samples - len(anchor_samples[cl]))
-                    [ind_cl.append(ind) for ind in anchor_samples[cl]]
+                    ind_cl += ind_cl_1
                     anchor_samples[cl] = list()
                 else:
-                    ind_cl = random.sample(anchor_samples[cl], self.num_samples)
-                    [anchor_samples[cl].remove(sam) for sam in ind_cl]
+                    samps = random.sample(anchor_samples[cl], self.num_samples)
+                    ind_cl = [self.index_sorted[cl].index(i) for i in samps]
+                    [anchor_samples[cl].remove(sam) for sam in samps]
 
                 #ind_cl = [s for s in random.sample(range(len(anchor_samples[cl])), self.num_samples)]
-                #batch = [[self.index_sorted[cl][i] for i in ind_cl]]
+                batch = [[self.index_sorted[cl][i] for i in ind_cl]]
 
-                batch = [ind_cl]
+                #batch = [ind_cl]
+                print(batch, self.index_sorted[cl], anchor_samples[cl])
                 for c in cls:
                     # threshold for samples to be sampled
                     thresh = self.inter_class_dist[cl, c]
@@ -237,7 +240,8 @@ class DistanceSampler(Sampler):
         random.shuffle(batches)
         self.flat_list = [s for batch in batches for s in batch]
         print('SAMPLES')
-        print(set(self.flat_list), len(self.flat_list))
+        print(set(self.flat_list))
+        print(len(self.flat_list))
         return (iter(self.flat_list))
 
     def __len__(self):
