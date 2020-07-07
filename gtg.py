@@ -20,7 +20,7 @@ class NonLinearSimilarity(nn.Module):
 
 
 class GTG(nn.Module):
-    def __init__(self, total_classes, tol=-1., max_iter=5, sim='correlation', set_negative='hard', mode='replicator', device='cuda:0'):
+    def __init__(self, total_classes, tol=-1., max_iter=5, sim='correlation', set_negative='hard', mode='replicator', device='cuda:0', sz_embed=2048, proxies=0):
         super(GTG, self).__init__()
         self.m = total_classes
         self.tol = tol
@@ -29,6 +29,10 @@ class GTG(nn.Module):
         self.sim = sim
         self.set_negative = set_negative
         self.device = device
+        self.prox = proxies
+        if self.prox:
+            self.proxies = torch.nn.Parameter(torch.randn(total_classes, sz_embed).cuda())
+            nn.init.kaiming_normal_(self.proxies, mode='fan_out')
 
     def _init_probs_uniform(self, labs, L, U):
         """ Initialized the probabilities of GTG from uniform distribution """
@@ -46,7 +50,10 @@ class GTG(nn.Module):
         n = len(L) + len(U)
         ps = torch.zeros(n, self.m).to(self.device)
         ps[U, :] = probs[U, :]
-        ps[L, labs] = 1.
+        if not self.prox:
+            ps[L, labs] = 1.
+        else:
+            ps[L, :] = self.proxies[labs, :]
 
         # check if probs sum up to 1.
         assert torch.allclose(ps.sum(dim=1), torch.ones(n).cuda())
@@ -58,7 +65,10 @@ class GTG(nn.Module):
         n = len(L) + len(U)
         ps = torch.zeros(n, self.m).to(self.device)
         ps[U, :] = probs[torch.meshgrid(torch.tensor(U), torch.from_numpy(classes_to_use))]
-        ps[L, labs] = 1.
+        if not self.prox:
+            ps[L, labs] = 1.
+        else:
+            ps[L, :] = self.proxies[labs, :]
         ps /= ps.sum(dim=ps.dim() - 1).unsqueeze(ps.dim() - 1)
         return ps
 

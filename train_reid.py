@@ -350,6 +350,9 @@ def init_args():
     parser.add_argument('--weight_norm', default=0, type=int,
                         help='if classifier weights should be normalized')
 
+    parser.add_argument('--proxies', default=0, type=int,
+                        help='if proxies should be used for gtg')
+
     return parser.parse_args()
 
 
@@ -373,7 +376,7 @@ class PreTrainer():
             timer)
 
         # load model
-        model = net.load_net(dataset=self.args.dataset_short,
+        model, sz_embed = net.load_net(dataset=self.args.dataset_short,
                              net_type=self.args.net_type,
                              nb_classes=self.args.nb_classes,
                              embed=self.args.embed,
@@ -392,13 +395,19 @@ class PreTrainer():
                              max_iter=config['num_iter_gtg'],
                              sim=self.args.sim_type,
                              set_negative=self.args.set_negative,
-                             device=self.device).to(self.device)
+                             device=self.device,
+                             proxies=self.args.proxies,
+                             sz_embed=sz_embed).to(self.device)
         if torch.cuda.device_count() > 1:
             gtg = nn.DataParallel(gtg)
 
-        opt = RAdam(
-            [{'params': list(set(model.parameters())), 'lr': config['lr']}],
-            weight_decay=config['weight_decay'])
+        param_groups = [{'params': list(set(model.parameters())),
+                         'lr': config['lr']}]
+        if self.args.proxies:
+            param_groups.append(
+                {'params': gtg.proxies, 'lr': float(self.args.lr) * 100})
+
+        opt = RAdam(param_groups, weight_decay=config['weight_decay'])
 
         losses = defaultdict(list)
         losses_mean = defaultdict(list)
