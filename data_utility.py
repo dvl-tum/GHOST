@@ -11,13 +11,13 @@ import matplotlib.pyplot as plt
 
 def create_loaders(data_root, num_workers, size_batch, num_classes_iter=None,
                    num_elements_class=None, pretraining=False,
-                   input_size=[384, 128], both=0, trans= 'norm',
+                   input_size=[384, 128], mode='single', trans= 'norm',
                    distance_sampler='only', val=0, m=100):
-    labels, paths = dataset.load_data(root=data_root, both=both, val=val)
+    labels, paths = dataset.load_data(root=data_root, mode=mode, val=val)
     labels = labels[0]
     paths = paths[0]
 
-    if both:
+    if mode == 'both':
         data_root = os.path.dirname(data_root)
         labels_ev = {'detected': labels['bounding_box_test']['detected'] +
                                  labels['query']['detected'],
@@ -42,6 +42,35 @@ def create_loaders(data_root, num_workers, size_batch, num_classes_iter=None,
                                    '{:05d}'.format(int(g.split('_')[0])), g) for g in
                       paths['bounding_box_test']['labeled']]
 
+    elif mode == 'all':
+        data_root = os.path.dirname(data_root)
+        labels_ev = {'cuhk03': labels['bounding_box_test']['cuhk03'] +
+                                 labels['query']['cuhk03'],
+                     'market': labels['bounding_box_test']['market'] +
+                                labels['query']['market']}
+
+        paths_ev = {'cuhk03': paths['bounding_box_test']['cuhk03'] +
+                                paths['query']['cuhk03'],
+                    'market': paths['bounding_box_test']['market'] +
+                               paths['query']['market']}
+
+        query = [os.path.join(data_root, 'cuhk03', 'detected', 'images',
+                              '{:05d}'.format(int(q.split('_')[0])), q) for q
+                 in
+                 paths['query']['cuhk03']] + [
+                    os.path.join(data_root, 'Market-1501-v15.09.15', 'images',
+                                 '{:05d}'.format(int(q.split('_')[0])), q) for
+                    q in
+                    paths['query']['labeled']]
+        gallery = [os.path.join(data_root, 'cuhk03', 'detected', 'images',
+                                '{:05d}'.format(int(g.split('_')[0])), g) for g
+                   in
+                   paths['bounding_box_test']['cuhk03']] + [
+                      os.path.join(data_root, 'Market-1501-v15.09.15', 'images',
+                                   '{:05d}'.format(int(g.split('_')[0])), g)
+                      for g in
+                      paths['bounding_box_test']['market']]
+
     else:
         labels_ev = labels['bounding_box_test'] + labels['query']
         paths_ev = paths['bounding_box_test'] + paths['query']
@@ -50,10 +79,16 @@ def create_loaders(data_root, num_workers, size_batch, num_classes_iter=None,
         gallery = [os.path.join(data_root, 'images', '{:05d}'.format(int(g.split('_')[0])), g)
                    for g in paths['bounding_box_test']]
 
-    Dataset = dataset.Birds(root=data_root,
-                            labels=labels['bounding_box_train'],
-                            paths=paths['bounding_box_train'],
-                            trans=trans)
+    if mode != 'all':
+        Dataset = dataset.Birds(root=data_root,
+                                labels=labels['bounding_box_train'],
+                                paths=paths['bounding_box_train'],
+                                trans=trans)
+    else:
+        Dataset = dataset.All(root=data_root,
+                                labels=labels['bounding_box_train'],
+                                paths=paths['bounding_box_train'],
+                                trans=trans)
 
     ddict = defaultdict(list)
     for idx, label in enumerate(Dataset.ys):
@@ -88,14 +123,24 @@ def create_loaders(data_root, num_workers, size_batch, num_classes_iter=None,
     if pretraining:
         return dl_tr
 
-    dl_ev = torch.utils.data.DataLoader(
-        dataset.Birds(
-            root=data_root,
+    if mode != 'all':
+        dataset_ev = dataset.Birds(
+                root=data_root,
+                labels=labels_ev,
+                paths=paths_ev,
+                trans=trans,
+                eval_reid=True)
+    else:
+        dataset_ev = dataset.All(
+            root-data_root,
             labels=labels_ev,
             paths=paths_ev,
             trans=trans,
             eval_reid=True
-        ),
+        )
+
+    dl_ev = torch.utils.data.DataLoader(
+        dataset_ev,
         batch_size=50,
         shuffle=False,
         num_workers=1,

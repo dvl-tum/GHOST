@@ -34,7 +34,7 @@ query: used as query images for testing
 '''
 
 
-def load_data(root: str = None, both: int = 0, val=0):
+def load_data(root: str = None, mode: str='single', val=0):
     image_dir = os.path.join(root, 'images')
 
     # check if json file already exists --> if not: generate image folders
@@ -79,7 +79,7 @@ def load_data(root: str = None, both: int = 0, val=0):
             marketlike(root=root, image_dir=image_dir, check_zip=check_zip)
 
     # if both take detected and labeled for training
-    if both:
+    if mode == 'both':
         root_lab = os.path.join(os.path.dirname(root), 'labeled')
         root_det = os.path.join(os.path.dirname(root), 'detected')
         # load image paths and labels for splits
@@ -112,6 +112,38 @@ def load_data(root: str = None, both: int = 0, val=0):
                 l[t] = {'labeled': ll[t], 'detected': ld[t]}
             data.append(d)
             labels.append(l)
+    elif mode == 'all':
+        root = os.path.basename(root)
+        root_cuhk03 = os.path.join(os.path.dirname(root), 'cuhk03', 'detected')
+        root_market = os.path.join(os.path.dirname(root), 'Market-1501-v15.09.15')
+        # load image paths and labels for splits
+        with open(os.path.join(root_cuhk03, 'info.json'), 'r') as file:
+            data_cuhk03 = json.load(file)
+
+        with open(os.path.join(root_cuhk03, 'labels.json'), 'r') as file:
+            labels_cuhk03 = json.load(file)
+
+        with open(os.path.join(root_market, 'info.json'), 'r') as file:
+            data_market = json.load(file)
+
+        with open(os.path.join(root_market, 'labels.json'), 'r') as file:
+            labels_market = json.load(file)
+
+        # make list if not, for cuhk03 classic split is list
+        if type(data_market) == list:
+            data_market, labels_market = data_market[0], labels_market[0]
+        if type(data_cuhk03) == list:
+            data_cuhk03, labels_cuhk03 = data_cuhk03[0], labels_cuhk03[0]
+
+        labels, data = list(), list()
+        l, d = dict(), dict()
+        for t in ['query', 'bounding_box_test', 'bounding_box_train']:
+            l[t] = {'market': labels_market[t], 'cuhk03': labels_cuhk03[t]}
+            d[t] = {'market': data_market[t], 'cuhk03': data_cuhk03[t]}
+
+        labels.append(l)
+        data.append(t)
+
     else:
         # load image paths and labels for splits
         with open(os.path.join(root, 'info.json'), 'r') as file:

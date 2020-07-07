@@ -99,6 +99,78 @@ class Birds(torch.utils.data.Dataset):
         return im, self.ys[index], index
 
 
+class All(torch.utils.data.Dataset):
+    def __init__(self, root, labels, paths, trans=None,
+                 eval_reid=False):
+        root = os.path.dirname(root)
+        self.dirs = {'market': os.path.join(os.path.dirname(root), 'Market-1501-v15.09.15'),
+                     'cuhk03': os.path.join(os.path.dirname(root), 'cuhk03', 'detected')}
+        self.trans = trans
+        self.eval_reid = eval_reid
+        # e.g., labels = range(0, 50) for using first 50 classes only
+        self.labels = labels
+        self.ys = list()
+        self.im_paths = list()
+
+        # when cuhk03 and market should be used
+        i = 0
+        self.map = dict()
+        self.ys = list()
+        self.im_paths = list()
+        for dataset in labels.keys():
+            for lab, dat in zip(labels[dataset], paths[dataset]):
+                id = str(lab) + '_' + dataset
+                if id not in self.map.keys():
+                    self.map[id] = i
+                    i += 1
+                self.ys.append(self.map[id])
+                self.im_paths.append(os.path.join(self.dirs[dataset], 'images', '{:05d}'.format(
+                int(dat.split('_')[0])), dat))
+
+        self.transform = self.get_transform()
+
+    def get_transform(self):
+        if self.trans == 'norm':
+            trans = utils.make_transform(is_train=not self.eval_reid)
+        elif self.trans == 'bot':
+            trans = utils.make_transform_bot(is_train=not self.eval_reid)
+        elif self.trans == 'imgaug':
+            trans = utils.make_transform_imaug(is_train=not self.eval_reid)
+        elif self.trans == 'appearance':
+            ddict = defaultdict(list)
+            for idx, label in enumerate(self.ys):
+                ddict[label].append(idx)
+            self.occurance = {k: len(v) for k, v in ddict.items()}
+            num_im = set(self.occurance.values())
+            ps = [i / max(num_im) for i in num_im]
+            trans = dict()
+            for p, n in zip(ps, num_im):
+                trans[n] = utils.appearance_proportional_augmentation1(is_train=not self.eval_reid, app=p)
+
+        return trans
+
+    def nb_classes(self):
+        n = len(np.unique(self.ys))
+        assert n == len(self.labels)
+        return n
+
+    def __len__(self):
+        return len(self.ys)
+
+    def __getitem__(self, index):
+        im = pil_loader(self.im_paths[index])
+        #show_dataset(im, self.ys[index])
+        if self.trans == 'appearance':
+            im = self.transform[self.occurance[self.ys[index]]](im)
+        else:
+            im = self.transform(im)
+        #show_dataset(im, self.ys[index])
+
+        if self.eval_reid:
+            return im, self.ys[index], self.im_paths[index]
+        return im, self.ys[index], index
+
+
 '''     
 if self.imaug:
     im = imageio.imread(self.im_paths[index])

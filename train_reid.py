@@ -284,8 +284,10 @@ def init_args():
     parser.add_argument('--scaling_ce', default=1, type=float,
                         help='Weight for CE Loss')
 
-    parser.add_argument('--both', default=0, type=int,
-                        help='if labeled and detected of cuhk03 should be taken')
+    parser.add_argument('--mode', default='single', type=str,
+                        help='if labeled and detected of cuhk03 should be taken = both'
+                             'if all datasets should be taken = all'
+                             'else: single')
 
     # training tricks
     parser.add_argument('--lab_smooth', default=1, type=int,
@@ -426,7 +428,7 @@ class PreTrainer():
                     num_elements_class=config['num_elements_class'],
                     size_batch=config['num_classes_iter'] * config[
                            'num_elements_class'],
-                    both=self.args.both,
+                    mode=self.args.mode,
                     trans=self.args.trans,
                     distance_sampler=self.args.distance_sampling,
                     val=self.args.val,
@@ -438,7 +440,7 @@ class PreTrainer():
                     num_elements_class=config['num_elements_class'],
                     size_batch=config['num_classes_iter'] * config[
                         'num_elements_class'],
-                    both=self.args.both,
+                    mode=self.args.mode,
                     trans=self.args.trans,
                     distance_sampler='no',
                     val=self.args.val)
@@ -451,7 +453,7 @@ class PreTrainer():
                     num_elements_class=config['num_elements_class'],
                     size_batch=config['num_classes_iter'] * config[
                         'num_elements_class'],
-                    both=self.args.both,
+                    mode=self.args.mode,
                     trans=self.args.trans,
                     distance_sampler=self.args.distance_sampling,
                     val=self.args.val)
@@ -463,7 +465,7 @@ class PreTrainer():
             dl_tr = data_utility.create_loaders(size_batch=64,
                                                 data_root=self.args.cub_root,
                                                 num_workers=self.args.nb_workers,
-                                                both=self.args.both,
+                                                mode=self.args.mode,
                                                 trans=self.args.trans,
                                                 pretraining=self.args.pretraining)
 
