@@ -385,12 +385,17 @@ class PreTrainer():
                              use_pretrained=self.args.pretrained,
                              weight_norm=self.args.weight_norm)
         model = model.to(self.device)
+        if torch.cuda.device_count() > 1:
+            model = nn.DataParallel(model)
 
         gtg = gtg_module.GTG(self.args.nb_classes,
                              max_iter=config['num_iter_gtg'],
                              sim=self.args.sim_type,
                              set_negative=self.args.set_negative,
                              device=self.device).to(self.device)
+        if torch.cuda.device_count() > 1:
+            gtg = nn.DataParallel(gtg)
+
         opt = RAdam(
             [{'params': list(set(model.parameters())), 'lr': config['lr']}],
             weight_decay=config['weight_decay'])
@@ -829,9 +834,9 @@ def main():
         if trainer.args.hyper_search:
             config = {'lr': 10 ** random.uniform(-8, -3),
                       'weight_decay': 10 ** random.uniform(-15, -6),
-                      'num_classes_iter': random.randint(2, 5),
-                      'num_elements_class': random.randint(4, 9),
-                      'num_labeled_points_class': random.randint(1, 3),
+                      'num_classes_iter': random.randint(3, 15),
+                      'num_elements_class': random.randint(5, 15),
+                      'num_labeled_points_class': random.randint(1, 2),
                       'num_iter_gtg': random.randint(1, 3),
                       'temperature': random.randint(10, 80)}
             '''
@@ -881,7 +886,7 @@ def main():
             os.rename(os.path.join(save_folder_nets,
                 args.dataset_name + '_intermediate_model_' + str(
                                        timer) + '.pth'),
-                     str(best_accuacy) +  mode + args.net_type + '_' + args.dataset_name + '.pth')
+                     str(best_accuracy) +  mode + args.net_type + '_' + args.dataset_name + '.pth')
             best_recall = best_accuracy
             best_hypers = '_'.join(
                 [str(k) + '_' + str(v) for k, v in config.items()])
