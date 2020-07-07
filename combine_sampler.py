@@ -167,10 +167,9 @@ class DistanceSampler(Sampler):
         batches = list()
 
         # for each anchor class sample hardest classes and hardest features
-        k=1
-        print(k)
-        for i in range(k):
-            for cl in range(indices.shape[0]):
+        anchor_samples = copy.deepcopy(self.index_sorted)
+        for cl in range(indices.shape[0]):
+            while len(anchor_samples[cl]) > 0:
                 possible_classes = indices[cl, :].tolist()
                 possible_classes.remove(possible_classes.index(cl))
 
@@ -181,14 +180,25 @@ class DistanceSampler(Sampler):
                     cls = [possible_classes[i] for i in classes]
                 else:
                     cls = possible_classes[:self.num_classes -1]
-    
+
                 # randomly sample anchor class samples
-                ind_cl = [s for s in random.sample(range(len(self.index_sorted[cl])), self.num_samples)]
-                batch = [[self.index_sorted[cl][i] for i in ind_cl]]
+                if len(anchor_samples[cl]) < self.num_samples:
+                    ind_cl = random.sample(self.index_sorted[cl],
+                                           self.num_samples - len(anchor_samples[cl]))
+                    [ind_cl.append(ind) for ind in anchor_samples[cl]]
+                    anchor_samples[cl] = list()
+                else:
+                    ind_cl = random.sample(anchor_samples[cl], self.num_samples)
+                    [anchor_samples[cl].remove(sam) for sam in ind_cl]
+
+                #ind_cl = [s for s in random.sample(range(len(anchor_samples[cl])), self.num_samples)]
+                #batch = [[self.index_sorted[cl][i] for i in ind_cl]]
+
+                batch = [ind_cl]
                 for c in cls:
                     # threshold for samples to be sampled
                     thresh = self.inter_class_dist[cl, c]
-    
+
                     # extract pairwise sample distance of anchor and sampled class
                     row = self.indicator == cl
                     col = self.indicator == c
@@ -204,9 +214,9 @@ class DistanceSampler(Sampler):
                         print(mat_clc, ind_cl, r_min, r_max, c_min, c_max)
                         print("Error: sub matrix can not have zero entries")
                         quit()
-                
+
                     mat_clc = torch.stack(mat_clc)
-    
+
                     # samples from sampled class only if distance > than thresh
                     possible_samples = torch.unique((mat_clc > thresh).nonzero()[:, 1])
                     #print(possible_samples, ind_cl, r_min, r_max, c_min, c_max, mat_clc.shape)
@@ -219,7 +229,7 @@ class DistanceSampler(Sampler):
                         other_samps = [i for i in range(c_max-c_min+1) if i not in possible_samples]
                         ind = random.sample(other_samps, self.num_samples-possible_samples.shape[0])
                         [ind.append(possible_samples[i]) for i in range(possible_samples.shape[0])]
-                    
+
                     samps = [self.index_sorted[c][i] for i in ind]
                     batch.append(samps)
                 batch = [s for c in batch for s in c]
