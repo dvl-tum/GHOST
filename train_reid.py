@@ -203,7 +203,7 @@ class Hyperparameters():
 
 
 def init_args():
-    dataset = 'dukemtmc' #'Market' #'cuhk03-detected'
+    dataset = 'cuhk03-detected' #'dukemtmc' #'Market' #'cuhk03-detected'
     net_type = 'resnet50' #'densenet161'
     hyperparams = Hyperparameters(dataset, net_type)
     parser = argparse.ArgumentParser(
@@ -498,7 +498,7 @@ class PreTrainer():
                         or (self.args.distance_sampling == 'alternating'
                             and e % 2 == 0) or (self.args.distance_sampling
                                     == 'pre' and e > 1) or (self.args.distance_sampling
-                                            == 'pre_soft' and e > 30):
+                                            == 'pre_soft' and e > 1):
                     dl_tr = dl_tr2
                     dl_ev = dl_ev2
                     gallery = gallery2
@@ -507,7 +507,7 @@ class PreTrainer():
                         or (self.args.distance_sampling == 'alternating'
                             and e % 2 != 0) or (self.args.distance_sampling
                                     == 'pre' and e == 1) or (self.args.distance_sampling
-                                            == 'pre_soft' and e <= 30):
+                                            == 'pre_soft' and e == 1):
                     dl_tr = dl_tr1
                     dl_ev = dl_ev1
                     gallery = gallery1
@@ -519,8 +519,8 @@ class PreTrainer():
 
                 # If distance_sampling == only, use first epoch to get features
                 if (self.args.distance_sampling == 'only' and e == 1)\
-                        or (self.args.distance_sampling == 'pre' and e == 1):
-                    #or self.args.distance_sampling == 'pre_soft' and e == 1:
+                        or (self.args.distance_sampling == 'pre' and e == 1)\
+                        or (self.args.distance_sampling == 'pre_soft' and e == 1):
                     model_is_training = model.training
                     model.eval()
                     with torch.no_grad():
@@ -615,7 +615,9 @@ class PreTrainer():
                             opt_center.step()
 
                 # Set model to training mode again, if first epoch and only
-                if self.args.distance_sampling == 'only' and e == 1:
+                if (self.args.distance_sampling == 'only' and e == 1)\
+                        or (self.args.distance_sampling == 'pre' and e == 1)\
+                        or (self.args.distance_sampling == 'pre_soft' and e ==1):
                     model.train(model_is_training)
              
             [losses_mean[k].append(sum(v)/len(v)) for k, v in losses.items()]
@@ -769,21 +771,22 @@ def main():
         trainer.args.lab_smooth = 1 #lab_smooth[i]
         trainer.args.trans = 'bot' #trans[i]
         trainer.args.neck = 1 #neck[i]
+        #trainer.args.hyper_search = 1
         #trainer.args.test_option = 'norm' #test_option[i] #neck_test[i]
         #trainer.args.bn_GL = 0 #bn_GL[i]
-        #trainer.args.distance_sampling = 'pre' #'pre_soft' #'pre' #'alternating' #distance_sampling[i]
+        trainer.args.distance_sampling = 'only' #'pre_soft' #'pre' #'alternating' #distance_sampling[i]
         #trainer.args.weight_norm = 1
         #trainer.args.m = 75
         #trainer.args.lab_smooth_GL = 1
         #trainer.args.triplet_loss = 1
-        trainer.args.pretrained = 'no'
+        #trainer.args.pretrained = '30'
         #trainer.args.scaling_triplet = 0.7
         #trainer.args.re_rank = 1
         #trainer.args.output_train = 'neck'
         #trainer.args.output_test = 'neck'
         #trainer.args.center = 1
         #trainer.args.val = 1
-        trainer.args.scaling_ce = 0.75
+        #trainer.args.scaling_ce = 0.75
 
         if trainer.args.val:
             trainer.args.nb_classes -= 100
@@ -798,7 +801,7 @@ def main():
         if trainer.args.test or trainer.args.pretrained == 'GL':
             load_path = os.path.join('save_trained_nets', mode + trainer.args.net_type + '_' + trainer.args.dataset_name + '.pth')
             logger.info('Load model from {}'.format(load_path))
-        elif trainer.args.distance_sampling == 'pre' or trainer.args.distance_sampling == 'pre_soft':
+        elif trainer.args.pretrained == '30':
             load_path = os.path.join('save_trained_nets', '30' + mode + trainer.args.net_type + '_' + trainer.args.dataset_name + '.pth')
             print(load_path)
         elif trainer.args.pretrained == 'fine':
@@ -854,6 +857,7 @@ def main():
             if trainer.args.distance_sampling != 'no':
                 trainer.args.nb_epochs = 130
         #config['num_iter_gtg'] = 2
+        print(config)
         best_accuracy, model = trainer.train_model(config, timer, load_path)
 
         hypers = ', '.join([k + ': ' + str(v) for k, v in config.items()])
@@ -864,7 +868,7 @@ def main():
             os.rename(os.path.join(save_folder_nets,
                 args.dataset_name + '_intermediate_model_' + str(
                                        timer) + '.pth'),
-                     '30' +  mode + args.net_type + '_' + args.dataset_name + '.pth')
+                     str(best_accuacy) +  mode + args.net_type + '_' + args.dataset_name + '.pth')
             best_recall = best_accuracy
             best_hypers = '_'.join(
                 [str(k) + '_' + str(v) for k, v in config.items()])

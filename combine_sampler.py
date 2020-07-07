@@ -157,16 +157,17 @@ class DistanceSampler(Sampler):
         if (self.strategy == 'alternating' and self.epoch % 5 == 2) or (
                 self.strategy == 'only' and self.epoch % 5 == 2) or (
                         self.strategy == 'pre' and self.epoch % 5 == 2) or (
-                                self.strategy == 'pre_soft' and self.epoch % 5 == 1):
+                                self.strategy == 'pre_soft' and self.epoch % 5 == 2):
             print('recompute dist at epoch {}'.format(self.epoch))
             self.get_inter_class_distances()
-        
+        if self.strategy == 'pre_soft':
+            self.epoch = self.epoch + 30
         # sort class distances
         indices = np.argsort(self.inter_class_dist, axis=1)
         batches = list()
 
         # for each anchor class sample hardest classes and hardest features
-        k=2
+        k=1
         print(k)
         for i in range(k):
             for cl in range(indices.shape[0]):
