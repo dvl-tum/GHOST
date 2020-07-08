@@ -8,6 +8,7 @@ import torch.nn.utils.weight_norm as weightNorm
 def load_net(dataset, net_type, nb_classes, embed=False, sz_embedding=512, pretraining=False, last_stride=0, neck=0, load_path=None, use_pretrained='no', weight_norm=0):
 
     if net_type == 'bn_inception':
+        sz_embed = 1024
         model = net.bn_inception(pretrained=True)
         model.last_linear = nn.Linear(1024, nb_classes)
         if not pretraining:
@@ -19,18 +20,21 @@ def load_net(dataset, net_type, nb_classes, embed=False, sz_embedding=512, pretr
                 model.load_state_dict(torch.load(os.path.join('net', 'finetuned_cub_embedded_512_10_.pth')))
 
     elif net_type == 'resnet18':
+        sz_embed = 512
         model = net.resnet18(pretrained=True)
         model.fc = nn.Linear(512, nb_classes)
         if not pretraining:
             model.load_state_dict(torch.load('net/finetuned_' + dataset + '_' + net_type + '.pth'))
 
     elif net_type == 'resnet34':
+        sz_embed = 512
         model = net.resnet34(pretrained=True)
         model.fc = nn.Linear(512, nb_classes)
         if not pretraining:
             model.load_state_dict(torch.load('net/finetuned_' + dataset + '_' + net_type + '.pth'))
 
     elif net_type == 'resnet50':
+        sz_embed = 2048
         model = net.resnet50(pretrained=True, last_stride=last_stride, neck=neck)
         #model.fc = nn.Linear(2048, nb_classes)
         #if neck: model.bottleneck = nn.BatchNorm1d(2048)
@@ -55,18 +59,21 @@ def load_net(dataset, net_type, nb_classes, embed=False, sz_embedding=512, pretr
             model.load_state_dict(torch.load(load_path))
 
     elif net_type == 'resnet101':
+        sz_embed = 2048
         model = net.resnet101(pretrained=True)
         model.fc = nn.Linear(2048, nb_classes)
         if not pretraining:
             model.load_state_dict(torch.load('net/finetuned_' + dataset + '_' + net_type + '.pth'))
 
     elif net_type == 'resnet152':
+        sz_embed = 2048
         model = net.resnet152(pretrained=True)
         model.fc = nn.Linear(2048, nb_classes)
         if not pretraining:
             model.load_state_dict(torch.load('net/finetuned_' + dataset + '_' + net_type + '.pth'))
 
     elif net_type == 'densenet121':
+        sz_embed = 1024
         model = net.densenet121(pretrained=True, last_stride=last_stride, neck=neck)
 
         if neck:
@@ -83,6 +90,7 @@ def load_net(dataset, net_type, nb_classes, embed=False, sz_embedding=512, pretr
         # model.load_state_dict(torch.load('sop_resnet_new/Stanford_paramRes_16bit_densenet121_0.0002_5.2724883734490575e-12_10_6_2.pth'))
 
     elif net_type == 'densenet161':
+        sz_embed = 2208
         model = net.densenet161(pretrained=True, last_stride=last_stride, neck=neck)
         if neck:
             model.bottleneck = nn.BatchNorm1d(2208)
@@ -98,6 +106,7 @@ def load_net(dataset, net_type, nb_classes, embed=False, sz_embedding=512, pretr
         # model.load_state_dict(torch.load('sop_resnet_new/Stanford_paramRes_16bit_densenet161_0.0002_5.2724883734490575e-12_10_6_2.pth'))
 
     elif net_type == 'densenet169':
+        sz_embed = 1664
         model = net.densenet169(pretrained=True, last_stride=last_stride, neck=neck)
         if neck:
             model.bottleneck = nn.BatchNorm1d(1664)
@@ -112,6 +121,7 @@ def load_net(dataset, net_type, nb_classes, embed=False, sz_embedding=512, pretr
         # model.load_state_dict(torch.load('sop_resnet_new/Stanford_paramRes_16bit_densenet169_0.0002_5.2724883734490575e-12_10_6_2.pth'))
 
     elif net_type == 'densenet201':
+        sz_embed = 1920
         model = net.densenet201(pretrained=True, last_stride=last_stride, neck=neck)
         if neck:
             model.bottleneck = nn.BatchNorm1d(1920)
@@ -124,7 +134,7 @@ def load_net(dataset, net_type, nb_classes, embed=False, sz_embedding=512, pretr
         if not pretraining and use_pretrained  != 'no':
             model.load_state_dict(torch.load('net/finetuned_' + dataset + '_' + net_type + '.pth'))
         # model.load_state_dict(torch.load('sop_resnet_new/Stanford_paramRes_16bit_densenet201_0.0002_5.2724883734490575e-12_10_6_2.pth'))
-    return model
+    return model, sz_embed
 
 
 def weights_init_kaiming(m):
