@@ -333,7 +333,7 @@ def init_args():
 
     # options for running model
     parser.add_argument('--pretrained', default='no', type=str,
-                        help='If pretrained model should be taken: no/GL/fine')
+                        help='If pretrained model should be taken: no/GL/fine/30')
     parser.add_argument('--test', default=0, type=int,
                         help='If net should only be tested, not trained')
     parser.add_argument('--hyper_search', default=0, type=int,
@@ -385,16 +385,12 @@ class PreTrainer():
                              use_pretrained=self.args.pretrained,
                              weight_norm=self.args.weight_norm)
         model = model.to(self.device)
-        if torch.cuda.device_count() > 1:
-            model = nn.DataParallel(model)
 
         gtg = gtg_module.GTG(self.args.nb_classes,
                              max_iter=config['num_iter_gtg'],
                              sim=self.args.sim_type,
                              set_negative=self.args.set_negative,
                              device=self.device).to(self.device)
-        if torch.cuda.device_count() > 1:
-            gtg = nn.DataParallel(gtg)
 
         opt = RAdam(
             [{'params': list(set(model.parameters())), 'lr': config['lr']}],
@@ -429,6 +425,11 @@ class PreTrainer():
         # Do training in mixed precision
         if self.args.is_apex:
             model, opt = amp.initialize(model, opt, opt_level="O1")
+
+        #if torch.cuda.device_count() > 1:
+        #    model = nn.DataParallel(model)
+        #    gtg = nn.DataParallel(gtg)
+
 
         # If not pretraining
         if not self.args.pretraining:
@@ -580,6 +581,7 @@ class PreTrainer():
 
                             probs_for_gtg = F.softmax(probs /
                                                       config['temperature'])
+                            print(fc7.shape, labs.shape, L.shape, U.shape, probs_for_gtg.shape)
                             probs_for_gtg, W = gtg(fc7, fc7.shape[0], labs, L, U,
                                                    probs_for_gtg)
                             probs_for_gtg = torch.log(probs_for_gtg + 1e-12)
@@ -768,7 +770,7 @@ def main():
         os.makedirs(save_folder_results)
     if not os.path.isdir(save_folder_nets):
         os.makedirs(save_folder_nets)
-    #args.hyper_search = 1 
+    args.hyper_search = 1 
     trainer = PreTrainer(args, args.cub_root, device,
                          save_folder_results, save_folder_nets)
 
@@ -785,14 +787,14 @@ def main():
     # Random search
     print('NUM ITER GTG__________________')
     for i in range(num_iter):
-        trainer.args.lab_smooth = 1 #lab_smooth[i]
-        trainer.args.trans = 'bot' #trans[i]
-        trainer.args.neck = 1 #neck[i]
+        #trainer.args.lab_smooth = 1 #lab_smooth[i]
+        #trainer.args.trans = 'bot' #trans[i]
+        #trainer.args.neck = 1 #neck[i]
         #trainer.args.mode = 'all'
         #trainer.args.hyper_search = 1
         #trainer.args.test_option = 'norm' #test_option[i] #neck_test[i]
         #trainer.args.bn_GL = 0 #bn_GL[i]
-        trainer.args.distance_sampling = 'only' #'pre_soft' #'pre' #'alternating' #distance_sampling[i]
+        #trainer.args.distance_sampling = 'pre_soft' #'pre_soft' #'pre' #'alternating' #distance_sampling[i]
         #trainer.args.weight_norm = 1
         #trainer.args.m = 75
         #trainer.args.lab_smooth_GL = 1
