@@ -311,7 +311,7 @@ def init_args():
                         help='if center loss should be added')
     parser.add_argument('--triplet_loss', default=0, type=int,
                         help='if triplet loss should be applied')
-    parser.add_argument('--early_thresh', default=20, type=int,
+    parser.add_argument('--early_thresh', default=100, type=int,
                         help='threshold when to stop, i.e. after 7 epochs, '
                              'where best recall did not improve')
     parser.add_argument('--distance_sampling', default='no', type=str,
@@ -453,9 +453,9 @@ class PreTrainer():
             else:
                 model, opt = amp.initialize(model, opt, opt_level="O1")
 
-        #if torch.cuda.device_count() > 1:
-        #    model = nn.DataParallel(model)
-        #    gtg = nn.DataParallel(gtg)
+        if torch.cuda.device_count() > 1:
+            model = nn.DataParallel(model)
+            #gtg = nn.DataParallel(gtg)
 
 
         # If not pretraining
