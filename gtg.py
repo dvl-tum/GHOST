@@ -56,7 +56,8 @@ class GTG(nn.Module):
         if not self.prox:
             ps[L, labs] = 1.
         else:
-           ps[L, :] = self.proxies[labs, :]
+            self.proxies = F.softmax(self.proxies, dim=1)
+            ps[L, :] = self.proxies[labs, :]
 
         # check if probs sum up to 1.
         assert torch.allclose(ps.sum(dim=1), torch.ones(n).cuda())
@@ -73,6 +74,7 @@ class GTG(nn.Module):
         if not self.prox:
             ps[L, labs] = 1.
         else:
+            self.proxies = F.softmax(self.proxies, dim=1)
             ps[L, :] = self.proxies[labs, :]
         
         ps /= ps.sum(dim=ps.dim() - 1).unsqueeze(ps.dim() - 1)
