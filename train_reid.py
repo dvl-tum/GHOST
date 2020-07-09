@@ -211,7 +211,7 @@ class Hyperparameters():
 
 
 def init_args():
-    dataset = 'Market' #'dukemtmc' #'Market' #'cuhk03-detected'
+    dataset = 'cuhk03-detected' #'dukemtmc' #'Market' #'cuhk03-detected'
     net_type = 'resnet50' #'densenet161'
     hyperparams = Hyperparameters(dataset, net_type)
     parser = argparse.ArgumentParser(
@@ -803,7 +803,7 @@ def main():
         os.makedirs(save_folder_results)
     if not os.path.isdir(save_folder_nets):
         os.makedirs(save_folder_nets)
-    args.hyper_search = 1 
+    #args.hyper_search = 1 
     trainer = PreTrainer(args, args.cub_root, device,
                          save_folder_results, save_folder_nets)
 
@@ -820,21 +820,23 @@ def main():
     # Random search
     print('NUM ITER GTG__________________')
     for i in range(num_iter):
-        #trainer.args.lab_smooth = 1 #lab_smooth[i]
-        #trainer.args.trans = 'bot' #trans[i]
-        #trainer.args.neck = 1 #neck[i]
+        #trainer.args.proxies = 1
+        trainer.args.lab_smooth = 1 #lab_smooth[i]
+        trainer.args.trans = 'bot' #trans[i]
+        trainer.args.neck = 1 #neck[i]
+        #trainer.args.nb_epochs = 30 
         #trainer.args.mode = 'all'
         #trainer.args.hyper_search = 1
         #trainer.args.test_option = 'norm' #test_option[i] #neck_test[i]
         #trainer.args.bn_GL = 0 #bn_GL[i]
-        #trainer.args.distance_sampling = 'pre_soft' #'pre_soft' #'pre' #'alternating' #distance_sampling[i]
+        trainer.args.distance_sampling = 'pre' #'pre_soft' #'pre' #'alternating' #distance_sampling[i]
         #trainer.args.weight_norm = 1
         #trainer.args.m = 75
         #trainer.args.lab_smooth_GL = 1
         #trainer.args.triplet_loss = 1
-        #trainer.args.pretrained = '30'
+        trainer.args.pretrained = '30'
         #trainer.args.scaling_triplet = 0.7
-        #trainer.args.re_rank = 1
+        trainer.args.re_rank = 1
         #trainer.args.output_train = 'neck'
         #trainer.args.output_test = 'neck'
         #trainer.args.center = 1
