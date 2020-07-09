@@ -157,8 +157,8 @@ class DistanceSampler(Sampler):
 
         if (self.strategy == 'alternating' and self.epoch % 5 == 2) or (
                 self.strategy == 'only' and self.epoch % 5 == 2) or (
-                self.strategy == 'pre' and self.epoch % 5 == 1) or (
-                self.strategy == 'pre_soft' and self.epoch % 5 == 1):
+                self.strategy == 'pre' and self.epoch % 5 == 2) or (
+                self.strategy == 'pre_soft' and self.epoch % 5 == 2):
             print('recompute dist at epoch {}'.format(self.epoch))
             self.get_inter_class_distances()
 
