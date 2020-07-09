@@ -31,7 +31,8 @@ class GTG(nn.Module):
         self.device = device
         self.prox = proxies
         if self.prox:
-            self.proxies = torch.nn.Parameter(torch.randn(total_classes, sz_embed).cuda())
+            #self.proxies = torch.nn.Parameter(torch.randn([total_classes, sz_embed]))
+            self.proxies = torch.nn.Parameter(torch.randn([total_classes, total_classes]))
             nn.init.kaiming_normal_(self.proxies, mode='fan_out')
 
     def _init_probs_uniform(self, labs, L, U):
@@ -50,10 +51,12 @@ class GTG(nn.Module):
         n = len(L) + len(U)
         ps = torch.zeros(n, self.m).to(self.device)
         ps[U, :] = probs[U, :]
+        #ps[L, labs] = 1.
+        
         if not self.prox:
             ps[L, labs] = 1.
         else:
-            ps[L, :] = self.proxies[labs, :]
+           ps[L, :] = self.proxies[labs, :]
 
         # check if probs sum up to 1.
         assert torch.allclose(ps.sum(dim=1), torch.ones(n).cuda())
@@ -65,10 +68,13 @@ class GTG(nn.Module):
         n = len(L) + len(U)
         ps = torch.zeros(n, self.m).to(self.device)
         ps[U, :] = probs[torch.meshgrid(torch.tensor(U), torch.from_numpy(classes_to_use))]
+        #ps[L, labs] = 1.
+        
         if not self.prox:
             ps[L, labs] = 1.
         else:
             ps[L, :] = self.proxies[labs, :]
+        
         ps /= ps.sum(dim=ps.dim() - 1).unsqueeze(ps.dim() - 1)
         return ps
 
@@ -106,6 +112,20 @@ class GTG(nn.Module):
         return W
 
     def forward(self, fc7, num_points, labs, L, U, probs=None, classes_to_use=None):
+        l_prox = None
+        '''
+        if self.prox:
+            labs = list(set([l.item() for l in labs]))
+            p = self.proxies[labs, :]
+            U = sorted(L+U)
+            L = [max(U) + i + 1 for i in range(len(labs))]
+            fc7 = torch.cat((fc7, p), dim=0)
+            fc7[L, :] = self.proxies[labs, :]
+            probs_p = torch.zeros([len(L), probs.shape[1]]).cuda()
+            probs = torch.cat((probs, probs_p), dim=0)
+            l_prox = torch.tensor(labs).cuda()
+        '''
+
         W = self._get_W(fc7)
         if type(probs) is type(None):
             ps = self._init_probs(labs, L, U).cuda()
@@ -117,4 +137,5 @@ class GTG(nn.Module):
                 ps = probs
                 ps = self._init_probs_prior_only_classes(ps, labs, L, U, classes_to_use)
         ps = dynamics.dynamics(W, ps, self.tol, self.max_iter, self.mode)
-        return ps, W
+
+        return ps, W, l_prox

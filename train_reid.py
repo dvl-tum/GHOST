@@ -401,7 +401,7 @@ class PreTrainer():
                          'lr': config['lr']}]
         if self.args.proxies:
             param_groups.append(
-                {'params': gtg.proxies, 'lr': float(self.args.lr) * 100})
+                {'params': gtg.proxies, 'lr': config['lr'] * 100})
 
         opt = RAdam(param_groups, weight_decay=config['weight_decay'])
 
@@ -433,7 +433,25 @@ class PreTrainer():
 
         # Do training in mixed precision
         if self.args.is_apex:
-            model, opt = amp.initialize(model, opt, opt_level="O1")
+            if self.args.proxies:
+                [model, gtg], opt = amp.initialize([model, gtg], opt, opt_level="O1")
+                #torch.autograd.set_detect_anomaly(True)
+                dtype = torch.half 
+                for param in gtg.parameters(recurse=False):
+                    if param is not None:
+                        if param.data.dtype.is_floating_point:
+                            param.data = param.data.to(dtype=dtype)
+                        if param._grad is not None and param._grad.data.dtype.is_floating_point:
+                            param._grad.data = param._grad.data.to(dtype=dtype)
+
+                for buf in gtg.buffers(recurse=False):
+                    if buf is not None and buf.data.dtype.is_floating_point:
+                        buf.data = buf.data.to(dtype=dtype)
+                
+                for param in gtg.parameters():
+                    print(param.data.type(), param.size())
+            else:
+                model, opt = amp.initialize(model, opt, opt_level="O1")
 
         #if torch.cuda.device_count() > 1:
         #    model = nn.DataParallel(model)
@@ -591,8 +609,14 @@ class PreTrainer():
                             probs_for_gtg = F.softmax(probs /
                                                       config['temperature'])
                             #print(fc7.shape, labs.shape, L.shape, U.shape, probs_for_gtg.shape)
-                            probs_for_gtg, W = gtg(fc7, fc7.shape[0], labs, L, U,
-                                                   probs_for_gtg)
+                            probs_for_gtg, W, l_prox = gtg(fc7, fc7.shape[0], labs, L, U,
+                                    probs_for_gtg)
+                            
+                            #if self.args.proxies:
+                                #Y = torch.cat((Y, l_prox), dim = 0)
+                                #print(Y.shape[0])
+                                #probs_for_gtg = probs_for_gtg[:Y.shape[0], :]
+
                             probs_for_gtg = torch.log(probs_for_gtg + 1e-12)
 
                             if self.args.lab_smooth_GL:
