@@ -211,7 +211,7 @@ class Hyperparameters():
 
 
 def init_args():
-    dataset = 'Market' #'dukemtmc' #'Market' #'cuhk03-detected'
+    dataset = 'cuhk03-detected' #'dukemtmc' #'Market' #'cuhk03-detected'
     net_type = 'resnet50' #'densenet161'
     hyperparams = Hyperparameters(dataset, net_type)
     parser = argparse.ArgumentParser(
@@ -311,7 +311,7 @@ def init_args():
                         help='if center loss should be added')
     parser.add_argument('--triplet_loss', default=0, type=int,
                         help='if triplet loss should be applied')
-    parser.add_argument('--early_thresh', default=20, type=int,
+    parser.add_argument('--early_thresh', default=100, type=int,
                         help='threshold when to stop, i.e. after 7 epochs, '
                              'where best recall did not improve')
     parser.add_argument('--distance_sampling', default='no', type=str,
@@ -333,7 +333,7 @@ def init_args():
 
     # options for running model
     parser.add_argument('--pretrained', default='no', type=str,
-                        help='If pretrained model should be taken: no/GL/fine')
+                        help='If pretrained model should be taken: no/GL/fine/30')
     parser.add_argument('--test', default=0, type=int,
                         help='If net should only be tested, not trained')
     parser.add_argument('--hyper_search', default=0, type=int,
@@ -388,8 +388,6 @@ class PreTrainer():
                              use_pretrained=self.args.pretrained,
                              weight_norm=self.args.weight_norm)
         model = model.to(self.device)
-        if torch.cuda.device_count() > 1:
-            model = nn.DataParallel(model)
 
         gtg = gtg_module.GTG(self.args.nb_classes,
                              max_iter=config['num_iter_gtg'],
@@ -398,14 +396,12 @@ class PreTrainer():
                              device=self.device,
                              proxies=self.args.proxies,
                              sz_embed=sz_embed).to(self.device)
-        if torch.cuda.device_count() > 1:
-            gtg = nn.DataParallel(gtg)
 
         param_groups = [{'params': list(set(model.parameters())),
                          'lr': config['lr']}]
         if self.args.proxies:
             param_groups.append(
-                {'params': gtg.proxies, 'lr': float(self.args.lr) * 100})
+                {'params': gtg.proxies, 'lr': config['lr'] * 100})
 
         opt = RAdam(param_groups, weight_decay=config['weight_decay'])
 
@@ -437,7 +433,30 @@ class PreTrainer():
 
         # Do training in mixed precision
         if self.args.is_apex:
-            model, opt = amp.initialize(model, opt, opt_level="O1")
+            if self.args.proxies:
+                [model, gtg], opt = amp.initialize([model, gtg], opt, opt_level="O1")
+                #torch.autograd.set_detect_anomaly(True)
+                dtype = torch.half 
+                for param in gtg.parameters(recurse=False):
+                    if param is not None:
+                        if param.data.dtype.is_floating_point:
+                            param.data = param.data.to(dtype=dtype)
+                        if param._grad is not None and param._grad.data.dtype.is_floating_point:
+                            param._grad.data = param._grad.data.to(dtype=dtype)
+
+                for buf in gtg.buffers(recurse=False):
+                    if buf is not None and buf.data.dtype.is_floating_point:
+                        buf.data = buf.data.to(dtype=dtype)
+                
+                for param in gtg.parameters():
+                    print(param.data.type(), param.size())
+            else:
+                model, opt = amp.initialize(model, opt, opt_level="O1")
+
+        if torch.cuda.device_count() > 1:
+            model = nn.DataParallel(model)
+            #gtg = nn.DataParallel(gtg)
+
 
         # If not pretraining
         if not self.args.pretraining:
@@ -589,8 +608,15 @@ class PreTrainer():
 
                             probs_for_gtg = F.softmax(probs /
                                                       config['temperature'])
-                            probs_for_gtg, W = gtg(fc7, fc7.shape[0], labs, L, U,
-                                                   probs_for_gtg)
+                            #print(fc7.shape, labs.shape, L.shape, U.shape, probs_for_gtg.shape)
+                            probs_for_gtg, W, l_prox = gtg(fc7, fc7.shape[0], labs, L, U,
+                                    probs_for_gtg)
+                            
+                            #if self.args.proxies:
+                                #Y = torch.cat((Y, l_prox), dim = 0)
+                                #print(Y.shape[0])
+                                #probs_for_gtg = probs_for_gtg[:Y.shape[0], :]
+
                             probs_for_gtg = torch.log(probs_for_gtg + 1e-12)
 
                             if self.args.lab_smooth_GL:
@@ -794,21 +820,23 @@ def main():
     # Random search
     print('NUM ITER GTG__________________')
     for i in range(num_iter):
+        #trainer.args.proxies = 1
         trainer.args.lab_smooth = 1 #lab_smooth[i]
         trainer.args.trans = 'bot' #trans[i]
         trainer.args.neck = 1 #neck[i]
+        #trainer.args.nb_epochs = 30 
         #trainer.args.mode = 'all'
         #trainer.args.hyper_search = 1
         #trainer.args.test_option = 'norm' #test_option[i] #neck_test[i]
         #trainer.args.bn_GL = 0 #bn_GL[i]
-        trainer.args.distance_sampling = 'only' #'pre_soft' #'pre' #'alternating' #distance_sampling[i]
+        trainer.args.distance_sampling = 'pre' #'pre_soft' #'pre' #'alternating' #distance_sampling[i]
         #trainer.args.weight_norm = 1
         #trainer.args.m = 75
         #trainer.args.lab_smooth_GL = 1
         #trainer.args.triplet_loss = 1
-        #trainer.args.pretrained = '30'
+        trainer.args.pretrained = '30'
         #trainer.args.scaling_triplet = 0.7
-        #trainer.args.re_rank = 1
+        trainer.args.re_rank = 1
         #trainer.args.output_train = 'neck'
         #trainer.args.output_test = 'neck'
         #trainer.args.center = 1
