@@ -34,6 +34,7 @@ class GTG(nn.Module):
             #self.proxies = torch.nn.Parameter(torch.randn([total_classes, sz_embed]))
             self.proxies = torch.nn.Parameter(torch.randn([total_classes, total_classes]))
             nn.init.kaiming_normal_(self.proxies, mode='fan_out')
+            self.proxy_sm = torch.nn.Softmax(dim=1)
 
     def _init_probs_uniform(self, labs, L, U):
         """ Initialized the probabilities of GTG from uniform distribution """
@@ -56,8 +57,9 @@ class GTG(nn.Module):
         if not self.prox:
             ps[L, labs] = 1.
         else:
-            self.proxies = F.softmax(self.proxies, dim=1)
-            ps[L, :] = self.proxies[labs, :]
+            #self.proxies = F.softmax(self.proxies, dim=1)
+            ps[L, :] = F.softmax(self.proxies, dim=1)[labs, :]
+            #ps[L, :] = self.proxies[labs, :]
 
         # check if probs sum up to 1.
         assert torch.allclose(ps.sum(dim=1), torch.ones(n).cuda())
@@ -74,8 +76,9 @@ class GTG(nn.Module):
         if not self.prox:
             ps[L, labs] = 1.
         else:
-            self.proxies = F.softmax(self.proxies, dim=1)
-            ps[L, :] = self.proxies[labs, :]
+            #self.proxies = F.softmax(self.proxies, dim=1)
+            #ps[L, :] = self.proxies[labs, :]
+            ps[L, :] = F.softmax(self.proxies, dim=1)[labs, :]
         
         ps /= ps.sum(dim=ps.dim() - 1).unsqueeze(ps.dim() - 1)
         return ps
