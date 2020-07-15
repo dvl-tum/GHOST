@@ -66,7 +66,7 @@ class CombineSampler(Sampler):
         return len(self.flat_list)
 
 
-class DistanceSampler(Sampler):
+class DistanceSamplerOrig(Sampler):
     def __init__(self, num_classes, num_samples, samples, strategy):
         print("USING DIST")
         self.num_classes = num_classes
@@ -151,7 +151,7 @@ class DistanceSampler(Sampler):
         return len(self.flat_list)
 
 
-class DistanceSamplerHard(Sampler):
+class DistanceSampler(Sampler):
     def __init__(self, num_classes, num_samples, samples, strategy, m):
         print("USING DIST")
         self.num_classes = num_classes
