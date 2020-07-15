@@ -34,7 +34,7 @@ query: used as query images for testing
 '''
 
 
-def load_data(root: str = None, mode: str='single', val=0):
+def load_data(root: str = None, mode: str='single', val=0, seed=0):
     image_dir = os.path.join(root, 'images')
 
     # check if json file already exists --> if not: generate image folders
@@ -152,7 +152,9 @@ def load_data(root: str = None, mode: str='single', val=0):
             labels = json.load(file)
 
         if val and os.path.basename(os.path.dirname(root)) == 'cuhk03':
+            print(seed)
             for i in range(len(data)):
+                random.seed(seed+i)
                 ind = random.sample(
                     set(labels[i]['bounding_box_train']), 100)
 

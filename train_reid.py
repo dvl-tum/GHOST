@@ -462,6 +462,8 @@ class PreTrainer():
         if not self.args.pretraining:
             # If distance sampling
             if self.args.distance_sampling != 'no':
+                import random
+                seed = random.randint(0, 100)
                 dl_tr2, dl_ev2, query2, gallery2 = data_utility.create_loaders(
                     data_root=self.args.cub_root,
                     num_workers=self.args.nb_workers,
@@ -473,7 +475,8 @@ class PreTrainer():
                     trans=self.args.trans,
                     distance_sampler=self.args.distance_sampling,
                     val=self.args.val,
-                    m=self.args.m)
+                    m=self.args.m, 
+                    seed=seed)
                 dl_tr1, dl_ev1, query1, gallery1 = data_utility.create_loaders(
                     data_root=self.args.cub_root,
                     num_workers=self.args.nb_workers,
@@ -484,7 +487,8 @@ class PreTrainer():
                     mode=self.args.mode,
                     trans=self.args.trans,
                     distance_sampler='no',
-                    val=self.args.val)
+                    val=self.args.val, 
+                    seed=seed)
             # If testing or normal training
             else:
                 dl_tr, dl_ev, query, gallery = data_utility.create_loaders(
