@@ -3,7 +3,7 @@ import torch
 from collections import defaultdict
 from combine_sampler import CombineSampler, CombineSamplerAdvanced, \
     CombineSamplerSuperclass, CombineSamplerSuperclass2, PretraingSampler, \
-    DistanceSampler, DistanceSamplerMean
+    DistanceSampler, DistanceSamplerMean, DistanceSamplerOrig
 import numpy as np
 import os
 import matplotlib.pyplot as plt
@@ -101,7 +101,11 @@ def create_loaders(data_root, num_workers, size_batch, num_classes_iter=None,
     if pretraining:
         sampler = PretraingSampler(list_of_indices_for_each_class)
         drop_last = False
-    elif distance_sampler != 'no':
+    elif distance_sampler == 'orig_pre' or distance_sampler == 'orig_pre_soft' or distance_sampler == 'orig_only' or distance_sampler == 'orig_alternating':
+        print(distance_sampler)
+        sampler = DistanceSamplerOrig(num_classes_iter, num_elements_class, ddict, distance_sampler, m)
+        drop_last = True
+    elif  distance_sampler == 'pre' or distance_sampler == 'pre_soft' or distance_sampler == 'only' or distance_sampler == 'alternating':
         print(distance_sampler)
         sampler = DistanceSampler(num_classes_iter, num_elements_class, ddict, distance_sampler, m)
         drop_last = True
