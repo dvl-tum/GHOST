@@ -46,7 +46,7 @@ class Hyperparameters():
         print(self.dataset_name)
         print(self.net_type)
         # print('Without GL')
-        if dataset_name == 'Market' or 'MarketCuhk03':
+        if dataset_name == 'Market' or dataset_name == 'MarketCuhk03':
             self.dataset_path = '../../datasets/Market-1501-v15.09.15'
             self.dataset_short = 'Market'
         elif dataset_name == 'cuhk03-detected':
