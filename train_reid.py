@@ -293,6 +293,8 @@ def init_args():
                         help='Learning rate for center')
     parser.add_argument('--scaling_ce', default=1, type=float,
                         help='Weight for CE Loss')
+    parser.add_argument('--scaling_mse', default=1, type=float,
+                        help='weight for mse regularization')
 
     parser.add_argument('--mode', default='single', type=str,
                         help='if labeled and detected of cuhk03 should be taken = both'
@@ -313,6 +315,8 @@ def init_args():
                         help='if center loss should be added')
     parser.add_argument('--triplet_loss', default=0, type=int,
                         help='if triplet loss should be applied')
+    parser.add_argument('--mse', default=0, type=int, 
+                        help='if mse regularization should be applied')
     parser.add_argument('--early_thresh', default=100, type=int,
                         help='threshold when to stop, i.e. after 7 epochs, '
                              'where best recall did not improve')
@@ -432,6 +436,9 @@ class PreTrainer():
         # Add triplet loss
         if self.args.triplet_loss:
             criterion4 = utils.TripletLoss(margin=0.5)
+
+        if self.args.mse:
+            criterion5 = nn.MSELoss().to(self.device)
 
         # Do training in mixed precision
         if self.args.is_apex:
@@ -645,6 +652,15 @@ class PreTrainer():
                                 triploss, _ = criterion4(fc7, Y)
                                 loss += self.args.scaling_triplet * triploss
                                 losses['Triplet'].append(triploss.item())
+
+                            # Compute MSE regularization
+                            if self.args.mse:
+                                probs_ce = torch.log(F.softmax(probs) + 1e-12)
+                                import copy
+                                p = copy.deepcopy(probs_for_gtg).requires_grad_(False)
+                                mse_reg = criterion5(probs_ce, p)
+                                loss += self.args.scaling_mse * mse_reg
+                                losses['MSE'].append(mse_reg.item())
                             losses['Total Loss'].append(loss.item())
                         else:
                             # For pretraining just use acc as evaluation
