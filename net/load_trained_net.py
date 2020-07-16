@@ -5,7 +5,9 @@ import torch.nn as nn
 import torch.nn.utils.weight_norm as weightNorm
 
 
-def load_net(dataset, net_type, nb_classes, embed=False, sz_embedding=512, pretraining=False, last_stride=0, neck=0, load_path=None, use_pretrained='no', weight_norm=0):
+def load_net(dataset, net_type, nb_classes, embed=False, sz_embedding=512,
+             pretraining=False, last_stride=0, neck=0, load_path=None,
+             use_pretrained='no', weight_norm=0, nhead=4, num_layers=4):
 
     if net_type == 'bn_inception':
         sz_embed = 1024
@@ -134,6 +136,33 @@ def load_net(dataset, net_type, nb_classes, embed=False, sz_embedding=512, pretr
         if not pretraining and use_pretrained  != 'no':
             model.load_state_dict(torch.load('net/finetuned_' + dataset + '_' + net_type + '.pth'))
         # model.load_state_dict(torch.load('sop_resnet_new/Stanford_paramRes_16bit_densenet201_0.0002_5.2724883734490575e-12_10_6_2.pth'))
+
+    elif net_type == 'transformer':
+        sz_embed = sz_embedding
+        model = net.TransformerEncoder(d_embed=sz_embedding, nhead=nhead,
+                                       num_layers=num_layers,
+                                       num_classes=nb_classes)
+
+        if neck:
+            model.bottleneck = nn.BatchNorm1d(2048)
+            model.bottleneck.bias.requires_grad_(False)  # no shift
+            if weight_norm:
+                model.fc = weightNorm(nn.Linear(2048, nb_classes, bias=False), name = "weight")
+            else:
+                model.fc = nn.Linear(2048, nb_classes, bias=False)
+
+            model.bottleneck.apply(weights_init_kaiming)
+            model.fc.apply(weights_init_classifier)
+        else:
+            if weight_norm:
+                model.fc = weightNorm(nn.Linear(2048, nb_classes), name = "weight")
+            else:
+                model.fc = nn.Linear(2048, nb_classes)
+
+        if not pretraining and use_pretrained != 'no':
+            print(load_path)
+            model.load_state_dict(torch.load(load_path))
+
     return model, sz_embed
 
 
