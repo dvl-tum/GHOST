@@ -64,6 +64,8 @@ class Hyperparameters():
         elif dataset_name == 'dukemtmc':
             self.dataset_path = '../../datasets/dukemtmc'
             self.dataset_short = 'dukemtmc'
+        print('----------------------------------------------------')
+        print(self.dataset_path, self.dataset_short)
         '''
         self.num_classes = {'Market': 751,
                             'cuhk03-detected': 1367,
@@ -211,7 +213,7 @@ class Hyperparameters():
 
 
 def init_args():
-    dataset = 'cuhk03-detected' #'dukemtmc' #'Market' #'cuhk03-detected'
+    dataset = 'Market' #'cuhk03-detected' #'dukemtmc' #'Market' #'cuhk03-detected'
     net_type = 'resnet50' #'densenet161'
     hyperparams = Hyperparameters(dataset, net_type)
     parser = argparse.ArgumentParser(
@@ -401,7 +403,7 @@ class PreTrainer():
                          'lr': config['lr']}]
         if self.args.proxies:
             param_groups.append(
-                {'params': gtg.proxies, 'lr': config['lr'] * 100})
+                {'params': gtg.proxies, 'lr': config['lr'] * 10})
 
         opt = RAdam(param_groups, weight_decay=config['weight_decay'])
 
@@ -825,22 +827,24 @@ def main():
     print('NUM ITER GTG__________________')
     for i in range(num_iter):
         #trainer.args.proxies = 1
-        trainer.args.lab_smooth = 1 #lab_smooth[i]
-        trainer.args.trans = 'bot' #trans[i]
+        #trainer.args.lab_smooth = 1 #lab_smooth[i]
+        #trainer.args.trans = 'bot' #trans[i]
         trainer.args.neck = 1 #neck[i]
-        #trainer.args.nb_epochs = 30 
+        #trainer.args.mse = 1
+        trainer.args.nb_epochs = 30 
         #trainer.args.mode = 'all'
         #trainer.args.hyper_search = 1
         #trainer.args.test_option = 'norm' #test_option[i] #neck_test[i]
         #trainer.args.bn_GL = 0 #bn_GL[i]
-        trainer.args.distance_sampling = 'pre' #'pre_soft' #'pre' #'alternating' #distance_sampling[i]
+        #trainer.args.distance_sampling = 'only' #'pre_soft' #'pre' #'alternating' #distance_sampling[i]
+        #args.lr_net = args.lr_net / 10
         #trainer.args.weight_norm = 1
         #trainer.args.m = 75
         #trainer.args.lab_smooth_GL = 1
         #trainer.args.triplet_loss = 1
-        trainer.args.pretrained = '30'
+        #trainer.args.pretrained = 'GL'
         #trainer.args.scaling_triplet = 0.7
-        trainer.args.re_rank = 1
+        #trainer.args.re_rank = 1
         #trainer.args.output_train = 'neck'
         #trainer.args.output_test = 'neck'
         #trainer.args.center = 1
@@ -910,7 +914,22 @@ def main():
                       'num_labeled_points_class': args.num_labeled_points_class,
                       'num_iter_gtg': args.num_iter_gtg,
                       'temperature': args.temperature}
-
+            
+            config = {'lr': 0.00011859224361050824,
+                      'weight_decay': 1.4806041579855866e-10,
+                      'num_classes_iter': 10,
+                      'num_elements_class': 8,
+                      'num_labeled_points_class': 2,
+                      'num_iter_gtg': 1,
+                      'temperature': 37}
+            config = {'lr': 6.675128594588672e-05,
+                    'weight_decay': 4.1985936929920846e-12,
+                    'num_classes_iter': 13,
+                    'num_elements_class': 7,
+                    'num_labeled_points_class': 2,
+                    'num_iter_gtg': 2,
+                    'temperature': 70
+                    }
             if trainer.args.test:
                 trainer.args.nb_epochs = 1
             if trainer.args.distance_sampling != 'no':
