@@ -60,17 +60,50 @@ class Labeler(nn.Module):
         return ps
 
 
+def weights_init_kaiming(m):
+    classname = m.__class__.__name__
+    if classname.find('Linear') != -1:
+        nn.init.kaiming_normal_(m.weight, a=0, mode='fan_out')
+        nn.init.constant_(m.bias, 0.0)
+    elif classname.find('Conv') != -1:
+        nn.init.kaiming_normal_(m.weight, a=0, mode='fan_in')
+        if m.bias is not None:
+            nn.init.constant_(m.bias, 0.0)
+    elif classname.find('BatchNorm') != -1:
+        if m.affine:
+            nn.init.constant_(m.weight, 1.0)
+            nn.init.constant_(m.bias, 0.0)
+
+
+def weights_init_classifier(m):
+    classname = m.__class__.__name__
+    if classname.find('Linear') != -1:
+        nn.init.normal_(m.weight, std=0.001)
+        if m.bias:
+            nn.init.constant_(m.bias, 0.0)
+
+
 class TransformerEncoder(nn.Module):
     __constants__ = ['norm']
 
-    def __init__(self, d_embed, num_layers=4, nhead=4, norm=None):
+    def __init__(self, d_embed, num_layers=4, nhead=4, norm=None, num_classes=1367):
         super(TransformerEncoder, self).__init__()
         encoder_layer = TransformerEncoderLayer(d_embed=d_embed, nhead=nhead)
         self.layers = ModuleList([copy.deepcopy(encoder_layer) for i in range(num_layers)])
         self.num_layers = num_layers
         self.norm = norm
 
-    def forward(self, feature_map: Tensor) -> Tensor:
+        if self.neck:
+            self.bottleneck = nn.BatchNorm1d(d_embed)
+            self.bottleneck.bias.requires_grad_(False)  # no shift
+            self.fc = nn.Linear(d_embed, num_classes, bias=False)
+
+            self.bottleneck.apply(weights_init_kaiming)
+            self.fc.apply(weights_init_classifier)
+        else:
+            self.fc = nn.Linear(d_embed, num_classes)
+
+    def forward(self, feature_map: Tensor, output_option) -> tuple:
 
         output = feature_map
 
@@ -80,8 +113,23 @@ class TransformerEncoder(nn.Module):
         if self.norm is not None:
             output = self.norm(output)
 
-        return output
-    
+        if self.neck:
+            feat = self.bottleneck(output)
+        else:
+            feat = output
+
+        x = self.fc(feat)
+
+        if output_option == 'norm':
+            return x, output
+        elif output_option == 'plain':
+            return x, F.normalize(output, p=2, dim=1)
+        elif output_option == 'neck' and self.neck:
+            return x, feat
+        elif output_option == 'neck' and not self.neck:
+            print("Output option neck only avaiable if bottleneck (neck) is "
+                  "enabeled - giving back x and fc7")
+            return x, output
     
 class TransformerEncoderLayer(nn.Module):
     def __init__(self, d_embed, nhead, d_hid=None, dropout=0.1):
