@@ -141,7 +141,8 @@ def load_net(dataset, net_type, nb_classes, embed=False, sz_embedding=512,
         sz_embed = sz_embedding
         model = net.TransformerEncoder(d_embed=sz_embedding, nhead=nhead,
                                        num_layers=num_layers,
-                                       num_classes=nb_classes)
+                                       num_classes=nb_classes,
+                                       neck=neck)
 
         if neck:
             model.bottleneck = nn.BatchNorm1d(2048)

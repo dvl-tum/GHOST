@@ -86,12 +86,13 @@ def weights_init_classifier(m):
 class TransformerEncoder(nn.Module):
     __constants__ = ['norm']
 
-    def __init__(self, d_embed, num_layers=4, nhead=4, norm=None, num_classes=1367):
+    def __init__(self, d_embed, num_layers=4, nhead=4, norm=None, num_classes=1367, neck=0):
         super(TransformerEncoder, self).__init__()
         encoder_layer = TransformerEncoderLayer(d_embed=d_embed, nhead=nhead)
         self.layers = ModuleList([copy.deepcopy(encoder_layer) for i in range(num_layers)])
         self.num_layers = num_layers
         self.norm = norm
+        self.neck = neck
 
         if self.neck:
             self.bottleneck = nn.BatchNorm1d(d_embed)
@@ -160,10 +161,10 @@ class TransformerEncoderLayer(nn.Module):
 
 
 class MultiheadAttention(nn.Module):
-
+    import typing
     __annotations__ = {
-        'bias_k': torch._jit_internal.Optional[torch.Tensor],
-        'bias_v': torch._jit_internal.Optional[torch.Tensor],
+        'bias_k': typing.Optional[torch.Tensor],
+        'bias_v': typing.Optional[torch.Tensor],
     }
 
     def __init__(self, embed_dim, num_heads, dropout=0., bias=True, add_bias_kv=False, add_zero_attn=False, kdim=None, vdim=None):
@@ -298,7 +299,7 @@ def attention(q, k, v, head_dim, mask=None, dropout=None):
     if mask is not None:
         mask = mask.unsqueeze(1)
         scores = scores.masked_fill(mask == 0, -1e9)
-        scores = F.softmax(scores, dim=-1)
+    scores = F.softmax(scores, dim=-1)
 
     if dropout is not None:
         scores = dropout(scores)

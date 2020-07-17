@@ -393,6 +393,11 @@ def init_args():
     parser.add_argument('--proxies', default=0, type=int,
                         help='if proxies should be used for gtg')
 
+    parser.add_argument('--nhead', default=4, type=int,
+                        help='How many heads for transformer multi head attention')
+    parser.add_argument('--num_layers', default=3, type=int,
+                        help='How many layers for transformer encoder')
+
     return parser.parse_args()
 
 
@@ -429,7 +434,7 @@ class PreTrainer():
                                        weight_norm=self.args.weight_norm)
         model = model.to(self.device)
 
-        transformer_encoder = net.load_net(dataset=self.args.dataset_short,
+        transformer_encoder, sz_embed = net.load_net(dataset=self.args.dataset_short,
                                            net_type='transformer',
                                            nb_classes=self.args.nb_classes,
                                            sz_embedding=sz_embed,
@@ -439,7 +444,7 @@ class PreTrainer():
                                            use_pretrained=self.args.pretrained,
                                            weight_norm=self.args.weight_norm,
                                            nhead=self.args.nhead,
-                                           num_layers=self.arg.num_layers
+                                           num_layers=self.args.num_layers
                                            )
 
         transformer_encoder = transformer_encoder.to(self.device)
@@ -449,7 +454,7 @@ class PreTrainer():
 
         param_groups = [{'params': list(set(model.parameters())),
                          'lr': config['lr']},
-                        {'params_trafo': list(set(transformer_encoder.parameters())),
+                        {'params': list(set(transformer_encoder.parameters())),
                          'lr': config['lr']}]
 
         #if self.args.proxies:
