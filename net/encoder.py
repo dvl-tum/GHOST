@@ -263,13 +263,21 @@ class MultiHeadAttention(nn.Module):
         self.num_heads = num_heads
 
         self.q_linear = nn.Linear(embed_dim, embed_dim)
-        nn.init.xavier_uniform_(self.q_linear)
+        nn.init.xavier_uniform_(self.q_linear.weight)
+        nn.init.constant_(self.q_linear.bias, 0.)
+
         self.v_linear = nn.Linear(embed_dim, embed_dim)
-        nn.init.xavier_uniform_(self.v_linear)
+        nn.init.xavier_uniform_(self.v_linear.weight)
+        nn.init.constant_(self.v_linear.bias, 0.)
+
         self.k_linear = nn.Linear(embed_dim, embed_dim)
-        nn.init.xavier_uniform_(self.k_linear)
+        nn.init.xavier_uniform_(self.k_linear.weight)
+        nn.init.constant_(self.k_linear.bias, 0.)
+
         self.dropout = nn.Dropout(dropout)
+
         self.out = nn.Linear(embed_dim, embed_dim)
+        nn.init.constant_(self.out.bias, 0.)
 
     def forward(self, q, k, v):
         bs = q.size(0)
@@ -306,6 +314,7 @@ def attention(q, k, v, head_dim, mask=None, dropout=None):
 
     output = torch.matmul(scores, v)
     return output
+
 
 class _LinearWithBias(nn.Linear):
     bias: Tensor
