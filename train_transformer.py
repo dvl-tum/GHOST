@@ -247,7 +247,7 @@ class Hyperparameters():
 
 
 def init_args():
-    dataset = 'Market'  # 'cuhk03-detected' #'dukemtmc' #'Market' #'cuhk03-detected'
+    dataset = 'cuhk03-detected' #'dukemtmc' #'Market' #'cuhk03-detected'
     net_type = 'resnet50'  # 'densenet161'
     hyperparams = Hyperparameters(dataset, net_type)
     parser = argparse.ArgumentParser(
@@ -587,14 +587,16 @@ class PreTrainer():
             # If not testing
             if not self.args.test:
                 logger.info('Epoch {}/{}'.format(e, self.args.nb_epochs))
-                if e == 31:
+                if e == 21:
+                    print('reduce lr')
                     model.load_state_dict(torch.load(
                         os.path.join(self.save_folder_nets,
                                      file_name + '.pth')))
                     for g in opt.param_groups:
                         g['lr'] = config['lr'] / 10.
 
-                if e == 51:
+                if e == 61:
+                    print('reduce lr')
                     model.load_state_dict(torch.load(
                         os.path.join(self.save_folder_nets,
                                      file_name + '.pth')))
@@ -664,33 +666,37 @@ class PreTrainer():
                                     feature_dict[y.data.item()] = {i.item(): f}
 
                         # Compute CE Loss
-                        loss = criterion2(probs, Y)
-                        losses['Cross Entropy'].append(loss.item())
+                        if e <= 100:
+                            loss = criterion2(probs, Y)
+                            losses['Cross Entropy'].append(loss.item())
+                        else: 
+                            loss = 0
 
                         # Add other losses of not pretraining
                         if not self.args.pretraining:
-                            probs_trafo, fc7_trafo = transformer_encoder(fc7)
-                            loss1 = criterion(probs_trafo, Y)
-
-                            # print(probs_for_gtg, Y, loss1)
-                            losses['Transformer'].append(loss1.item())
-
+                            probs_trafo, fc7_trafo = transformer_encoder(fc7, output_option=self.args.output_train)
+                            if e <= 100:
+                                loss1 = criterion(probs_trafo, Y)
+                                # print(probs_for_gtg, Y, loss1)
+                                losses['Transformer'].append(loss1.item())
+                            else: 
+                                loss1 = 0
                             loss = self.args.scaling_loss * loss1 + self.args.scaling_ce * loss
 
                             # Compute center loss
-                            if self.args.center:
+                            if self.args.center and e <= 100:
                                 loss2 = criterion3(fc7, Y)
                                 loss += self.args.scaling_center * loss2
                                 losses['Center'].append(loss2.item())
 
                             # Compute Triplet Loss
-                            if self.args.triplet_loss:
+                            if self.args.triplet_loss and e <= 100:
                                 triploss, _ = criterion4(fc7, Y)
                                 loss += self.args.scaling_triplet * triploss
                                 losses['Triplet'].append(triploss.item())
 
                             # Compute MSE regularization
-                            if self.args.mse:
+                            if self.args.mse and e > 100:
                                 mse_reg = criterion5(probs_trafo.data, probs)
                                 loss += self.args.scaling_mse * mse_reg
                                 losses['MSE'].append(mse_reg.item())
@@ -879,7 +885,9 @@ def main():
     # Random search
     print('NUM ITER GTG__________________')
     for i in range(num_iter):
-
+        #trainer.args.mse = 1
+        trainer.args.nhead = 8
+        trainer.args.num_layers = 6
         if trainer.args.val:
             trainer.args.nb_classes -= 100
 
@@ -947,7 +955,7 @@ def main():
                       'num_iter_gtg': args.num_iter_gtg,
                       'temperature': args.temperature}
 
-            config = {'lr': 0.00011859224361050824,
+            '''config = {'lr': 0.00011859224361050824,
                       'weight_decay': 1.4806041579855866e-10,
                       'num_classes_iter': 10,
                       'num_elements_class': 8,
@@ -961,7 +969,7 @@ def main():
                       'num_labeled_points_class': 2,
                       'num_iter_gtg': 2,
                       'temperature': 70
-                      }
+                      }'''
             if trainer.args.test:
                 trainer.args.nb_epochs = 1
             if trainer.args.distance_sampling != 'no':
