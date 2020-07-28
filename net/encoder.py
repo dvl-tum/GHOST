@@ -9,6 +9,7 @@ import math
 
 class TransformerEncoder(nn.Module):
     def __init__(self, d_embed, nhead, num_layers, neck, num_classes):
+        super(TransformerEncoder, self).__init__()
         encoder_layer = TransformerEncoderLayer(d_embed=d_embed, nhead=nhead)
         self.layers = ModuleList(
             [copy.deepcopy(encoder_layer) for i in range(num_layers)])
@@ -67,7 +68,6 @@ class TransformerEncoderLayer(nn.Module):
         self.activation = F.relu
 
     def forward(self, src: Tensor) -> Tensor:
-
         src2 = self.self_attn(src, src, src)[0]
         src = src + self.dropout1(src2)
         src = self.norm1(src)
@@ -79,8 +79,7 @@ class TransformerEncoderLayer(nn.Module):
 
 class MultiHeadAttention(nn.Module):
     def __init__(self, embed_dim, num_heads, dropout=0.1):
-        super().__init__()
-
+        super(MultiHeadAttention, self).__init__()
         self.embed_dim = embed_dim
         self.head_dim = embed_dim // num_heads
         self.num_heads = num_heads
@@ -101,7 +100,7 @@ class MultiHeadAttention(nn.Module):
 
         self.out = nn.Linear(embed_dim, embed_dim)
         nn.init.constant_(self.out.bias, 0.)
-
+    
     def forward(self, q, k, v):
         bs = q.size(0)
 
@@ -114,19 +113,21 @@ class MultiHeadAttention(nn.Module):
         k = k.transpose(0, 1)
         q = q.transpose(0, 1)
         v = v.transpose(0, 1)  # calculate attention using function we will define next
-        scores = attention(q, k, v, self.head_dim, self.dropout)
+
+        scores = attention(q, k, v, self.head_dim, dropout=self.dropout)
 
         # concatenate heads and put through final linear layer
         concat = scores.transpose(0, 1).contiguous() \
-            .view(bs, -1, self.embed_dim)
-
+            .view(bs, self.embed_dim)
         output = self.out(concat)
 
         return output
 
 
 def attention(q, k, v, head_dim, mask=None, dropout=None):
+
     scores = torch.matmul(q, k.transpose(-2, -1)) / math.sqrt(head_dim)
+
     if mask is not None:
         mask = mask.unsqueeze(1)
         scores = scores.masked_fill(mask == 0, -1e9)
