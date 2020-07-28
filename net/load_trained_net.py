@@ -58,7 +58,21 @@ def load_net(dataset, net_type, nb_classes, embed=False, sz_embedding=512,
 
         if not pretraining and use_pretrained != 'no':
             print(load_path)
-            model.load_state_dict(torch.load(load_path))
+            if use_pretrained == 'cuhk03':
+                pretrained_dict = torch.load(load_path)
+                model_dict = model.state_dict()
+                # 1. filter out unnecessary keys
+                pretrained_dict = {k: v for k, v in pretrained_dict.items() if 'fc' not in k}
+                # 2. overwrite entries in the existing state dict
+                model_dict.update(pretrained_dict)
+                for k, v in model_dict.items():
+                    print(k, v.shape)
+                for k in pretrained_dict.items():
+                    print(k, v.shape)
+                # 3. load the new state dict
+                model.load_state_dict(model_dict)
+            else:
+                model.load_state_dict(torch.load(load_path))
 
     elif net_type == 'resnet101':
         sz_embed = 2048
