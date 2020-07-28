@@ -59,6 +59,11 @@ class CombineSampler(Sampler):
 
         # shuffle the order of classes --> Could it be that same class appears twice in one batch?
         random.shuffle(split_list_of_indices)
+        if len(split_list_of_indices) % self.cl_b != 0:
+            b = np.random.choice(np.arange(len(split_list_of_indices)), size=len(split_list_of_indices) % self.cl_b, replace=False).tolist()
+
+        [split_list_of_indices.append(split_list_of_indices[m]) for m in b]
+
         self.flat_list = [item for sublist in split_list_of_indices for item in sublist]
         return iter(self.flat_list)
 
@@ -144,6 +149,12 @@ class DistanceSamplerOrig(Sampler):
             batches.append(batch)
 
         random.shuffle(batches)
+        if len(batches) % self.num_classes != 0:
+            b = np.random.choice(np.arange(len(batches)), size=len(batches) % self.num_classes, replace=False).tolist()
+
+        [batches.append(batches[m]) for m in b]
+
+
         self.flat_list = [s for batch in batches for s in batch]
         return (iter(self.flat_list))
 
@@ -318,6 +329,11 @@ class DistanceSampler(Sampler):
             batch = [s for c in batch for s in c]
             batches.append(batch)
         random.shuffle(batches)
+        if len(batches) % self.num_classes != 0:
+            b = np.random.choice(np.arange(len(batches)), size=len(batches) % self.num_classes, replace=False).tolist()
+
+        [batches.append(batches[m]) for m in b]
+
         self.flat_list = [s for batch in batches for s in batch]
 
         return (iter(self.flat_list))
