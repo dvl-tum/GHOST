@@ -328,6 +328,8 @@ def init_args():
                         help='If label smoothing should be applied to GL')
     parser.add_argument('--re_rank', default=0, type=int,
                         help='If re-ranking should be added')
+    parser.add_argument('--focal', default=0, type=int,
+                        help='if focal loss should be used instead of cross entropy')
 
     # option for fc7 during test and training
     parser.add_argument('--output_test', default='norm', type=str,
@@ -424,6 +426,8 @@ class PreTrainer():
         if self.args.lab_smooth:
             criterion2 = utils.CrossEntropyLabelSmooth(
                 num_classes=self.args.nb_classes)
+        elif self.args.focal:
+            criterion2 = utils.FocalLoss().to(self.device)
         else:
             criterion2 = nn.CrossEntropyLoss().to(self.device)
 
@@ -473,6 +477,7 @@ class PreTrainer():
             if self.args.distance_sampling != 'no':
                 import random
                 seed = random.randint(0, 100)
+                seed = 19
                 dl_tr2, dl_ev2, query2, gallery2 = data_utility.create_loaders(
                     data_root=self.args.cub_root,
                     num_workers=self.args.nb_workers,
@@ -535,13 +540,15 @@ class PreTrainer():
             # If not testing
             if not self.args.test:
                 logger.info('Epoch {}/{}'.format(e, self.args.nb_epochs))
-                if e == 31:
+                if e == 1131:
+                    print("reduces Learning rate")
                     model.load_state_dict(torch.load(
                         os.path.join(self.save_folder_nets, file_name + '.pth')))
                     for g in opt.param_groups:
                         g['lr'] = config['lr'] / 10.
 
-                if e == 51:
+                if e == 1161:
+                    print("reduces Learning rate")
                     model.load_state_dict(torch.load(
                         os.path.join(self.save_folder_nets, file_name + '.pth')))
                     for g in opt.param_groups:
@@ -842,30 +849,36 @@ def main():
     # Random search
     print('NUM ITER GTG__________________')
     for i in range(num_iter):
+        #trainer.args.scaling_ce = 1.5
         #trainer.args.proxies = 1
-        #trainer.args.lab_smooth = 1 #lab_smooth[i]
-        #trainer.args.trans = 'bot' #trans[i]
-        trainer.args.neck = 1 #neck[i]
+        #trainer.args.lab_smooth = 0 #lab_smooth[i]
+        #trainer.args.focal = 1
+        #trainer.args.trans = 'norm'#'bot' #trans[i]
+        #trainer.args.neck = 0 #1 #neck[i]
         #trainer.args.mse = 1
-        trainer.args.nb_epochs = 30 
+        trainer.args.nb_epochs = 100
         #trainer.args.mode = 'all'
         #trainer.args.hyper_search = 1
         #trainer.args.test_option = 'norm' #test_option[i] #neck_test[i]
         #trainer.args.bn_GL = 0 #bn_GL[i]
-        #trainer.args.distance_sampling = 'only' #'pre_soft' #'pre' #'alternating' #distance_sampling[i]
+        #trainer.args.distance_sampling = 'only' #'pre' #'pre_soft' #'pre' #'alternating' #distance_sampling[i]
         #args.lr_net = args.lr_net / 10
         #trainer.args.weight_norm = 1
         #trainer.args.m = 75
         #trainer.args.lab_smooth_GL = 1
         #trainer.args.triplet_loss = 1
-        #trainer.args.pretrained = 'GL'
+        #trainer.args.pretrained = 'cuhk03'
         #trainer.args.scaling_triplet = 0.7
         #trainer.args.re_rank = 1
-        #trainer.args.output_train = 'neck'
-        #trainer.args.output_test = 'neck'
+        trainer.args.output_train = 'plain' #'neck'
+        trainer.args.output_test = 'plain'#'neck'
         #trainer.args.center = 1
+        trainer.args.triplet_loss = 1
         #trainer.args.val = 1
         #trainer.args.scaling_ce = 0.75
+        #trainer.args.lamb = 0.100493176524806
+        #trainer.args.k1 = 27
+        #trainer.args.k2 = 11
 
         if trainer.args.val:
             trainer.args.nb_classes -= 100
@@ -880,6 +893,9 @@ def main():
         if trainer.args.test or trainer.args.pretrained == 'GL':
             load_path = os.path.join('save_trained_nets', mode + trainer.args.net_type + '_' + trainer.args.dataset_name + '.pth')
             logger.info('Load model from {}'.format(load_path))
+        if trainer.args.pretrained == 'cuhk03':
+            load_path = os.path.join('save_trained_nets', '0.9747150259068863neck_resnet50_cuhk03-detected.pth')
+            print(load_path)
         elif trainer.args.pretrained == '30':
             load_path = os.path.join('save_trained_nets', '30' + mode + trainer.args.net_type + '_' + trainer.args.dataset_name + '.pth')
             print(load_path)
@@ -908,10 +924,19 @@ def main():
                       'num_labeled_points_class': args.num_labeled_points_class,
                       'num_iter_gtg': args.num_iter_gtg,
                       'temperature': args.temperature}
+            '''
+            config = {'lr': 6.675128594588672e-05,
+                    'weight_decay': 4.1985936929920846e-12,
+                    'num_classes_iter': 13,
+                    'num_elements_class': 7,
+                    'num_labeled_points_class': 2,
+                    'num_iter_gtg': 2,
+                    'temperature': 70}
+
             trainer.args.lamb = random.random()
             trainer.args.k1 = random.randint(5, 30)
             trainer.args.k2 = random.randint(0, 15)
-            '''
+            print(trainer.args.lamb, trainer.args.k1, trainer.args.k2) 
             trainer.args.nb_epochs = 30
         elif trainer.args.pretraining:
             config = {'lr': 0.0002,
@@ -937,7 +962,8 @@ def main():
                       'num_elements_class': 8,
                       'num_labeled_points_class': 2,
                       'num_iter_gtg': 1,
-                      'temperature': 37}
+                      'temperature': 70}
+            
             config = {'lr': 6.675128594588672e-05,
                     'weight_decay': 4.1985936929920846e-12,
                     'num_classes_iter': 13,
@@ -949,7 +975,7 @@ def main():
             if trainer.args.test:
                 trainer.args.nb_epochs = 1
             if trainer.args.distance_sampling != 'no':
-                trainer.args.nb_epochs = 130
+                trainer.args.nb_epochs = 200
         #config['num_iter_gtg'] = 2
         print(config)
         best_accuracy, model = trainer.train_model(config, timer, load_path)
