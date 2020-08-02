@@ -1,0 +1,73 @@
+mode: "train" # train/test/hyper_search/pretraining
+
+models:
+  encoder_params:
+    pretrained_path: "no" # path to pretrained model
+    net_type: "resnet50"
+    neck: 1
+    last_stride: 0
+    weight_norm: 0
+    bn_inception:
+      embed: 0
+      sz_embedding: 512
+
+  gnn_params:
+    num_layer: 4
+    encode: 0
+    gnn:
+      aggregator: "add"
+      jumping_knowledge: 0
+      num_heads: 3
+      attention: "trans"
+    endcoder:
+      use_encoder: 0
+      fc_dims: [2048]
+      dropout: 0.4
+      batch_norm: 0
+    classifier:
+      fc_dims: [751]
+      dropout: 0.4
+      batch_norm: 0
+
+graph_params:
+  sim_type: "correlation"
+
+dataset:
+  dataset_path: "../../datasets/Market-1501-v15.09.15"
+  dataset_short: "Market"
+  num_calsses: 751
+  trans: "bot"
+  sampling: "only"
+  val: 0
+  nb_workers: 4
+
+train_params:
+  num_classes_iter: 13
+  num_elements_class: 7
+  lr: 6.675128594588672e-05
+  weight_decay: 4.1985936929920846e-12
+  num_epochs: 100
+  is_apex: 1
+  temperatur: 70
+  output_train: "norm"
+  loss_fn:
+    fns: "lsce_gnn" #ce/focalce can be used instead of lsce and lsgnn/focalgnn instead of gnn, rest can be added by ce_gnn_center...
+    scaling_ce: 1
+    scaling_gnn: 1
+    scaling_center: 0.5
+    scaling_triplet: 1
+    scaling_of: 1
+
+evaluation:
+  re_rank: 0
+  lamb: 0.3
+  k1: 20
+  k2: 6
+  output_test: "norm"
+
+
+
+
+
+
+

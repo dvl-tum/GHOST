@@ -5,34 +5,34 @@ import torch.nn as nn
 import torch.nn.utils.weight_norm as weightNorm
 
 
-def load_net(dataset, net_type, nb_classes, embed=False, sz_embedding=512,
-             pretraining=False, last_stride=0, neck=0, load_path=None,
-             use_pretrained='no', weight_norm=0, nhead=4, num_layers=4):
+def load_net(dataset, nb_classes, mode, net_type, bn_inception,
+             last_stride=0, neck=0, pretrained_path=None,
+             weight_norm=0):
 
     if net_type == 'bn_inception':
         sz_embed = 1024
         model = net.bn_inception(pretrained=True)
         model.last_linear = nn.Linear(1024, nb_classes)
-        if not pretraining:
+        if not mode  == 'pretraining':
             model.load_state_dict(torch.load('net/finetuned_' + dataset + '_' + net_type + '.pth'))
 
-        if embed:
-            model = net.Inception_embed(model, 1024, sz_embedding, num_classes=nb_classes)
-            if not pretraining:
+        if bn_inception['embed']:
+            model = net.Inception_embed(model, 1024, bn_inception['sz_embedding'], num_classes=nb_classes)
+            if not mode  == 'pretraining':
                 model.load_state_dict(torch.load(os.path.join('net', 'finetuned_cub_embedded_512_10_.pth')))
 
     elif net_type == 'resnet18':
         sz_embed = 512
         model = net.resnet18(pretrained=True)
         model.fc = nn.Linear(512, nb_classes)
-        if not pretraining:
+        if not mode  == 'pretraining':
             model.load_state_dict(torch.load('net/finetuned_' + dataset + '_' + net_type + '.pth'))
 
     elif net_type == 'resnet34':
         sz_embed = 512
         model = net.resnet34(pretrained=True)
         model.fc = nn.Linear(512, nb_classes)
-        if not pretraining:
+        if not mode  == 'pretraining':
             model.load_state_dict(torch.load('net/finetuned_' + dataset + '_' + net_type + '.pth'))
 
     elif net_type == 'resnet50':
@@ -56,36 +56,22 @@ def load_net(dataset, net_type, nb_classes, embed=False, sz_embedding=512,
             else:
                 model.fc = nn.Linear(2048, nb_classes)
 
-        if not pretraining and use_pretrained != 'no':
-            print(load_path)
-            if use_pretrained == 'cuhk03':
-                pretrained_dict = torch.load(load_path)
-                model_dict = model.state_dict()
-                # 1. filter out unnecessary keys
-                pretrained_dict = {k: v for k, v in pretrained_dict.items() if 'fc' not in k}
-                # 2. overwrite entries in the existing state dict
-                model_dict.update(pretrained_dict)
-                for k, v in model_dict.items():
-                    print(k, v.shape)
-                for k in pretrained_dict.items():
-                    print(k, v.shape)
-                # 3. load the new state dict
-                model.load_state_dict(model_dict)
-            else:
-                model.load_state_dict(torch.load(load_path))
+        if not mode  == 'pretraining' and pretrained_path != 'no':
+            print(pretrained_path)
+            model.load_state_dict(torch.load(pretrained_path))
 
     elif net_type == 'resnet101':
         sz_embed = 2048
         model = net.resnet101(pretrained=True)
         model.fc = nn.Linear(2048, nb_classes)
-        if not pretraining:
+        if not mode  == 'pretraining':
             model.load_state_dict(torch.load('net/finetuned_' + dataset + '_' + net_type + '.pth'))
 
     elif net_type == 'resnet152':
         sz_embed = 2048
         model = net.resnet152(pretrained=True)
         model.fc = nn.Linear(2048, nb_classes)
-        if not pretraining:
+        if not mode  == 'pretraining':
             model.load_state_dict(torch.load('net/finetuned_' + dataset + '_' + net_type + '.pth'))
 
     elif net_type == 'densenet121':
@@ -101,7 +87,7 @@ def load_net(dataset, net_type, nb_classes, embed=False, sz_embedding=512,
             model.classifier.apply(weights_init_classifier)
         else: model.classifier = nn.Linear(1024, nb_classes)
 
-        if not pretraining and use_pretrained != 'no':
+        if not mode  == 'pretraining' and pretrained_path != 'no':
             model.load_state_dict(torch.load('net/finetuned_' + dataset + '_' + net_type + '.pth'))
         # model.load_state_dict(torch.load('sop_resnet_new/Stanford_paramRes_16bit_densenet121_0.0002_5.2724883734490575e-12_10_6_2.pth'))
 
@@ -116,9 +102,9 @@ def load_net(dataset, net_type, nb_classes, embed=False, sz_embedding=512,
             model.bottleneck.apply(weights_init_kaiming)
             model.classifier.apply(weights_init_classifier)
         else: model.classifier = nn.Linear(2208, nb_classes)
-        if not pretraining and use_pretrained != 'no':
-            print(load_path)
-            model.load_state_dict(torch.load(load_path))
+        if not mode  == 'pretraining' and pretrained_path != 'no':
+            print(pretrained_path)
+            model.load_state_dict(torch.load(pretrained_path))
         # model.load_state_dict(torch.load('sop_resnet_new/Stanford_paramRes_16bit_densenet161_0.0002_5.2724883734490575e-12_10_6_2.pth'))
 
     elif net_type == 'densenet169':
@@ -132,7 +118,7 @@ def load_net(dataset, net_type, nb_classes, embed=False, sz_embedding=512,
             model.bottleneck.apply(weights_init_kaiming)
             model.classifier.apply(weights_init_classifier)
         else: model.classifier = nn.Linear(1664, nb_classes)
-        if not pretraining and use_pretrained != 'no':
+        if not mode  == 'pretraining' and pretrained_path != 'no':
             model.load_state_dict(torch.load('net/finetuned_' + dataset + '_' + net_type + '.pth'))
         # model.load_state_dict(torch.load('sop_resnet_new/Stanford_paramRes_16bit_densenet169_0.0002_5.2724883734490575e-12_10_6_2.pth'))
 
@@ -147,36 +133,9 @@ def load_net(dataset, net_type, nb_classes, embed=False, sz_embedding=512,
             model.bottleneck.apply(weights_init_kaiming)
             model.classifier.apply(weights_init_classifier)
         else: model.classifier = nn.Linear(1920, nb_classes)
-        if not pretraining and use_pretrained  != 'no':
+        if not mode  == 'pretraining' and pretrained_path != 'no':
             model.load_state_dict(torch.load('net/finetuned_' + dataset + '_' + net_type + '.pth'))
         # model.load_state_dict(torch.load('sop_resnet_new/Stanford_paramRes_16bit_densenet201_0.0002_5.2724883734490575e-12_10_6_2.pth'))
-
-    elif net_type == 'transformer':
-        sz_embed = sz_embedding
-        model = net.TransformerEncoder(d_embed=sz_embedding, nhead=nhead,
-                                       num_layers=num_layers,
-                                       num_classes=nb_classes,
-                                       neck=neck)
-
-        if neck:
-            model.bottleneck = nn.BatchNorm1d(2048)
-            model.bottleneck.bias.requires_grad_(False)  # no shift
-            if weight_norm:
-                model.fc = weightNorm(nn.Linear(2048, nb_classes, bias=False), name = "weight")
-            else:
-                model.fc = nn.Linear(2048, nb_classes, bias=False)
-
-            model.bottleneck.apply(weights_init_kaiming)
-            model.fc.apply(weights_init_classifier)
-        else:
-            if weight_norm:
-                model.fc = weightNorm(nn.Linear(2048, nb_classes), name = "weight")
-            else:
-                model.fc = nn.Linear(2048, nb_classes)
-
-        if not pretraining and use_pretrained != 'no':
-            print(load_path)
-            model.load_state_dict(torch.load(load_path))
 
     return model, sz_embed
 

@@ -1,40 +1,8 @@
-import evaluation
 import torch
-import net
-import data_utility
 from torch import nn
-import numpy as np
 import torch.nn.functional as F
 from torch.autograd import Variable
 
-
-def predict_batchwise_reid(model, dataloader, output_test='norm'):
-    fc7s, L = [], []
-    features = dict()
-    labels = dict()
-    with torch.no_grad():
-        for X, Y, P in dataloader:
-            if torch.cuda.is_available(): X = X.cuda()
-            _, fc7 = model(X, output_option=output_test)
-            for path, out, y in zip(P, fc7, Y):
-                features[path] = out
-                labels[path] = y
-            fc7s.append(fc7.cpu())
-            L.append(Y)
-    fc7, Y = torch.cat(fc7s), torch.cat(L)
-    return torch.squeeze(fc7), torch.squeeze(Y), features, labels
-
-
-def evaluate_reid(model, dataloader, query=None, gallery=None, root=None,
-                  output_test='norm', re_rank=False, lamb=0.3, k1=20, k2=6):
-    model_is_training = model.training
-    model.eval()
-    _, _, features, _ = predict_batchwise_reid(model, dataloader, output_test)
-    mAP, cmc = evaluation.calc_mean_average_precision(features, query,
-                                                      gallery, re_rank, 
-                                                      lamb, k1, k2)
-    model.train(model_is_training)
-    return mAP, cmc
 
 # cross entropy and center loss
 class CrossEntropyLabelSmooth(torch.nn.Module):
@@ -63,37 +31,6 @@ class CrossEntropyLabelSmooth(torch.nn.Module):
         targets = torch.zeros(log_probs.size()).scatter_(1, targets.unsqueeze(1).data.cpu(), 1)
         if self.use_gpu: targets = targets.cuda()
         targets = (1 - self.epsilon) * targets + self.epsilon / self.num_classes
-        loss = (- targets * log_probs).mean(0).sum()
-        return loss
-
-
-class LabelSmoothGL(torch.nn.Module):
-    """label smoothing regularizer.
-        Reference:
-        Szegedy et al. Rethinking the Inception Architecture for Computer Vision. CVPR 2016.
-        Equation: y = (1 - epsilon) * y + epsilon / K.
-        Args:
-            num_classes (int): number of classes.
-            epsilon (float): weight.
-        """
-
-    def __init__(self, num_classes, epsilon=0.1, use_gpu=True):
-        super(LabelSmoothGL, self).__init__()
-        self.num_classes = num_classes
-        self.epsilon = epsilon
-        self.use_gpu = use_gpu
-
-    def forward(self, log_probs, targets):
-        """
-        Args:
-            inputs: prediction matrix (after log Softmax softmax) with shape (batch_size, num_classes)
-            targets: ground truth labels with shape (num_classes)
-        """
-        targets = torch.zeros(log_probs.size()).scatter_(1, targets.unsqueeze(
-            1).data.cpu(), 1)
-        if self.use_gpu: targets = targets.cuda()
-        targets = (
-                              1 - self.epsilon) * targets + self.epsilon / self.num_classes
         loss = (- targets * log_probs).mean(0).sum()
         return loss
 
@@ -218,22 +155,3 @@ class TripletLoss(nn.Module):
         loss = self.ranking_loss(dist_an, dist_ap, y)
         prec = (dist_an.data > dist_ap.data).sum() * 1. / y.size(0)
         return loss, prec
-
-
-if __name__ == '__main__':
-    # test create loader and load net
-
-    model = net.load_net(dataset='cuhk03',
-                         net_type='resnet50',
-                         nb_classes=751,
-                         embed=False,
-                         sz_embedding=512,
-                         pretraining=True)
-
-    dl_tr, dl_ev, q, g = data_utility.create_loaders(
-        data_root='../../datasets/cuhk03-np/detected',
-        input_size=224, size_batch=4, pretraining=False,
-        num_workers=2, num_classes_iter=2, num_elements_class=2
-        )
-
-    evaluate_reid(model, dl_ev, q, g, '../../datasets/cuhk03-np/detected')
