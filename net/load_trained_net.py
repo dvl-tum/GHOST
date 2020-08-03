@@ -5,10 +5,8 @@ import torch.nn as nn
 import torch.nn.utils.weight_norm as weightNorm
 
 
-def load_net(dataset, nb_classes, mode, net_type, bn_inception,
-             last_stride=0, neck=0, pretrained_path=None,
-             weight_norm=0):
-
+def load_net(dataset, nb_classes, mode, net_type, bn_inception={'embed': 0, 'sz_embedding': 512},
+             last_stride=0, neck=0, pretrained_path=None, weight_norm=0):
     if net_type == 'bn_inception':
         sz_embed = 1024
         model = net.bn_inception(pretrained=True)

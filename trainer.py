@@ -48,10 +48,10 @@ class Trainer():
             self.update_params()
 
             encoder, sz_embed = net.load_net(
-                self.config['dataset']['datset_short'],
+                self.config['dataset']['dataset_short'],
                 self.config['dataset']['num_classes'],
                 self.config['mode'],
-                self.config['models']['encoder_params'])
+                **self.config['models']['encoder_params'])
             self.encoder = encoder.to(self.device)
 
             self.gnn = net.GNNReID(self.config['gnn_params'], sz_embed).to(
