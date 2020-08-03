@@ -1,14 +1,16 @@
 import torch
-import torch.functional as F
+import torch.nn.functional as F
 
 
 class GraphGenerator():
-    def __init__(self, thresh=0, sim='correlation'):
+    def __init__(self, dev, thresh=0, sim_type='correlation', set_negative='hard'):
+        self.dev = dev
         self.thresh = thresh
-        self.sim = sim
+        self.sim = sim_type
+        self.set_negative  = set_negative
 
     @staticmethod
-    def set_negative_to_zero(self, W):
+    def set_negative_to_zero(W):
         return F.relu(W)
 
     def set_negative_to_zero_soft(self, W):
@@ -20,13 +22,12 @@ class GraphGenerator():
         return W
 
     def _get_A(self, W):
-        W = torch.where(W > self.thresh, W, torch.tensor(0))
-        A = torch.ones_like(W).where(W > self.thresh, torch.tensor(0))
+        W = torch.where(W > self.thresh, W, torch.tensor(0).float().to(self.dev))
+        A = torch.ones_like(W).where(W > self.thresh, torch.tensor(0).float().to(self.dev))
 
         return W, A
 
     def _get_W(self, x):
-
         if self.sim == 'correlation':
             x = (x - x.mean(dim=1).unsqueeze(1))
             norms = x.norm(dim=1)
