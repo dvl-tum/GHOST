@@ -15,7 +15,7 @@ import time
 import torch.nn.functional as F
 import copy
 import sys
-import evaluation.utils as eval_utils
+from evaluation import Evaluator
 import utils.utils as utils
 import matplotlib.pyplot as plt
 import os
@@ -54,7 +54,7 @@ class Trainer():
                 **self.config['models']['encoder_params'])
             self.encoder = encoder.to(self.device)
 
-            self.gnn = net.GNNReID(self.config['gnn_params'], sz_embed).to(
+            self.gnn = net.GNNReID(self.device, self.config['models']['gnn_params'], sz_embed).to(
                 self.device)
 
             self.graph_generator = net.GraphGenerator(self.device, **self.config['graph_params'])
