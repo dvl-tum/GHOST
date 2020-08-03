@@ -12,14 +12,14 @@ models:
       sz_embedding: 512
 
   gnn_params:
-    num_layer: 4
     encode: 0
     gnn:
+      num_layers: 4
       aggregator: "add"
       jumping_knowledge: 0
-      num_heads: 3
-      attention: "trans"
-    endcoder:
+      num_heads: 4
+      attention: "dot"
+    encoder:
       use_encoder: 0
       fc_dims: [2048]
       dropout: 0.4
@@ -27,17 +27,19 @@ models:
     classifier:
       fc_dims: [751]
       dropout: 0.4
-      batch_norm: 0
+      batchnorm: 0
 
 graph_params:
   sim_type: "correlation"
+  thresh: 0
+  set_negative: "hard"
 
 dataset:
   dataset_path: "../../datasets/Market-1501-v15.09.15"
   dataset_short: "Market"
-  num_calsses: 751
+  num_classes: 751
   trans: "bot"
-  sampling: "only"
+  sampling: "no"
   val: 0
   nb_workers: 4
 
@@ -58,7 +60,7 @@ train_params:
     scaling_triplet: 1
     scaling_of: 1
 
-evaluation:
+eval_params:
   re_rank: 0
   lamb: 0.3
   k1: 20
