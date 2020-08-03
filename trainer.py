@@ -6,7 +6,7 @@ import dataset
 from RAdam import RAdam
 from collections import defaultdict
 import torch.nn as nn
-from .utils import losses
+from utils import losses
 import torch
 from apex import amp
 import random
@@ -69,7 +69,7 @@ class Trainer():
                              weight_decay=self.config['train_params'][
                                  'weight_decay'])
 
-            self.get_loss_fn(params=self.config['train_params'])
+            self.get_loss_fn(self.config['train_params']['loss_fn'], self.config['dataset']['num_classes'])
 
             # Do training in mixed precision
             if self.config['train_params']['is_apex']:
@@ -144,6 +144,7 @@ class Trainer():
                         or (self.distance_sampling == 'pre_soft' and e == 1):
                     model_is_training = self.encoder.training
                     self.encoder.eval()
+                    loss = 0
                     with torch.no_grad():
                         for x, Y, I in self.dl_tr:
                             Y = Y.to(self.device)
@@ -173,7 +174,7 @@ class Trainer():
                             loss.backward()
                         self.opt.step()
 
-                        if self.args.center:
+                        if self.center:
                             for param in self.center.parameters():
                                 param.grad.data *= (
                                         1. / self.args.scaling_center)
@@ -188,7 +189,7 @@ class Trainer():
             # for k, v in losses.items():
             #    print(k, v, sum(v), len(v), sum(v)/len(v))
             [self.losses_mean[k].append(sum(v) / len(v)) for k, v in
-             losses.items()]
+             self.losses.items()]
             losses = defaultdict(list)
             # compute ranks and mAP at the end of each epoch
             best_accuracy = self.evaluate(eval_params, scores, e, loss,
@@ -222,32 +223,32 @@ class Trainer():
 
         # Add other losses of not pretraining
         if not self.config['mode'] == 'pretraining':
-            _, edge_index, x = self.graph_generator.get_graph(x)
-            pred, feats = self.gnn(x, edge_index)
+            _, edge_index, fc7 = self.graph_generator.get_graph(fc7)
+            pred, feats = self.gnn(fc7, edge_index)
 
             loss1 = self.criterion(pred, Y)
             self.losses['GNN'].append(loss1.item())
 
-            loss = train_params['scaling_gnn'] * loss1 + train_params[
+            loss = train_params['loss_fn']['scaling_gnn'] * loss1 + train_params['loss_fn'][
                 'scaling_ce'] * loss
 
             # Compute center loss
             if self.center:
                 loss2 = self.center(fc7, Y)
-                loss += train_params['scaling_center'] * loss2
+                loss += train_params['loss_fn']['scaling_center'] * loss2
                 self.losses['Center'].append(loss2.item())
 
             # Compute Triplet Loss
             if self.triplet:
                 triploss, _ = self.triplet(fc7, Y)
-                loss += train_params['scaling_triplet'] * triploss
+                loss += train_params['loss_fn']['scaling_triplet'] * triploss
                 self.losses['Triplet'].append(triploss.item())
 
             # Compute MSE regularization
             if self.of:
                 p = copy.deepcopy(feats).requires_grad_(False)
                 of_reg = self.of(fc7, feats)
-                loss += train_params['scaling_of'] * of_reg
+                loss += train_params['loss_fn']['scaling_of'] * of_reg
                 losses['OF'].append(of_reg.item())
             self.losses['Total Loss'].append(loss.item())
         else:
@@ -386,7 +387,7 @@ class Trainer():
             plt.savefig(osp.join(results_dir, name + '.png'))
             plt.close()
 
-    def get_loss_fn(self, params):
+    def get_loss_fn(self, params, num_classes):
         self.losses = defaultdict(list)
         self.losses_mean = defaultdict(list)
         # Loss for GroupLoss
@@ -395,14 +396,14 @@ class Trainer():
             self.criterion = nn.CrossEntropyLoss().to(self.device)
         elif 'lsgnn' in params['fns'].split('_'):
             self.criterion = losses.CrossEntropyLabelSmooth(
-                num_classes=self.args.nb_classes)
+                num_classes=num_classes)
         elif 'focalgnn' in params['fns'].split('_'):
             self.criterion = losses.FocalLoss().to(self.device)
 
         # Label smoothing for CrossEntropy Loss
         if 'lsce' in params['fns'].split('_'):
             self.criterion2 = losses.CrossEntropyLabelSmooth(
-                num_classes=self.args.nb_classes)
+                num_classes=num_classes)
         elif 'focalce' in params['fns'].split('_'):
             self.criterion2 = losses.FocalLoss().to(self.device)
         elif 'ce' in params['fns'].split('_'):
@@ -410,7 +411,7 @@ class Trainer():
 
         # Add Center Loss
         if 'center' in params['fns'].split('_'):
-            self.center = losses.CenterLoss(num_classes=self.args.nb_classes)
+            self.center = losses.CenterLoss(num_classes=num_classes)
             self.opt_center = torch.optim.SGD(self.center.parameters(),
                                               lr=self.args.center_lr)
         else:
