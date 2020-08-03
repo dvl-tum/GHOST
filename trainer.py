@@ -20,7 +20,7 @@ import utils.utils as utils
 import matplotlib.pyplot as plt
 import os
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger('GNNReID.Training')
 
 
 class Trainer():

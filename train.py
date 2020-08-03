@@ -10,7 +10,7 @@ import utils.utils as utils
 from trainer import Trainer
 
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger('GNNReID')
 logger.setLevel(logging.INFO)
 formatter = logging.Formatter('%(asctime)s - %(message)s')
 
