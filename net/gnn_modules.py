@@ -25,17 +25,18 @@ class MetaLayer(torch.nn.Module):
             if hasattr(item, 'reset_parameters'):
                 item.reset_parameters()
 
-    def forward(self, x, edge_index, edge_attr=None):
+    def forward(self, feats, edge_index, edge_attr=None):
         """"""
-        row, col = edge_index[:, 0], edge_index[:, 1]
+        r, c = edge_index[:, 0], col
 
         if self.edge_model is not None:
-            edge_attr = self.edge_model(x[row], x[col], edge_attr)
+            edge_attr = torch.cat([feats[r], feats[c], edge_attr[r, c]], dim=1)
+            edge_attr = self.edge_model(edge_attr)
 
         if self.node_model is not None:
-            x = self.node_model(x, edge_index, edge_attr)
+            feats = self.node_model(feats, edge_index, edge_attr)
 
-        return x, edge_attr
+        return feats, edge_attr
 
     def __repr__(self):
         return ('{}(\n'
@@ -49,35 +50,60 @@ class MetaLayer(torch.nn.Module):
 class GNNReID(nn.Module):
     def __init__(self, dev, params: dict = None, embed_dim: int = 2048):
         super(GNNReID, self).__init__()
-        
+
         self.dev = dev
         self.params = params
-        self.endocer_params = params['encoder']
+        self.node_endocer_params = params['node_encoder']
+        self.edge_encoder_params = params['edge_encoder']
+        self.edge_params = params['edge']
         self.gnn_params = params['gnn']
         self.class_params = params['classifier']
 
-        if self.endocer_params['use_encoder']:
-            self.encoder = MLP(embed_dim, self.encoder_params['fc_dims'],
-                               self.endocer_params['dropout'],
-                               self.endocer_params['batchnorm'])
+        if self.params['use_edge_encoder']:
+            self.edge_encoder = MLP(2 * embed_dim + 1,
+                                    **self.edge_encoder_params)
 
-        self.gnn_model = self._build_GNN_Net(gnn_params=self.gnn_params,
-                                             embed_dim=embed_dim)
+        if self.params['use_node_encoder']:
+            self.node_encoder = MLP(embed_dim, **self.node_endocer_params)
+
+        self.gnn_model = self._build_GNN_Net(embed_dim=embed_dim)
 
         self.classifier = MLP(embed_dim, self.class_params['fc_dims'],
                               self.class_params['dropout'],
                               self.class_params['batchnorm'])
 
-    def _build_GNN_Net(self, gnn_params: dict = None, embed_dim: int = 2048):
-        gnn = GNN(self.dev, gnn_params, embed_dim)
-        return MetaLayer(node_model=gnn)
+    def _build_GNN_Net(self, embed_dim: int = 2048):
 
-    def forward(self, feats, edge_index):
+        if self.params['use_edge_model']:
+            edge_model = MLP(
+                2 * embed_dim + self.edge_encoder_params['fc_dims'][-1],
+                self.edge_params)
+            edge_dim = self.edge_params['fc_dims'][-1]
 
-        if self.endocer_params['use_encoder']:
-            feats = self.encoder(feats)
+        elif self.params['use_edge_encoder']:
+            edge_model = None
+            edge_dim = self.edge_encoder_params['fc_dims'][-1]
 
-        feats, _ = self.gnn_model(feats, edge_index)
+        else:
+            edge_model = None
+            edge_dim = 0
+
+        gnn = GNN(self.dev, self.gnn_params, embed_dim, edge_dim)
+
+        return MetaLayer(edge_model=edge_model, node_model=gnn)
+
+    def forward(self, feats, edge_index, edge_attr=None):
+
+        if self.params['use_edge_encoder']:
+            r, c = edge_index[:, 0], edge_index[:, 1]
+            edge_attr = torch.cat([feats[r], feats[c], edge_attr[r, c]], dim=1)
+            edge_attr = self.edge_encoder(edge_attr)
+
+        if self.params['use_node_encoder']:
+            feats = self.node_encoder(feats)
+
+        feats, _ = self.gnn_model(feats, edge_index, edge_attr)
+
         x = self.classifier(feats)
 
         return x, feats
@@ -94,7 +120,8 @@ class GNN(nn.Module):
     concatenate in the end
     """
 
-    def __init__(self, dev, gnn_params: dict = None, embed_dim: int = 2048):
+    def __init__(self, dev, gnn_params: dict = None, embed_dim: int = 2048,
+                 edge_dim: int = 0):
         super(GNN, self).__init__()
         self.gnn_params = gnn_params
         self.dev = dev
@@ -111,20 +138,24 @@ class GNN(nn.Module):
 
         if self.gnn_params['attention'] == "dot":
             layers = [MultiHeadDotProduct(embed_dim, gnn_params['num_heads'],
-                                          self.aggr, self.dev) for _ in
-                      range(self.gnn_params['num_layers'])]
+                                          self.aggr, self.dev, edge_dim) for _
+                      in range(self.gnn_params['num_layers'])]
             self.multi_att = Sequential(*layers)
         elif self.gnn_params['attention'] == "mlp":
             layers = [
-                MultiHeadMLP(embed_dim, gnn_params['num_heads'], self.aggr, self.dev) for
-                _ in range(self.gnn_params['num_layers'])]
+                MultiHeadMLP(embed_dim, gnn_params['num_heads'], self.aggr,
+                             self.dev, edge_dim) for _ in
+                range(self.gnn_params['num_layers'])]
             self.multi_att = Sequential(*layers)
         else:
-            print("Invalid attention option {}. Please choose from dot/mlp".format(self.gnn_params['attention']))
+            print(
+                "Invalid attention option {}. Please choose from dot/mlp".format(
+                    self.gnn_params['attention']))
 
-    def forward(self, feats, edge_index, edge_attr):
-        feats, _ = self.multi_att(feats, edge_index)
+    def forward(self, feats, edge_index, edge_attr=None):
+        feats, _ = self.multi_att(feats, edge_index, edge_attr)
         return feats
+
 
 class MultiHeadDotProduct(nn.Module):
     """
@@ -133,7 +164,7 @@ class MultiHeadDotProduct(nn.Module):
     num_heads: number of attetion heads
     """
 
-    def __init__(self, embed_dim, num_heads, aggr, dev, dropout=0.1):
+    def __init__(self, embed_dim, num_heads, aggr, dev, edge_dim, dropout=0.1):
         super(MultiHeadDotProduct, self).__init__()
         self.embed_dim = embed_dim
         self.head_dim = embed_dim // num_heads
@@ -153,7 +184,8 @@ class MultiHeadDotProduct(nn.Module):
 
         self.reset_parameters()
 
-    def forward(self, feats: torch.tensor, edge_index: torch.tensor):
+    def forward(self, feats: torch.tensor, edge_index: torch.tensor,
+                edge_attr: torch.tensor):
         q = k = v = feats
         bs = q.size(0)
 
@@ -170,7 +202,7 @@ class MultiHeadDotProduct(nn.Module):
 
         # perform multihead attention
         out = self._attention(q, k, v, self.head_dim, dropout=self.dropout,
-                              edge_index=edge_index)
+                              edge_index=edge_index, edge_attr=edge_attr)
 
         # concatenate heads and put through final linear layer
         concat = torch.cat(out, dim=1)
@@ -178,12 +210,16 @@ class MultiHeadDotProduct(nn.Module):
 
         return feats, edge_index
 
-    def _attention(self, q, k, v, head_dim, dropout=None, edge_index=None):
+    def _attention(self, q, k, v, head_dim, dropout=None, edge_index=None,
+                   edge_attr=None):
+        row, col = edge_index[:, 0], edge_index[:, 1]
+
+        #TODO: Edge attributes
         scores = torch.matmul(q, k.transpose(-2, -1)) / math.sqrt(head_dim)
 
         # define mask for nodes that are not connected
         mask = torch.zeros(q.shape[1], q.shape[1])
-        mask[edge_index[:, 0], edge_index[:, 1]] = 1
+        mask[row, col] = 1
         mask = mask.unsqueeze(0).to(self.dev)
         scores = scores.masked_fill(mask == 0, -1e4)
 
@@ -192,11 +228,14 @@ class MultiHeadDotProduct(nn.Module):
         if dropout is not None:
             scores = dropout(scores)
 
-        scores = scores[:, edge_index[:, 0],
-                 edge_index[:, 1]]  # H x edge_index.shape(0)
-        out = scores.unsqueeze(2).repeat(1, 1, q.shape[2]) * v[:, edge_index[:,
-                                                                  1]]  # H x edge_index.shape(0) x head_dim
-        out = [self.aggr(i, edge_index[:, 0], q.shape[1]) for i in out]
+        scores = scores[:, row, col]  # H x edge_index.shape(0)
+
+        #if edge_attr is not None:
+        #    v = torch.cat([v[:, col], edge_attr])
+
+        out = scores.unsqueeze(2).repeat(1, 1, q.shape[2]) * v[:, col]  # H x edge_index.shape(0) x head_dim
+
+        out = [self.aggr(i, row, q.shape[1]) for i in out]
 
         return out
 
@@ -216,18 +255,24 @@ class MultiHeadMLP(nn.Module):
         num_heads: number of attetion heads
         """
 
-    def __init__(self, embed_dim, num_heads, aggr, dev, dropout=0.1, bias=True,
-                 concat=True):
+    def __init__(self, embed_dim, num_heads, aggr, dev, edge_dim=0, dropout=0.1,
+                 bias=True, concat=True):
         super(MultiHeadMLP, self).__init__()
         self.embed_dim = embed_dim
         self.head_dim = embed_dim // num_heads
         self.num_heads = num_heads
         self.aggr = aggr
+        self.edge_dim = edge_dim
 
         # from embed dim to num_heads * head_dim = embed_dim
         self.fc = LinearFun(embed_dim, embed_dim, bias=False)
+
+        if edge_dim != 0:
+            self.edge_dim_head = edge_dim // num_heads
+            self.fc_edge = LinearFun(edge_dim, edge_dim, bias=False)
+
         self.att = torch.nn.Parameter(
-            torch.Tensor(self.num_heads, 2 * self.head_dim, 1))
+            torch.Tensor(self.num_heads, 2 * self.head_dim + edge_dim, 1))
 
         if bias and concat:
             self.bias = nn.Parameter(torch.Tensor(num_heads * self.head_dim))
@@ -250,15 +295,22 @@ class MultiHeadMLP(nn.Module):
         glorot(self.att)
         zeros(self.bias)
 
-    def forward(self, feats, edge_index):
+    def forward(self, feats: torch.tensor, edge_index: torch.tensor,
+                edge_attr: torch.tensor = None):
         bs = feats.shape(0)
 
         # num_heads x bs x head_dim
         feats = self.fc(feats).view().view(bs, self.num_heads,
-                                   self.head_dim).transpose(0, 1)
+                                           self.head_dim).transpose(0, 1)
+        if edge_attr != None:
+            e = edge_attr.shape(0)
+            # num_heads x e x edge_head_dim
+            edge_attr = self.fc_edge(edge_attr).view(e, self.num_heads,
+                                                     self.edge_head_dim
+                                                     ).transpose(0, 1)
 
         # num_heads x bs x out_dim
-        out = self._attention(feats, edge_index, bs)
+        out = self._attention(feats, edge_index, bs, edge_attr)
         concat = torch.cat(out, dim=1)
 
         if self.bias is not None:
@@ -266,30 +318,42 @@ class MultiHeadMLP(nn.Module):
 
         feats = self.out(concat)
 
-        return out
+        return feats
 
-    def _attention(self, feats, edge_index, bs):
-        # TODO: Dropout
-        # num_heads x edge_index.shape(0) x 2 * C
-        feed_in = torch.cat([feats[:, edge_index[:, 0]], feats[:, edge_index[:, 1]]],
-                            dim=2)
+    def _attention(self, feats, edge_index, bs, edge_attr=None):
+        row, col = edge_index[:, 0], edge_index[:, 1]
+
+        if edge_attr is None:
+            # num_heads x edge_index.shape(0) x 2 * C
+            feed_in = torch.cat(
+                [feats[:, row], feats[:, col]],
+                dim=2)
+        else:
+            # num_heads x edge_index.shape(0) x 2 * C + edge_head_dim
+            feed_in = torch.cat(
+                [feats[:, row], feats[:, col],
+                 edge_attr], dim=2)
 
         alpha = self.leakyrelu(
             torch.bmm(feed_in, self.att))  # num_heads x edge_index.shape(0)
 
-        # softmax with scatter_add
+        # helper to perform softmax and dropout
+        helper = torch.zeros(bs, bs)
+        helper[row, col] = alpha
+        alpha = self.dropout(self.softmax(helper))[row, col]
+
+        '''# softmax with scatter_add
         alpha = torch.exp(alpha)
-        denom = [scatter_add(alpha[i], edge_index[:, 0], dim=0, dim_size=bs)
+        denom = [scatter_add(alpha[i], row, dim=0, dim_size=bs)
                  for i in range(alpha.shape[0])]
         alpha = torch.tensor([[alpha[j][i] / denom[j][edge_index[i, 0]] for i
                                in range(alpha.shape[1])] for j in
-                              range(alpha.shape[0])])
+                              range(alpha.shape[0])])'''
 
-        #
-        out = alpha.unsqueeze(2).repeat(1, 1, feats.shape[2]) * feats[:, edge_index[:,
-                                                                 1]]  # H x edge_index.shape(0) x head_dim
+        # H x edge_index.shape(0) x head_dim
+        out = alpha.unsqueeze(2).repeat(1, 1, feats.shape[2]) * feats[:, col]
 
-        out = [self.aggr(i, edge_index[:, 0], bs) for i in out]
+        out = [self.aggr(i, row, bs) for i in out]
 
         return out
 
@@ -322,8 +386,9 @@ class MLP(nn.Module):
     From Guillem
     """
 
-    def __init__(self, input_dim, fc_dims, dropout_p=0.4, use_batchnorm=False,
-                 classifier=False):
+    def __init__(self, input_dim, classifier=False, fc_dims=None,
+                 dropout_p=0.4, use_batchnorm=False):
+
         super(MLP, self).__init__()
         self.classifier = classifier
 

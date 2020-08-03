@@ -222,8 +222,8 @@ class Trainer():
 
         # Add other losses of not pretraining
         if not self.config['mode'] == 'pretraining':
-            _, edge_index, fc7 = self.graph_generator.get_graph(fc7)
-            pred, feats = self.gnn(fc7, edge_index)
+            edge_attr, edge_index, fc7 = self.graph_generator.get_graph(fc7)
+            pred, feats = self.gnn(fc7, edge_index, edge_attr)
 
             loss1 = self.criterion(pred, Y)
             self.losses['GNN'].append(loss1.item())
