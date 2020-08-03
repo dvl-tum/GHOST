@@ -57,7 +57,9 @@ class Trainer():
             self.gnn = net.GNNReID(self.config['gnn_params'], sz_embed).to(
                 self.device)
 
-            self.graph_generator = net.GraphGenerator()
+            self.graph_generator = net.GraphGenerator(self.device, **self.config['graph_params'])
+            
+            self.evaluator = Evaluator(**self.config['eval_params'])
 
             param_groups = [{'params': list(set(self.encoder.parameters())) +
                                        list(set(self.gnn.parameters())),
@@ -258,19 +260,11 @@ class Trainer():
         return loss
 
     def evaluate(self, eval_params, scores, e, loss, best_accuracy):
-        if not self.args.pretraining:
+        if not self.config['mode'] == 'pretraining':
             with torch.no_grad():
                 logger.info('EVALUATION')
-                mAP, top = eval_utils.evaluate_reid(self.encoder, self.dl_ev,
-                                                    query=self.query,
-                                                    gallery=self.gallery,
-                                                    output_test=eval_params[
-                                                        'output_test'],
-                                                    re_rank=eval_params[
-                                                        're_rank'],
-                                                    lamb=eval_params['lamb'],
-                                                    k1=eval_params['k1'],
-                                                    k2=eval_params['k2'])
+                mAP, top = self.evaluator.evaluate_reid(self.encoder, self.dl_ev,
+                        self.query, gallery=self.gallery)
 
                 logger.info('Mean AP: {:4.1%}'.format(mAP))
 
