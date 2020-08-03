@@ -12,22 +12,30 @@ models:
       sz_embedding: 512
 
   gnn_params:
-    encode: 0
+    use_edge: 0
+    use_node_encoder: 0
     gnn:
       num_layers: 4
       aggregator: "add"
       jumping_knowledge: 0
       num_heads: 4
       attention: "dot"
-    encoder:
-      use_encoder: 0
+    edge:
       fc_dims: [2048]
       dropout: 0.4
-      batch_norm: 0
+      use_batchnorm: 0
+    node_encoder:
+      fc_dims: [2048]
+      dropout: 0.4
+      use_batchnorm: 0
+    edge_endocer:
+      fc_dims: [2048]
+      dropout: 0.4
+      use_batchnorm: 0
     classifier:
       fc_dims: [751]
       dropout: 0.4
-      batchnorm: 0
+      use_batchnorm: 0
 
 graph_params:
   sim_type: "correlation"
