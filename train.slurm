@@ -7,5 +7,5 @@
 #SBATCH --mem=32G
 #SBATCH --time=200:00:00
 
-source activate pytorch
+source activate gnn_reid
 python train.py
