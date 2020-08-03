@@ -39,7 +39,7 @@ class Trainer():
 
         self.best_recall = 0
         self.best_hypers = None
-        self.num_iter = 30 if config['hyper_search'] else 1
+        self.num_iter = 30 if config['mode'] == 'hyper_search' else 1
 
     def train(self):
         for i in range(self.num_iter):
@@ -157,7 +157,6 @@ class Trainer():
 
                 # Normal training with backpropagation
                 else:
-                    print('Epoch')
                     for x, Y, I in self.dl_tr:
                         loss = self.forward_pass(x, Y, I, train_params)
 
@@ -433,7 +432,7 @@ class Trainer():
             mode = 'finetuned_'
         else:
             mode = ''
-        if self.config['encoder_params']['neck']:
+        if self.config['models']['encoder_params']['neck']:
             mode = mode + 'neck_'
 
         return mode
@@ -447,8 +446,7 @@ class Trainer():
         if self.config['mode'] == 'test':
             self.config['train_params']['num_epochs'] = 1
 
-        if self.config['dataset']['sampling'] != 'GL' and \
-                self.config['dataset']['sampling'] != 'rand':
+        if self.config['dataset']['sampling'] != 'no':
             self.config['train_params']['num_epochs'] += 30
 
     def sample_hypers(self):
@@ -466,8 +464,8 @@ class Trainer():
 
         if not mode == 'pretraining':
             # If distance sampling
+            self.distance_sampling = config['sampling']
             if config['sampling'] != 'no':
-                self.distance_sampling = config['sampling']
                 seed = random.randint(0, 100)
                 # seed = 19
                 self.dl_tr2, self.dl_ev2, self.query2, self.gallery2 = data_utility.create_loaders(
