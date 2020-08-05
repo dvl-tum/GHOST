@@ -162,6 +162,7 @@ class Trainer():
 
                         # Check possible net divergence
                         if torch.isnan(loss):
+                            print(loss)
                             logger.error("We have NaN numbers, closing\n\n\n")
                             sys.exit(0)
 
@@ -227,6 +228,10 @@ class Trainer():
 
             loss1 = self.criterion(pred, Y)
             self.losses['GNN'].append(loss1.item())
+            
+            #print(pred)
+
+            #print(loss, loss1)
 
             loss = train_params['loss_fn']['scaling_gnn'] * loss1 + train_params['loss_fn'][
                 'scaling_ce'] * loss
