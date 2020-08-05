@@ -27,13 +27,10 @@ class MetaLayer(torch.nn.Module):
 
     def forward(self, feats, edge_index, edge_attr=None):
         """"""
-        print("HEre we are")
-        print(edge_attr.shape)
+
         r, c = edge_index[:, 0], edge_index[:, 1]
 
         if self.edge_model is not None:
-            print(feats[r].shape, feats[c].shape, edge_attr.shape)
-            print(torch.cat([feats[r], feats[c], edge_attr], dim=1).shape)
             edge_attr = torch.cat([feats[r], feats[c], edge_attr], dim=1)
             edge_attr = self.edge_model(edge_attr)
 
@@ -80,9 +77,6 @@ class GNNReID(nn.Module):
             edge_model = MLP(
                 2 * embed_dim + self.edge_encoder_params['fc_dims'][-1],
                 **self.edge_params)
-            print("EDGE")
-            print(2 * embed_dim, self.edge_encoder_params['fc_dims'][-1])
-            print(embed_dim, self.edge_encoder_params['fc_dims'][-1], self.edge_params)
             edge_dim = self.edge_params['fc_dims'][-1]
 
         elif self.params['use_edge_encoder']:
@@ -100,15 +94,13 @@ class GNNReID(nn.Module):
     def forward(self, feats, edge_index, edge_attr=None):
 
         if self.params['use_edge_encoder']:
-            print("Im in")
             r, c = edge_index[:, 0], edge_index[:, 1]
             edge_attr = torch.cat([feats[r, :], feats[c, :], edge_attr[r, c].unsqueeze(dim=1)], dim=1)
             edge_attr = self.edge_encoder(edge_attr)
 
         if self.params['use_node_encoder']:
             feats = self.node_encoder(feats)
-        print("Problem")
-        print(edge_attr.shape)
+
         feats, _ = self.gnn_model(feats, edge_index, edge_attr)
 
         x = self.classifier(feats)
@@ -164,7 +156,7 @@ class GNN(nn.Module):
                     self.gnn_params['attention']))
 
     def forward(self, feats, edge_index, edge_attr=None):
-        feats, _ = self.multi_att(feats, edge_index, edge_attr)
+        feats, _, _ = self.multi_att(feats, edge_index, edge_attr)
         return feats
 
 
@@ -219,7 +211,7 @@ class MultiHeadDotProduct(nn.Module):
         concat = torch.cat(out, dim=1)
         feats = self.out(concat)
 
-        return feats, edge_index
+        return feats, edge_index, edge_attr
 
     def _attention(self, q, k, v, head_dim, dropout=None, edge_index=None,
                    edge_attr=None):
@@ -335,7 +327,7 @@ class MultiHeadMLP(nn.Module):
 
         out = self.out(out)
 
-        return out
+        return out, edge_index, edge_attr.transpose(0, 1).view(e, self.num_heads * self.edge_head_dim)
 
     def _attention(self, feats, edge_index, bs, edge_attr=None):
         row, col = edge_index[:, 0], edge_index[:, 1]
@@ -353,17 +345,16 @@ class MultiHeadMLP(nn.Module):
 
         alpha = torch.bmm(out, self.att)  # n_heads x edge_ind.shape(0) x 1
         alpha = self.act(self.dropout(alpha))
-        alpha = softmax(alpha, edge_index[0], dim=1, dim_size=bs)
+        alpha = softmax(alpha, row, dim=1, dim_size=bs)
 
         # H x edge_index.shape(0) x head_dim
-        out = alpha * feats[:, edge_index[1]]
-        out = scatter_add(out, edge_index[0], dim=1, dim_size=bs)
+        out = alpha * feats[:, col]
+        out = scatter_add(out, row, dim=1, dim_size=bs)
 
         return out
 
 
 def softmax(src, index, dim, dim_size):
-
     denom = scatter_add(torch.exp(src), index, dim=dim, dim_size=dim_size)
     if dim == 1:
         out = torch.exp(src) / denom[:, index]
@@ -436,7 +427,6 @@ class MLP(nn.Module):
         pass
 
     def forward(self, x):
-        print(x.shape, self.input_dim)
         return self.fc_layers(x)
 
 
