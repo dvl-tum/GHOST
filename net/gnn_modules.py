@@ -126,6 +126,7 @@ class GNN(nn.Module):
         self.gnn_params = gnn_params
         self.dev = dev
 
+        # init aggregator
         if self.gnn_params['aggregator'] == "add":
             self.aggr = lambda out, row, x_size: scatter_add(out, row, dim=0,
                                                              dim_size=x_size)
@@ -136,17 +137,20 @@ class GNN(nn.Module):
             self.aggr = lambda out, row, x_size: scatter_max(out, row, dim=0,
                                                              dim_size=x_size)
 
+        # init attention mechanism
         if self.gnn_params['attention'] == "dot":
             layers = [MultiHeadDotProduct(embed_dim, gnn_params['num_heads'],
                                           self.aggr, self.dev, edge_dim) for _
                       in range(self.gnn_params['num_layers'])]
             self.multi_att = Sequential(*layers)
+
         elif self.gnn_params['attention'] == "mlp":
             layers = [
                 MultiHeadMLP(embed_dim, gnn_params['num_heads'], self.aggr,
                              self.dev, edge_dim) for _ in
                 range(self.gnn_params['num_layers'])]
             self.multi_att = Sequential(*layers)
+
         else:
             print(
                 "Invalid attention option {}. Please choose from dot/mlp".format(
@@ -256,7 +260,7 @@ class MultiHeadMLP(nn.Module):
         """
 
     def __init__(self, embed_dim, num_heads, aggr, dev, edge_dim=0, dropout=0.1,
-                 bias=True, concat=True):
+                 act='leaky', bias=True, concat=True):
         super(MultiHeadMLP, self).__init__()
         self.embed_dim = embed_dim
         self.head_dim = embed_dim // num_heads
@@ -283,7 +287,13 @@ class MultiHeadMLP(nn.Module):
 
         self.dropout = nn.Dropout(dropout)
         self.softmax = nn.Softmax(dim=2)
-        self.leakyrelu = nn.LeakyReLU()
+
+        assert act in ['leaky', 'relu'], 'Choose act out of leaky and relu'
+
+        if act == 'leaky':
+            self.act = nn.LeakyReLU()
+        else:
+            self.act = nn.ReLU()
 
         self.out = LinearFun(embed_dim, embed_dim)
 
@@ -311,51 +321,49 @@ class MultiHeadMLP(nn.Module):
 
         # num_heads x bs x out_dim
         out = self._attention(feats, edge_index, bs, edge_attr)
-        concat = torch.cat(out, dim=1)
+        out = out.transpose(0,1).contiguous().view(bs, self.num_heads*self.head_dim)
 
         if self.bias is not None:
-            concat += self.bias
+            out += self.bias
 
-        feats = self.out(concat)
+        out = self.out(out)
 
-        return feats
+        return out
 
     def _attention(self, feats, edge_index, bs, edge_attr=None):
         row, col = edge_index[:, 0], edge_index[:, 1]
 
         if edge_attr is None:
             # num_heads x edge_index.shape(0) x 2 * C
-            feed_in = torch.cat(
+            out = torch.cat(
                 [feats[:, row], feats[:, col]],
                 dim=2)
         else:
             # num_heads x edge_index.shape(0) x 2 * C + edge_head_dim
-            feed_in = torch.cat(
+            out = torch.cat(
                 [feats[:, row], feats[:, col],
                  edge_attr], dim=2)
 
-        alpha = self.leakyrelu(
-            torch.bmm(feed_in, self.att))  # num_heads x edge_index.shape(0)
-
-        # helper to perform softmax and dropout
-        helper = torch.zeros(bs, bs)
-        helper[row, col] = alpha
-        alpha = self.dropout(self.softmax(helper))[row, col]
-
-        '''# softmax with scatter_add
-        alpha = torch.exp(alpha)
-        denom = [scatter_add(alpha[i], row, dim=0, dim_size=bs)
-                 for i in range(alpha.shape[0])]
-        alpha = torch.tensor([[alpha[j][i] / denom[j][edge_index[i, 0]] for i
-                               in range(alpha.shape[1])] for j in
-                              range(alpha.shape[0])])'''
+        alpha = torch.bmm(out, self.att)  # n_heads x edge_ind.shape(0) x 1
+        alpha = self.act(self.dropout(alpha))
+        alpha = softmax(alpha, edge_index[0], dim=1, dim_size=bs)
 
         # H x edge_index.shape(0) x head_dim
-        out = alpha.unsqueeze(2).repeat(1, 1, feats.shape[2]) * feats[:, col]
-
-        out = [self.aggr(i, row, bs) for i in out]
+        out = alpha * feats[:, edge_index[1]]
+        out = scatter_add(out, edge_index[0], dim=1, dim_size=bs)
 
         return out
+
+
+def softmax(src, index, dim, dim_size):
+
+    denom = scatter_add(torch.exp(src), index, dim=dim, dim_size=dim_size)
+    if dim == 1:
+        out = torch.exp(src) / denom[:, index]
+    elif dim == 0:
+        out = torch.exp(src) / denom[index]
+
+    return out
 
 
 class LinearFun(nn.Module):
