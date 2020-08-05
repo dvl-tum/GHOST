@@ -35,7 +35,8 @@ class MetaLayer(torch.nn.Module):
             edge_attr = self.edge_model(edge_attr)
 
         if self.node_model is not None:
-            feats, edge_index, edge_attr = self.node_model(feats, edge_index, edge_attr)
+            feats, edge_index, edge_attr = self.node_model(feats, edge_index,
+                                                           edge_attr)
 
         return feats, edge_index, edge_attr
 
@@ -95,18 +96,20 @@ class GNNReID(nn.Module):
 
         if self.params['use_edge_encoder']:
             r, c = edge_index[:, 0], edge_index[:, 1]
-            edge_attr = torch.cat([feats[r, :], feats[c, :], edge_attr[r, c].unsqueeze(dim=1)], dim=1)
+            edge_attr = torch.cat(
+                [feats[r, :], feats[c, :], edge_attr[r, c].unsqueeze(dim=1)],
+                dim=1)
             edge_attr = self.edge_encoder(edge_attr)
 
         if self.params['use_node_encoder']:
             feats = self.node_encoder(feats)
 
         feats, _, _ = self.gnn_model(feats, edge_index, edge_attr)
-        if (torch.isnan(feats)== True).any().item():
+        if (torch.isnan(feats) == True).any().item():
             print(feats)
 
         x = self.classifier(feats)
-        if (torch.isnan(x)== True).any().item():
+        if (torch.isnan(x) == True).any().item():
             print(x)
 
         return x, feats
@@ -131,14 +134,17 @@ class GNN(nn.Module):
 
         # init aggregator
         if self.gnn_params['aggregator'] == "add":
-            self.aggr = lambda out, row, dim, x_size: scatter_add(out, row, dim=dim,
-                                                             dim_size=x_size)
+            self.aggr = lambda out, row, dim, x_size: scatter_add(out, row,
+                                                                  dim=dim,
+                                                                  dim_size=x_size)
         if self.gnn_params['aggregator'] == "mean":
-            self.aggr = lambda out, row, dim, x_size: scatter_mean(out, row, dim=dim,
-                                                              dim_size=x_size)
+            self.aggr = lambda out, row, dim, x_size: scatter_mean(out, row,
+                                                                   dim=dim,
+                                                                   dim_size=x_size)
         if self.gnn_params['aggregator'] == "max":
-            self.aggr = lambda out, row, dim, x_size: scatter_max(out, row, dim=dim,
-                                                             dim_size=x_size)
+            self.aggr = lambda out, row, dim, x_size: scatter_max(out, row,
+                                                                  dim=dim,
+                                                                  dim_size=x_size)
 
         # init attention mechanism
         if self.gnn_params['attention'] == "dot":
@@ -160,7 +166,8 @@ class GNN(nn.Module):
                     self.gnn_params['attention']))
 
     def forward(self, feats, edge_index, edge_attr=None):
-        feats, edge_index, edge_attr = self.multi_att(feats, edge_index, edge_attr)
+        feats, edge_index, edge_attr = self.multi_att(feats, edge_index,
+                                                      edge_attr)
         return feats, edge_index, edge_attr
 
 
@@ -209,51 +216,50 @@ class MultiHeadDotProduct(nn.Module):
 
         # perform multihead attention
         out = self._attention(q, k, v, self.head_dim, dropout=self.dropout,
-                              edge_index=edge_index, edge_attr=edge_attr)
+                              edge_index=edge_index, edge_attr=edge_attr, bs=bs)
 
         # concatenate heads and put through final linear layer
-        out = out.transpose(0,1).contiguous().view(bs, self.num_heads*self.head_dim)
+        out = out.transpose(0, 1).contiguous().view(bs,
+                                                    self.num_heads * self.head_dim)
         if (torch.isnan(out) == True).any().item():
             print(out)
+
         feats = self.out(out)
-        if (torch.isnan(feats)== True).any().item():
+
+        if (torch.isnan(feats) == True).any().item():
             print(feats)
+
         return feats, edge_index, edge_attr
 
     def _attention(self, q, k, v, head_dim, dropout=None, edge_index=None,
-                   edge_attr=None):
+                   edge_attr=None, bs=None):
         row, col = edge_index[:, 0], edge_index[:, 1]
+        e = edge_index.shape[0]
 
-        #TODO: Edge attributes
-        scores = torch.matmul(q, k.transpose(-2, -1)) / math.sqrt(head_dim)
+        # TODO: Edge attributes
+        # # H x edge_index.shape(0)
+        scores = torch.bmm(
+            q[:, row].view(self.num_heads * e, head_dim).unsqueeze(dim=1),
+            k[:, col].view(self.num_heads * e, head_dim).unsqueeze(
+                dim=2)).view(self.num_heads, e, 1) / math.sqrt(head_dim)
 
-        # define mask for nodes that are not connected
-        mask = torch.zeros(q.shape[1], q.shape[1])
-        mask[row, col] = 1
-        mask = mask.unsqueeze(0).to(self.dev)
-        scores = scores.masked_fill(mask == 0, -1e4)
-        
-        if (torch.isnan(scores)== True).any().item():
+        scores = softmax(scores, row, 1, bs)
+
+        if (torch.isnan(scores) == True).any().item():
             print(scores)
-
-        scores = F.softmax(scores, dim=-1)
 
         if dropout is not None:
-            scores = dropout(scores)
+            scores = self.dropout(scores)
 
-        scores = scores[:, row, col]  # H x edge_index.shape(0)
-        
-        if (torch.isnan(scores)== True).any().item():
+        if (torch.isnan(scores) == True).any().item():
             print(scores)
 
-        #if edge_attr is not None:
-        #    v = torch.cat([v[:, col], edge_attr])
+        # H x edge_index.shape(0) x head_dim
+        out = scores * v[:, col]
+        out = self.aggr(out, row, 1, bs)
 
-        out = scores.unsqueeze(2).repeat(1, 1, q.shape[2]) * v[:, col]  # H x edge_index.shape(0) x head_dim
-        if (torch.isnan(out)== True).any().item():
+        if (torch.isnan(out) == True).any().item():
             print(out)
-
-        out = self.aggr(out, row, 1, q.shape[1])
 
         return out
 
@@ -273,7 +279,8 @@ class MultiHeadMLP(nn.Module):
         num_heads: number of attetion heads
         """
 
-    def __init__(self, embed_dim, num_heads, aggr, dev, edge_dim=0, dropout=0.1,
+    def __init__(self, embed_dim, num_heads, aggr, dev, edge_dim=0,
+                 dropout=0.1,
                  act='leaky', bias=True, concat=True):
         super(MultiHeadMLP, self).__init__()
         self.embed_dim = embed_dim
@@ -290,7 +297,8 @@ class MultiHeadMLP(nn.Module):
             self.fc_edge = LinearFun(edge_dim, edge_dim, bias=False)
 
         self.att = torch.nn.Parameter(
-            torch.Tensor(self.num_heads, 2 * self.head_dim + self.edge_head_dim, 1))
+            torch.Tensor(self.num_heads,
+                         2 * self.head_dim + self.edge_head_dim, 1))
 
         if bias and concat:
             self.bias = nn.Parameter(torch.Tensor(num_heads * self.head_dim))
@@ -325,17 +333,18 @@ class MultiHeadMLP(nn.Module):
 
         # num_heads x bs x head_dim
         feats = self.fc(feats).view(bs, self.num_heads,
-                                           self.head_dim).transpose(0, 1)
+                                    self.head_dim).transpose(0, 1)
         if edge_attr != None:
             e = edge_attr.shape[0]
             # num_heads x e x edge_head_dim
             edge_attr_att = self.fc_edge(edge_attr).view(e, self.num_heads,
-                                                     self.edge_head_dim
-                                                     ).transpose(0, 1)
+                                                         self.edge_head_dim
+                                                         ).transpose(0, 1)
 
         # num_heads x bs x out_dim
         out = self._attention(feats, edge_index, bs, edge_attr_att)
-        out = out.transpose(0,1).contiguous().view(bs, self.num_heads*self.head_dim)
+        out = out.transpose(0, 1).contiguous().view(bs,
+                                                    self.num_heads * self.head_dim)
 
         if self.bias is not None:
             out += self.bias
