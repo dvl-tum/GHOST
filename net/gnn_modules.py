@@ -105,11 +105,14 @@ class GNNReID(nn.Module):
             feats = self.node_encoder(feats)
 
         feats, _, _ = self.gnn_model(feats, edge_index, edge_attr)
-        if (torch.isnan(feats) == True).any().item():
+
+        if (torch.isnan(feats)== True).any().item():
+            print(106)
             print(feats)
 
         x = self.classifier(feats)
-        if (torch.isnan(x) == True).any().item():
+        if (torch.isnan(x)== True).any().item():
+            print(111)
             print(x)
 
         return x, feats
@@ -222,11 +225,13 @@ class MultiHeadDotProduct(nn.Module):
         out = out.transpose(0, 1).contiguous().view(bs,
                                                     self.num_heads * self.head_dim)
         if (torch.isnan(out) == True).any().item():
+            print(219)
             print(out)
 
         feats = self.out(out)
 
         if (torch.isnan(feats) == True).any().item():
+            print(223)
             print(feats)
 
         return feats, edge_index, edge_attr
@@ -250,8 +255,9 @@ class MultiHeadDotProduct(nn.Module):
 
         if dropout is not None:
             scores = self.dropout(scores)
-
-        if (torch.isnan(scores) == True).any().item():
+        
+        if (torch.isnan(scores)== True).any().item():
+            print(256)
             print(scores)
 
         # H x edge_index.shape(0) x head_dim
@@ -259,6 +265,7 @@ class MultiHeadDotProduct(nn.Module):
         out = self.aggr(out, row, 1, bs)
 
         if (torch.isnan(out) == True).any().item():
+            print(264)
             print(out)
 
         return out
