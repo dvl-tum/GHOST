@@ -229,9 +229,9 @@ class Trainer():
             loss1 = self.criterion(pred, Y)
             self.losses['GNN'].append(loss1.item())
             
-            print(pred)
+            #print(pred)
 
-            print(loss, loss1)
+            #print(loss, loss1)
 
             loss = train_params['loss_fn']['scaling_gnn'] * loss1 + train_params['loss_fn'][
                 'scaling_ce'] * loss

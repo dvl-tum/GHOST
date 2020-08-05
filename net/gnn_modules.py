@@ -27,10 +27,14 @@ class MetaLayer(torch.nn.Module):
 
     def forward(self, feats, edge_index, edge_attr=None):
         """"""
-        r, c = edge_index[:, 0], col
+        print("HEre we are")
+        print(edge_attr.shape)
+        r, c = edge_index[:, 0], edge_index[:, 1]
 
         if self.edge_model is not None:
-            edge_attr = torch.cat([feats[r], feats[c], edge_attr[r, c]], dim=1)
+            print(feats[r].shape, feats[c].shape, edge_attr.shape)
+            print(torch.cat([feats[r], feats[c], edge_attr], dim=1).shape)
+            edge_attr = torch.cat([feats[r], feats[c], edge_attr], dim=1)
             edge_attr = self.edge_model(edge_attr)
 
         if self.node_model is not None:
@@ -68,16 +72,17 @@ class GNNReID(nn.Module):
 
         self.gnn_model = self._build_GNN_Net(embed_dim=embed_dim)
 
-        self.classifier = MLP(embed_dim, self.class_params['fc_dims'],
-                              self.class_params['dropout'],
-                              self.class_params['batchnorm'])
+        self.classifier = MLP(embed_dim, **self.class_params)
 
     def _build_GNN_Net(self, embed_dim: int = 2048):
 
         if self.params['use_edge_model']:
             edge_model = MLP(
                 2 * embed_dim + self.edge_encoder_params['fc_dims'][-1],
-                self.edge_params)
+                **self.edge_params)
+            print("EDGE")
+            print(2 * embed_dim, self.edge_encoder_params['fc_dims'][-1])
+            print(embed_dim, self.edge_encoder_params['fc_dims'][-1], self.edge_params)
             edge_dim = self.edge_params['fc_dims'][-1]
 
         elif self.params['use_edge_encoder']:
@@ -95,13 +100,15 @@ class GNNReID(nn.Module):
     def forward(self, feats, edge_index, edge_attr=None):
 
         if self.params['use_edge_encoder']:
+            print("Im in")
             r, c = edge_index[:, 0], edge_index[:, 1]
-            edge_attr = torch.cat([feats[r], feats[c], edge_attr[r, c]], dim=1)
+            edge_attr = torch.cat([feats[r, :], feats[c, :], edge_attr[r, c].unsqueeze(dim=1)], dim=1)
             edge_attr = self.edge_encoder(edge_attr)
 
         if self.params['use_node_encoder']:
             feats = self.node_encoder(feats)
-
+        print("Problem")
+        print(edge_attr.shape)
         feats, _ = self.gnn_model(feats, edge_index, edge_attr)
 
         x = self.classifier(feats)
@@ -268,11 +275,11 @@ class MultiHeadMLP(nn.Module):
         self.fc = LinearFun(embed_dim, embed_dim, bias=False)
 
         if edge_dim != 0:
-            self.edge_dim_head = edge_dim // num_heads
+            self.edge_head_dim = edge_dim // num_heads
             self.fc_edge = LinearFun(edge_dim, edge_dim, bias=False)
 
         self.att = torch.nn.Parameter(
-            torch.Tensor(self.num_heads, 2 * self.head_dim + edge_dim, 1))
+            torch.Tensor(self.num_heads, 2 * self.head_dim + self.edge_head_dim, 1))
 
         if bias and concat:
             self.bias = nn.Parameter(torch.Tensor(num_heads * self.head_dim))
@@ -297,13 +304,13 @@ class MultiHeadMLP(nn.Module):
 
     def forward(self, feats: torch.tensor, edge_index: torch.tensor,
                 edge_attr: torch.tensor = None):
-        bs = feats.shape(0)
+        bs = feats.shape[0]
 
         # num_heads x bs x head_dim
-        feats = self.fc(feats).view().view(bs, self.num_heads,
+        feats = self.fc(feats).view(bs, self.num_heads,
                                            self.head_dim).transpose(0, 1)
         if edge_attr != None:
-            e = edge_attr.shape(0)
+            e = edge_attr.shape[0]
             # num_heads x e x edge_head_dim
             edge_attr = self.fc_edge(edge_attr).view(e, self.num_heads,
                                                      self.edge_head_dim
@@ -333,13 +340,14 @@ class MultiHeadMLP(nn.Module):
             feed_in = torch.cat(
                 [feats[:, row], feats[:, col],
                  edge_attr], dim=2)
-
+        
         alpha = self.leakyrelu(
             torch.bmm(feed_in, self.att))  # num_heads x edge_index.shape(0)
 
+        print(alpha.shape, row.shape, col.shape)
         # helper to perform softmax and dropout
-        helper = torch.zeros(bs, bs)
-        helper[row, col] = alpha
+        helper = torch.zeros(self.num_heads, bs, bs)
+        helper[:, row, col] = alpha.squeeze()
         alpha = self.dropout(self.softmax(helper))[row, col]
 
         '''# softmax with scatter_add
@@ -362,10 +370,12 @@ class LinearFun(nn.Module):
     def __init__(self, in_channels, out_channels, bias=True):
         super(LinearFun, self).__init__()
         self.linear = nn.Linear(in_channels, out_channels, bias=bias)
+        self.bias = bias
 
     def reset_parameters(self):
         nn.init.xavier_uniform_(self.linear.weight)
-        nn.init.constant_(self.linear.bias, 0.)
+        if self.bias:
+            nn.init.constant_(self.linear.bias, 0.)
 
     def forward(self, x):
         return self.linear(x)
@@ -397,6 +407,7 @@ class MLP(nn.Module):
             type(fc_dims))
 
         layers = []
+        self.input_dim = input_dim
         for dim in fc_dims:
             layers.append(nn.Linear(input_dim, dim))
             if use_batchnorm and dim != 1:
@@ -417,8 +428,9 @@ class MLP(nn.Module):
             model.bottleneck.bias.requires_grad_(False)'''
         pass
 
-    def forward(self, input):
-        return self.fc_layers(input)
+    def forward(self, x):
+        print(x.shape, self.input_dim)
+        return self.fc_layers(x)
 
 
 class Classifier(nn.Module):
