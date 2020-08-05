@@ -103,10 +103,12 @@ class GNNReID(nn.Module):
 
         feats, _, _ = self.gnn_model(feats, edge_index, edge_attr)
         if (torch.isnan(feats)== True).any().item():
+            print(106)
             print(feats)
 
         x = self.classifier(feats)
         if (torch.isnan(x)== True).any().item():
+            print(111)
             print(x)
 
         return x, feats
@@ -214,9 +216,11 @@ class MultiHeadDotProduct(nn.Module):
         # concatenate heads and put through final linear layer
         out = out.transpose(0,1).contiguous().view(bs, self.num_heads*self.head_dim)
         if (torch.isnan(out) == True).any().item():
+            print(219)
             print(out)
         feats = self.out(out)
         if (torch.isnan(feats)== True).any().item():
+            print(223)
             print(feats)
         return feats, edge_index, edge_attr
 
@@ -226,6 +230,10 @@ class MultiHeadDotProduct(nn.Module):
 
         #TODO: Edge attributes
         scores = torch.matmul(q, k.transpose(-2, -1)) / math.sqrt(head_dim)
+        
+        if (torch.isnan(scores)== True).any().item():
+            print(234)
+            print(scores)
 
         # define mask for nodes that are not connected
         mask = torch.zeros(q.shape[1], q.shape[1])
@@ -234,6 +242,7 @@ class MultiHeadDotProduct(nn.Module):
         scores = scores.masked_fill(mask == 0, -1e4)
         
         if (torch.isnan(scores)== True).any().item():
+            print(241)
             print(scores)
 
         scores = F.softmax(scores, dim=-1)
@@ -244,6 +253,7 @@ class MultiHeadDotProduct(nn.Module):
         scores = scores[:, row, col]  # H x edge_index.shape(0)
         
         if (torch.isnan(scores)== True).any().item():
+            print(256)
             print(scores)
 
         #if edge_attr is not None:
@@ -251,6 +261,7 @@ class MultiHeadDotProduct(nn.Module):
 
         out = scores.unsqueeze(2).repeat(1, 1, q.shape[2]) * v[:, col]  # H x edge_index.shape(0) x head_dim
         if (torch.isnan(out)== True).any().item():
+            print(264)
             print(out)
 
         out = self.aggr(out, row, 1, q.shape[1])
