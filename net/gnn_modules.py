@@ -184,7 +184,7 @@ class DotAttentionLayer(nn.Module):
         self.dropout1 = nn.Dropout(dropout)
         self.layer_norm2 = LayerNorm(norm_shape=embed_dim)
         self.dropout2 = nn.Dropout(dropout)
-        self.fc = MLP(embed_dim, fc_dims=[embed_dim])
+        self.fc = MLP(embed_dim, fc_dims=[embed_dim*4, embed_dim])
 
     def forward(self, feats, egde_index, edge_attr):
 
