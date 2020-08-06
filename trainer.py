@@ -87,7 +87,7 @@ class Trainer():
                 self.config['eval_params'])
 
             hypers = ', '.join(
-                [k + ': ' + str(v) for k, v in self.hypers.items()])
+                [k + ': ' + str(v) for k, v in self.config.items()])
             logger.info('Used Parameters: ' + hypers)
 
             logger.info('Best Recall: {}'.format(best_accuracy))
@@ -97,11 +97,11 @@ class Trainer():
                           self.dataset_short + '.pth')
                 best_recall = best_accuracy
                 best_hypers = '_'.join(
-                    [str(k) + '_' + str(v) for k, v in self.hypers.items()])
+                    [str(k) + '_' + str(v) for k, v in self.config.items()])
             elif self.config['mode'] == 'test':
                 best_recall = best_accuracy
                 best_hypers = '_'.join(
-                    [str(k) + '_' + str(v) for k, v in self.hypers.items()])
+                    [str(k) + '_' + str(v) for k, v in self.config.items()])
 
         logger.info("Best Hyperparameters found: " + best_hypers)
         logger.info(
@@ -342,11 +342,7 @@ class Trainer():
                 self.dataset_short))
 
         file_name = str(
-            best_accuracy) + '_' + self.dataset_short + '_' + self.net_type + '_' + str(
-            self.hypers['lr']) + '_' + str(
-            self.hypers['weight_decay']) + '_' + str(
-            self.hypers['num_classes_iter']) + '_' + str(
-            self.hypers['num_elements_class'])
+            best_accuracy) + '_' + self.dataset_short + '_' + self.timer
         if self.config['mode'] == 'test':
             file_name = 'test_' + file_name
         if not self.config['mode'] == 'pretraining':
@@ -355,8 +351,6 @@ class Trainer():
                     'w') as fp:
                 fp.write(file_name + "\n")
                 fp.write(str(self.config))
-                fp.write('\n')
-                fp.write(str(self.hypers))
                 fp.write('\n')
                 fp.write('\n'.join('%s %s' % x for x in scores))
                 fp.write("\n\n\n")
@@ -462,8 +456,6 @@ class Trainer():
                   'temperature': random.randint(10, 80),
                   'num_epochs': 30}
         self.config['train_params'].update(config)
-
-        self.hypers = config
 
     def get_data(self, config, train_params, mode):
 
