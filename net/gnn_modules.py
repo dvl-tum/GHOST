@@ -214,7 +214,7 @@ class MultiHeadDotProduct(nn.Module):
         self.dev = dev
 
         # FC Layers for input
-        self.q_linear = LinearFun(embed_dim, embed_dim)
+        self.q_linear = LinearFun(embed_dim+edge_dim, embed_dim+edge_dim)
         self.v_linear = LinearFun(embed_dim, embed_dim)
         self.k_linear = LinearFun(embed_dim, embed_dim)
 
@@ -273,10 +273,19 @@ class MultiHeadDotProduct(nn.Module):
             k[:, col].view(self.num_heads * e, head_dim).unsqueeze(
                 dim=2)).view(self.num_heads, e, 1) / math.sqrt(head_dim)
 
+        if (torch.isnan(scores) == True).any().item():
+            print(243)
+            print(scores)
+            print(torch.max(scores, dim=-1))
+
+        scores_before = scores
         scores = softmax(scores, row, 1, bs)
 
         if (torch.isnan(scores) == True).any().item():
+            print(249)
             print(scores)
+            print(torch.max(scores_before, dim=-1))
+            print(torch.max(scores, dim=-1))
 
         if dropout is not None:
             scores = self.dropout(scores)
@@ -400,8 +409,7 @@ class MultiHeadMLP(nn.Module):
                  edge_attr], dim=2)
 
         alpha = torch.bmm(out, self.att)  # n_heads x edge_ind.shape(0) x 1
-        alpha = self.act(self.dropout(alpha))
-        alpha = softmax(alpha, row, dim=1, dim_size=bs)
+        alpha = self.dropout(softmax(self.act(alpha), row, dim=1, dim_size=bs))
 
         # H x edge_index.shape(0) x head_dim
         out = alpha * feats[:, col]
