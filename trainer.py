@@ -185,12 +185,11 @@ class Trainer():
                         or (self.distance_sampling == 'pre' and e == 1) \
                         or (self.distance_sampling == 'pre_soft' and e == 1):
                     self.encoder.train(model_is_training)
-
-            # for k, v in losses.items():
-            #    print(k, v, sum(v), len(v), sum(v)/len(v))
+            
             [self.losses_mean[k].append(sum(v) / len(v)) for k, v in
              self.losses.items()]
             losses = defaultdict(list)
+            
             # compute ranks and mAP at the end of each epoch
             best_accuracy = self.evaluate(eval_params, scores, e, loss,
                                           best_accuracy)
@@ -218,23 +217,22 @@ class Trainer():
                     self.feature_dict[y.data.item()] = {i.item(): f}
 
         # Compute CE Loss
-        loss = self.criterion2(probs, Y)
-        self.losses['Cross Entropy'].append(loss.item())
+        loss = 0
+        if self.ce:
+            loss0 = self.ce(probs, Y)
+            loss+= train_params['loss_fn']['scaling_ce'] * loss0
+            self.losses['Cross Entropy'].append(loss.item())
 
         # Add other losses of not pretraining
         if not self.config['mode'] == 'pretraining':
-            edge_attr, edge_index, fc7 = self.graph_generator.get_graph(fc7)
-            pred, feats = self.gnn(fc7, edge_index, edge_attr)
-
-            loss1 = self.criterion(pred, Y)
-            self.losses['GNN'].append(loss1.item())
             
-            #print(pred)
+            if self.gnn:
+                edge_attr, edge_index, fc7 = self.graph_generator.get_graph(fc7)
+                pred, feats = self.gnn(fc7, edge_index, edge_attr)
 
-            #print(loss, loss1)
-
-            loss = train_params['loss_fn']['scaling_gnn'] * loss1 + train_params['loss_fn'][
-                'scaling_ce'] * loss
+                loss1 = self.gnn(pred, Y)
+                loss += train_params['loss_fn']['scaling_gnn'] * loss1
+                self.losses['GNN'].append(loss1.item())
 
             # Compute center loss
             if self.center:
@@ -391,21 +389,25 @@ class Trainer():
         # Loss for GroupLoss
 
         if 'gnn' in params['fns'].split('_'):
-            self.criterion = nn.CrossEntropyLoss().to(self.device)
+            self.gnn = nn.CrossEntropyLoss().to(self.device)
         elif 'lsgnn' in params['fns'].split('_'):
-            self.criterion = losses.CrossEntropyLabelSmooth(
+            self.gnn = losses.CrossEntropyLabelSmooth(
                 num_classes=num_classes)
         elif 'focalgnn' in params['fns'].split('_'):
-            self.criterion = losses.FocalLoss().to(self.device)
+            self.gnn = losses.FocalLoss().to(self.device)
+        else:
+            self.gnn = None
 
         # Label smoothing for CrossEntropy Loss
         if 'lsce' in params['fns'].split('_'):
-            self.criterion2 = losses.CrossEntropyLabelSmooth(
+            self.ce = losses.CrossEntropyLabelSmooth(
                 num_classes=num_classes)
         elif 'focalce' in params['fns'].split('_'):
-            self.criterion2 = losses.FocalLoss().to(self.device)
+            self.ce = losses.FocalLoss().to(self.device)
         elif 'ce' in params['fns'].split('_'):
-            self.criterion2 = nn.CrossEntropyLoss().to(self.device)
+            self.ce = nn.CrossEntropyLoss().to(self.device)
+        else:
+            self.ce = None
 
         # Add Center Loss
         if 'center' in params['fns'].split('_'):
