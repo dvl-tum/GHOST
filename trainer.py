@@ -230,7 +230,7 @@ class Trainer():
                 edge_attr, edge_index, fc7 = self.graph_generator.get_graph(fc7)
                 pred, feats = self.gnn(fc7, edge_index, edge_attr)
 
-                loss1 = self.gnn(pred, Y)
+                loss1 = self.gnn_loss(pred, Y)
                 loss += train_params['loss_fn']['scaling_gnn'] * loss1
                 self.losses['GNN'].append(loss1.item())
 
@@ -389,14 +389,14 @@ class Trainer():
         # Loss for GroupLoss
 
         if 'gnn' in params['fns'].split('_'):
-            self.gnn = nn.CrossEntropyLoss().to(self.device)
+            self.gnn_loss = nn.CrossEntropyLoss().to(self.device)
         elif 'lsgnn' in params['fns'].split('_'):
-            self.gnn = losses.CrossEntropyLabelSmooth(
+            self.gnn_loss = losses.CrossEntropyLabelSmooth(
                 num_classes=num_classes)
         elif 'focalgnn' in params['fns'].split('_'):
-            self.gnn = losses.FocalLoss().to(self.device)
+            self.gnn_loss = losses.FocalLoss().to(self.device)
         else:
-            self.gnn = None
+            self.gnn_loss = None
 
         # Label smoothing for CrossEntropy Loss
         if 'lsce' in params['fns'].split('_'):
