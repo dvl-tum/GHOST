@@ -3,7 +3,7 @@ import torch
 from torch import nn
 import math
 import torch.nn.functional as F
-
+import numpy as np
 import torch
 
 
@@ -175,8 +175,8 @@ class GNN(nn.Module):
 
 
 class DotAttentionLayer(nn.Module):
-    def __init__(self, embed_dim, num_heads, aggr, dev, edge_dim, dropout):
-
+    def __init__(self, embed_dim, num_heads, aggr, dev, edge_dim, dropout=0.4):
+        super(DotAttentionLayer, self).__init__()
         self.multi_att = MultiHeadDotProduct(embed_dim, num_heads, aggr, dev,
                                              edge_dim)
 
@@ -467,7 +467,7 @@ class LayerNorm(nn.Module):
         return x
 
     def reset_parameters(self) -> None:
-        if self.elementwise_affine:
+        if self.affine:
             nn.init.ones_(self.weight)
             nn.init.zeros_(self.bias)
 
