@@ -106,12 +106,12 @@ class GNNReID(nn.Module):
 
         feats, _, _ = self.gnn_model(feats, edge_index, edge_attr)
 
-        if (torch.isnan(feats)== True).any().item():
+        if (torch.isnan(feats) == True).any().item():
             print(106)
             print(feats)
 
         x = self.classifier(feats)
-        if (torch.isnan(x)== True).any().item():
+        if (torch.isnan(x) == True).any().item():
             print(111)
             print(x)
 
@@ -151,7 +151,7 @@ class GNN(nn.Module):
 
         # init attention mechanism
         if self.gnn_params['attention'] == "dot":
-            layers = [MultiHeadDotProduct(embed_dim, gnn_params['num_heads'],
+            layers = [DotAttentionLayer(embed_dim, gnn_params['num_heads'],
                                           self.aggr, self.dev, edge_dim) for _
                       in range(self.gnn_params['num_layers'])]
             self.multi_att = Sequential(*layers)
@@ -172,6 +172,30 @@ class GNN(nn.Module):
         feats, edge_index, edge_attr = self.multi_att(feats, edge_index,
                                                       edge_attr)
         return feats, edge_index, edge_attr
+
+
+class DotAttentionLayer(nn.Module):
+    def __init__(self, embed_dim, num_heads, aggr, dev, edge_dim, dropout):
+
+        self.multi_att = MultiHeadDotProduct(embed_dim, num_heads, aggr, dev,
+                                             edge_dim)
+
+        self.layer_norm1 = LayerNorm(norm_shape=embed_dim)
+        self.dropout1 = nn.Dropout(dropout)
+        self.layer_norm2 = LayerNorm(norm_shape=embed_dim)
+        self.dropout2 = nn.Dropout(dropout)
+        self.fc = MLP(embed_dim, fc_dims=[embed_dim])
+
+    def forward(self, feats, egde_index, edge_attr):
+
+        feats2 = self.layer_norm1(feats)
+        feats2, egde_index, edge_attr = self.multi_att(feats2, egde_index,
+                                                       edge_attr)
+        feats = feats + self.dropout1(feats2)
+        feats2 = self.layer_norm2(feats)
+        feats = feats + self.dropout2(self.fc(feats2))
+
+        return feats, egde_index, edge_attr
 
 
 class MultiHeadDotProduct(nn.Module):
@@ -219,7 +243,8 @@ class MultiHeadDotProduct(nn.Module):
 
         # perform multihead attention
         out = self._attention(q, k, v, self.head_dim, dropout=self.dropout,
-                              edge_index=edge_index, edge_attr=edge_attr, bs=bs)
+                              edge_index=edge_index, edge_attr=edge_attr,
+                              bs=bs)
 
         # concatenate heads and put through final linear layer
         out = out.transpose(0, 1).contiguous().view(bs,
@@ -255,8 +280,8 @@ class MultiHeadDotProduct(nn.Module):
 
         if dropout is not None:
             scores = self.dropout(scores)
-        
-        if (torch.isnan(scores)== True).any().item():
+
+        if (torch.isnan(scores) == True).any().item():
             print(256)
             print(scores)
 
@@ -393,6 +418,50 @@ def softmax(src, index, dim, dim_size):
         out = torch.exp(src) / denom[index]
 
     return out
+
+
+class LayerNorm(nn.Module):
+    def __init__(self, norm_shape=None, eps=1e-5, affine=True):
+        super(LayerNorm, self).__init__()
+        self.eps = eps
+        self.affine = affine
+
+        if isinstance(norm_shape, int):
+            norm_shape = (norm_shape,)
+        self.norm_shape = norm_shape
+
+        if self.affine:
+            self.weight = nn.Parameter(torch.Tensor(*self.norm_shape))
+            self.bias = nn.Parameter(torch.Tensor(*self.norm_shape))
+        else:
+            self.register_parameter('weight', None)
+            self.register_parameter('bias', None)
+
+        self.reset_parameters()
+
+    def forward(self, x):
+        init_shape = [x.shape[i] for i in range(len(x.shape))]
+
+        dims = len(self.norm_shape)
+        shape = [x.shape[i] for i in range(len(x.shape) - dims)] + [
+            int(np.prod(list(self.norm_shape)))]
+        x = x.view(shape)
+
+        x = (x - x.mean(dim=-1, keepdim=True)) / (
+                    x.std(dim=-1, keepdim=True) + self.eps)
+
+        x = x.view(init_shape)
+
+        if self.affine:
+            x *= self.weight
+            x += self.bias
+
+        return x
+
+    def reset_parameters(self) -> None:
+        if self.elementwise_affine:
+            nn.init.ones_(self.weight)
+            nn.init.zeros_(self.bias)
 
 
 class LinearFun(nn.Module):
