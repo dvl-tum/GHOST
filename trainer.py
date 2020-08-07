@@ -173,6 +173,10 @@ class Trainer():
                         else:
                             loss.backward()
                         self.opt.step()
+                        
+                        for param in self.gnn.parameters():
+                            if torch.isnan(param).any():
+                                print(param)
 
                         if self.center:
                             for param in self.center.parameters():
@@ -340,7 +344,7 @@ class Trainer():
                 self.dataset_short))
 
         file_name = str(
-            best_accuracy) + '_' + self.dataset_short + '_' + self.timer
+            best_accuracy) + '_' + self.dataset_short + '_' + str(self.timer)
         if self.config['mode'] == 'test':
             file_name = 'test_' + file_name
         if not self.config['mode'] == 'pretraining':
