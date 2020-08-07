@@ -19,6 +19,8 @@ from evaluation import Evaluator
 import utils.utils as utils
 import matplotlib.pyplot as plt
 import os
+from torch import autograd
+autograd.set_detect_anomaly(True)
 
 logger = logging.getLogger('GNNReID.Training')
 
@@ -177,7 +179,7 @@ class Trainer():
                         for param in self.gnn.parameters():
                             if torch.isnan(param).any():
                                 print(param)
-                            if isnan(param.grad).any():
+                            if torch.isnan(param.grad).any():
                                 print(param, param.grad)
 
                         if self.center:
