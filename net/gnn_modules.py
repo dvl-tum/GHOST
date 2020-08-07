@@ -270,8 +270,8 @@ class MultiHeadDotProduct(nn.Module):
         # TODO: Edge attributes
         # # H x edge_index.shape(0)
         scores = torch.bmm(
-            q[:, row].view(self.num_heads * e, head_dim).unsqueeze(dim=1),
-            k[:, col].view(self.num_heads * e, head_dim).unsqueeze(
+            q.index_select(1, col).view(self.num_heads * e, head_dim).unsqueeze(dim=1),
+            k.index_select(1, row).view(self.num_heads * e, head_dim).unsqueeze(
                 dim=2)).view(self.num_heads, e, 1) / math.sqrt(head_dim)
 
         if (torch.isnan(scores) == True).any().item():
@@ -296,8 +296,8 @@ class MultiHeadDotProduct(nn.Module):
             print(scores)
 
         # H x edge_index.shape(0) x head_dim
-        out = scores * v[:, col]
-        out = self.aggr(out, row, 1, bs)
+        out = scores * v.index_select(1, row)
+        out = self.aggr(out, col, 1, bs)
 
         if (torch.isnan(out) == True).any().item():
             print(264)
@@ -401,20 +401,20 @@ class MultiHeadMLP(nn.Module):
         if edge_attr is None:
             # num_heads x edge_index.shape(0) x 2 * C
             out = torch.cat(
-                [feats[:, row], feats[:, col]],
+                [feats.index_select(1, col), feats.index_select(1, row)],
                 dim=2)
         else:
             # num_heads x edge_index.shape(0) x 2 * C + edge_head_dim
             out = torch.cat(
-                [feats[:, row], feats[:, col],
+                [feats.index_select(1, col), feats.index_select(1, row),
                  edge_attr], dim=2)
 
         alpha = torch.bmm(out, self.att)  # n_heads x edge_ind.shape(0) x 1
-        alpha = self.dropout(softmax(self.act(alpha), row, dim=1, dim_size=bs))
+        alpha = self.dropout(softmax(self.act(alpha), col, dim=1, dim_size=bs))
 
         # H x edge_index.shape(0) x head_dim
-        out = alpha * feats[:, col]
-        out = self.aggr(out, row, 1, bs)
+        out = alpha * feats.index_select(1, row)
+        out = self.aggr(out, col, 1, bs)
 
         return out
 
@@ -422,10 +422,7 @@ class MultiHeadMLP(nn.Module):
 def softmax(src, index, dim, dim_size):
     src = src - scatter_max(src, index, dim=dim, dim_size=dim_size)[index]
     denom = scatter_add(torch.exp(src), index, dim=dim, dim_size=dim_size)
-    if dim == 1:
-        out = torch.exp(src) / denom[:, index]
-    elif dim == 0:
-        out = torch.exp(src) / denom[index]
+    out = torch.exp(src) / denom.index_select(dim, index)
 
     return out
 
