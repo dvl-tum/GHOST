@@ -181,9 +181,9 @@ class DotAttentionLayer(nn.Module):
         self.multi_att = MultiHeadDotProduct(embed_dim, num_heads, aggr, dev,
                                              edge_dim)
 
-        self.layer_norm1 = nn_geo.LayerNorm(embed_dim) #LayerNorm(norm_shape=embed_dim)
+        self.layer_norm1 = LayerNorm(norm_shape=embed_dim) #nn_geo.LayerNorm(embed_dim) #LayerNorm(norm_shape=embed_dim)
         self.dropout1 = nn.Dropout(dropout)
-        self.layer_norm2 = nn_geo.LayerNorm(embed_dim) #LayerNorm(norm_shape=embed_dim)
+        self.layer_norm2 = LayerNorm(norm_shape=embed_dim) #nn_geo.LayerNorm(embed_dim) #LayerNorm(norm_shape=embed_dim)
         self.dropout2 = nn.Dropout(dropout)
         self.fc = MLP(embed_dim, fc_dims=[embed_dim*4, embed_dim])
 
@@ -420,7 +420,7 @@ class MultiHeadMLP(nn.Module):
 
 
 def softmax(src, index, dim, dim_size):
-    src = src - scatter_max(src, index, dim=dim, dim_size=dim_size)[index]
+    src = src - scatter_max(src.float(), index, dim=dim, dim_size=dim_size)[0].index_select(dim, index)
     denom = scatter_add(torch.exp(src), index, dim=dim, dim_size=dim_size)
     out = torch.exp(src) / denom.index_select(dim, index)
 
