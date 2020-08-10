@@ -6,7 +6,9 @@ import torch.nn.functional as F
 import numpy as np
 import torch
 from torch_geometric import nn as nn_geo
+import logging
 
+logger = logging.getLogger('GNNReID.GNNModule')
 
 class MetaLayer(torch.nn.Module):
     """
@@ -181,9 +183,9 @@ class DotAttentionLayer(nn.Module):
         self.multi_att = MultiHeadDotProduct(embed_dim, num_heads, aggr, dev,
                                              edge_dim)
 
-        self.layer_norm1 = nn_geo.LayerNorm(embed_dim) #LayerNorm(norm_shape=embed_dim)
+        self.layer_norm1 = LayerNorm(norm_shape=embed_dim) #nn_geo.LayerNorm(embed_dim) #LayerNorm(norm_shape=embed_dim)
         self.dropout1 = nn.Dropout(dropout)
-        self.layer_norm2 = nn_geo.LayerNorm(embed_dim) #LayerNorm(norm_shape=embed_dim)
+        self.layer_norm2 = LayerNorm(norm_shape=embed_dim) #nn_geo.LayerNorm(embed_dim) #LayerNorm(norm_shape=embed_dim)
         self.dropout2 = nn.Dropout(dropout)
         self.fc = MLP(embed_dim, fc_dims=[embed_dim*4, embed_dim])
 
@@ -231,16 +233,10 @@ class MultiHeadDotProduct(nn.Module):
         q = k = v = feats
         bs = q.size(0)
 
-        # FC layer and split into heads
-        k = self.k_linear(k)
-        k = k.view(bs, self.num_heads, self.head_dim)
-        q = self.q_linear(q).view(bs, self.num_heads, self.head_dim)
-        v = self.v_linear(v).view(bs, self.num_heads, self.head_dim)
-
-        # h * bs * embed_dim
-        k = k.transpose(0, 1)
-        q = q.transpose(0, 1)
-        v = v.transpose(0, 1)
+        # FC layer and split into heads --> h * bs * embed_dim
+        k = self.k_linear(k).view(bs, self.num_heads, self.head_dim).transpose(0, 1)
+        q = self.q_linear(q).view(bs, self.num_heads, self.head_dim).transpose(0, 1)
+        v = self.v_linear(v).view(bs, self.num_heads, self.head_dim).transpose(0, 1)
 
         # perform multihead attention
         out = self._attention(q, k, v, self.head_dim, dropout=self.dropout,
@@ -268,11 +264,11 @@ class MultiHeadDotProduct(nn.Module):
         e = edge_index.shape[0]
 
         # TODO: Edge attributes
-        # # H x edge_index.shape(0)
+        # # H x edge_index.shape(0) x 1
         scores = torch.bmm(
-            q.index_select(1, col).view(self.num_heads * e, head_dim).unsqueeze(dim=1),
+            q.index_select(1, col).view(self.num_heads * e, head_dim).unsqueeze(dim=-2),
             k.index_select(1, row).view(self.num_heads * e, head_dim).unsqueeze(
-                dim=2)).view(self.num_heads, e, 1) / math.sqrt(head_dim)
+                dim=-1)).view(self.num_heads, e, 1) / math.sqrt(head_dim)
 
         if (torch.isnan(scores) == True).any().item():
             print(243)
@@ -280,7 +276,7 @@ class MultiHeadDotProduct(nn.Module):
             print(torch.max(scores, dim=-1))
 
         scores_before = scores
-        scores = softmax(scores, row, 1, bs)
+        scores = softmax(scores, col, 1, bs)
 
         if (torch.isnan(scores) == True).any().item():
             print(249)
@@ -350,7 +346,6 @@ class MultiHeadMLP(nn.Module):
             self.register_parameter('bias', None)
 
         self.dropout = nn.Dropout(dropout)
-        self.softmax = nn.Softmax(dim=2)
 
         assert act in ['leaky', 'relu'], 'Choose act out of leaky and relu'
 
