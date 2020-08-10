@@ -19,8 +19,8 @@ from evaluation import Evaluator
 import utils.utils as utils
 import matplotlib.pyplot as plt
 import os
-from torch import autograd
-autograd.set_detect_anomaly(True)
+#from torch import autograd
+#autograd.set_detect_anomaly(True)
 
 logger = logging.getLogger('GNNReID.Training')
 
@@ -44,10 +44,13 @@ class Trainer():
         self.num_iter = 30 if config['mode'] == 'hyper_search' else 1
 
     def train(self):
+        best_recall = 0
         for i in range(self.num_iter):
             logger.info('Search iteration {}'.format(i + 1))
             mode = self.get_save_name()
             self.update_params()
+            print(self.config)
+            print(self.timer)
 
             encoder, sz_embed = net.load_net(
                 self.config['dataset']['dataset_short'],
@@ -98,12 +101,12 @@ class Trainer():
                           str(best_accuracy) + mode + self.net_type + '_' +
                           self.dataset_short + '.pth')
                 best_recall = best_accuracy
-                best_hypers = '_'.join(
-                    [str(k) + '_' + str(v) for k, v in self.config.items()])
+                best_hypers = ', '.join(
+                        [str(k) + ': ' + str(v) for k, v in self.config.items()])
             elif self.config['mode'] == 'test':
                 best_recall = best_accuracy
-                best_hypers = '_'.join(
-                    [str(k) + '_' + str(v) for k, v in self.config.items()])
+                best_hypers = ', '.join(
+                        [str(k) + ': ' + str(v) for k, v in self.config.items()])
 
         logger.info("Best Hyperparameters found: " + best_hypers)
         logger.info(
@@ -113,7 +116,7 @@ class Trainer():
     def execute(self, train_params, eval_params):
         since = time.time()
         best_accuracy = 0
-        scores = []
+        scores = list()
 
         # feature dict for distance sampling
         if self.distance_sampling != 'no':
@@ -164,7 +167,6 @@ class Trainer():
 
                         # Check possible net divergence
                         if torch.isnan(loss):
-                            print(loss)
                             logger.error("We have NaN numbers, closing\n\n\n")
                             sys.exit(0)
 
@@ -176,11 +178,12 @@ class Trainer():
                             loss.backward()
                         self.opt.step()
                         
-                        for param in self.gnn.parameters():
-                            if torch.isnan(param).any():
-                                print(param)
-                            if torch.isnan(param.grad).any():
-                                print(param, param.grad)
+                        if self.gnn_loss:
+                            for param in self.gnn.parameters():
+                                if torch.isnan(param).any():
+                                    print(param)
+                                if torch.isnan(param.grad).any():
+                                    print(param, param.grad)
 
                         if self.center:
                             for param in self.center.parameters():
@@ -197,7 +200,8 @@ class Trainer():
             [self.losses_mean[k].append(sum(v) / len(v)) for k, v in
              self.losses.items()]
             losses = defaultdict(list)
-            
+            logger.info('Loss Values: ')
+            logger.info(', '.join([str(k) + ': ' + str(v[-1]) for k, v in self.losses_mean.items()]))
             # compute ranks and mAP at the end of each epoch
             best_accuracy = self.evaluate(eval_params, scores, e, loss,
                                           best_accuracy)
@@ -234,7 +238,7 @@ class Trainer():
         # Add other losses of not pretraining
         if not self.config['mode'] == 'pretraining':
             
-            if self.gnn:
+            if self.gnn_loss:
                 edge_attr, edge_index, fc7 = self.graph_generator.get_graph(fc7)
                 pred, feats = self.gnn(fc7, edge_index, edge_attr)
 

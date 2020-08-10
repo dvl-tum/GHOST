@@ -415,7 +415,7 @@ class MultiHeadMLP(nn.Module):
 
 
 def softmax(src, index, dim, dim_size):
-    src = src - scatter_max(src, index, dim=dim, dim_size=dim_size)[index]
+    src = src - scatter_max(src.float(), index, dim=dim, dim_size=dim_size)[0].index_select(dim, index)
     denom = scatter_add(torch.exp(src), index, dim=dim, dim_size=dim_size)
     out = torch.exp(src) / denom.index_select(dim, index)
 
