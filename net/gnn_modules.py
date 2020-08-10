@@ -7,6 +7,7 @@ import numpy as np
 import torch
 from torch_geometric import nn as nn_geo
 import logging
+from .dot_attention_pygeo import AttentionLayerDot
 
 logger = logging.getLogger('GNNReID.GNNModule')
 
@@ -153,6 +154,7 @@ class GNN(nn.Module):
                                                                   dim_size=x_size)
 
         # init attention mechanism
+        # from pygeo: try only AttentionLayerDot / MultiHeadDotProduct
         if self.gnn_params['attention'] == "dot":
             layers = [DotAttentionLayer(embed_dim, gnn_params['num_heads'],
                                           self.aggr, self.dev, edge_dim) for _
@@ -180,6 +182,7 @@ class GNN(nn.Module):
 class DotAttentionLayer(nn.Module):
     def __init__(self, embed_dim, num_heads, aggr, dev, edge_dim, dropout=0.4):
         super(DotAttentionLayer, self).__init__()
+        # try AttentionLayerDot
         self.multi_att = MultiHeadDotProduct(embed_dim, num_heads, aggr, dev,
                                              edge_dim)
 
