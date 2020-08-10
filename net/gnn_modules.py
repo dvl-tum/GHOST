@@ -183,9 +183,9 @@ class DotAttentionLayer(nn.Module):
     def __init__(self, embed_dim, num_heads, aggr, dev, edge_dim, dropout=0.4):
         super(DotAttentionLayer, self).__init__()
         # try AttentionLayerDot
-        self.multi_att = MultiHeadDotProduct(embed_dim, num_heads, aggr, dev,
+        #self.multi_att = MultiHeadDotProduct(embed_dim, num_heads, aggr, dev,
                                              edge_dim)
-
+        self.multi_att = AttentionLayerDot(embed_dim, num_head)
         self.layer_norm1 = LayerNorm(norm_shape=embed_dim) #nn_geo.LayerNorm(embed_dim) #LayerNorm(norm_shape=embed_dim)
         self.dropout1 = nn.Dropout(dropout)
         self.layer_norm2 = LayerNorm(norm_shape=embed_dim) #nn_geo.LayerNorm(embed_dim) #LayerNorm(norm_shape=embed_dim)
