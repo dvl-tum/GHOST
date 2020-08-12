@@ -7,7 +7,7 @@ import numpy as np
 import torch
 from torch_geometric import nn as nn_geo
 import logging
-from .dot_attention_pygeo import AttentionLayerDot
+from .dot_attention_pygeo import AttentionLayerDot, gcn_norm
 
 logger = logging.getLogger('GNNReID.GNNModule')
 
@@ -101,7 +101,7 @@ class GNNReID(nn.Module):
         if self.params['use_edge_encoder']:
             r, c = edge_index[:, 0], edge_index[:, 1]
             edge_attr = torch.cat(
-                [feats[r, :], feats[c, :], edge_attr[r, c].unsqueeze(dim=1)],
+                [feats[r, :], feats[c, :], edge_attr.unsqueeze(dim=1)],
                 dim=1)
             edge_attr = self.edge_encoder(edge_attr)
 
@@ -153,25 +153,10 @@ class GNN(nn.Module):
                                                                   dim=dim,
                                                                   dim_size=x_size)
 
-        # init attention mechanism
-        # from pygeo: try only AttentionLayerDot / MultiHeadDotProduct
-        if self.gnn_params['attention'] == "dot":
-            layers = [DotAttentionLayer(embed_dim, gnn_params['num_heads'],
-                                          self.aggr, self.dev, edge_dim) for _
-                      in range(self.gnn_params['num_layers'])]
-            self.multi_att = Sequential(*layers)
-
-        elif self.gnn_params['attention'] == "mlp":
-            layers = [
-                MultiHeadMLP(embed_dim, gnn_params['num_heads'], self.aggr,
-                             self.dev, edge_dim) for _ in
-                range(self.gnn_params['num_layers'])]
-            self.multi_att = Sequential(*layers)
-
-        else:
-            print(
-                "Invalid attention option {}. Please choose from dot/mlp".format(
-                    self.gnn_params['attention']))
+        layers = [DotAttentionLayer(embed_dim, self.aggr, self.dev, 
+                                    edge_dim, gnn_params) for _
+                  in range(self.gnn_params['num_layers'])]
+        self.multi_att = Sequential(*layers)
 
     def forward(self, feats, edge_index, edge_attr=None):
         feats, edge_index, edge_attr = self.multi_att(feats, edge_index,
@@ -180,26 +165,46 @@ class GNN(nn.Module):
 
 
 class DotAttentionLayer(nn.Module):
-    def __init__(self, embed_dim, num_heads, aggr, dev, edge_dim, dropout=0.4):
+    def __init__(self, embed_dim, aggr, dev, edge_dim, gnn_params):
         super(DotAttentionLayer, self).__init__()
+        num_heads = gnn_params['num_heads']
+        self.res1 = gnn_params['res1']
+        self.res2 = gnn_params['res2']
+
         # try AttentionLayerDot
-        #self.multi_att = MultiHeadDotProduct(embed_dim, num_heads, aggr, dev,
-                                             edge_dim)
-        self.multi_att = AttentionLayerDot(embed_dim, num_head)
-        self.layer_norm1 = LayerNorm(norm_shape=embed_dim) #nn_geo.LayerNorm(embed_dim) #LayerNorm(norm_shape=embed_dim)
-        self.dropout1 = nn.Dropout(dropout)
-        self.layer_norm2 = LayerNorm(norm_shape=embed_dim) #nn_geo.LayerNorm(embed_dim) #LayerNorm(norm_shape=embed_dim)
-        self.dropout2 = nn.Dropout(dropout)
-        self.fc = MLP(embed_dim, fc_dims=[embed_dim*4, embed_dim])
+        if gnn_params['attention'] == "dot":
+            self.multi_att = MultiHeadDotProduct(embed_dim, num_heads, aggr, dev,
+                                                 edge_dim, gnn_params['gcn_norm'],
+                                                 mult_edge_weight=gnn_params['mult_edge_weight'])
+        elif gnn_params['attention'] == "dot_pygeo":
+            self.multi_att = AttentionLayerDot(embed_dim, num_heads, 
+                    gcn_norm=gnn_params['gcn_norm'], 
+                    mult_edge_weight=gnn_params['mult_edge_weight'])
+        
+        elif gnn_params['attention'] == "mlp": 
+            self.multi_att = MultiHeadMLP(embed_dim, num_heads, aggr, dev, edge_dim)
+
+        else:
+            print(
+                "Invalid attention option {}. Please choose from dot/dot_pygeo/mlp".format(
+                    self.gnn_params['attention']))
+
+
+        self.layer_norm1 = LayerNorm(norm_shape=embed_dim) if gnn_params['norm1'] else None
+        self.dropout1 = nn.Dropout(gnn_params['dropout_p1'])
+        self.layer_norm2 = LayerNorm(norm_shape=embed_dim) if gnn_params['norm2'] else None
+        self.dropout2 = nn.Dropout(gnn_params['dropout_p2'])
+        self.fc = MLP(embed_dim, fc_dims=[embed_dim*4, embed_dim]) if gnn_params['mlp'] else None
 
     def forward(self, feats, egde_index, edge_attr):
 
-        feats2 = self.layer_norm1(feats)
+        feats2 = self.layer_norm1(feats) if self.layer_norm1 is not None else feats
         feats2, egde_index, edge_attr = self.multi_att(feats2, egde_index,
                                                        edge_attr)
-        feats = feats + self.dropout1(feats2)
-        feats2 = self.layer_norm2(feats)
-        feats = feats + self.dropout2(self.fc(feats2))
+        feats = feats + self.dropout1(feats2) if self.res1 else self.dropout1(feats2)
+        feats2 = self.layer_norm2(feats) if self.layer_norm2 is not None else feats
+        feats2 = self.fc(feats2) if self.fc is not None else feats2
+        feats = feats + self.dropout2(feats2) if self.res2 else self.dropout2(feats2)
 
         return feats, egde_index, edge_attr
 
@@ -211,13 +216,17 @@ class MultiHeadDotProduct(nn.Module):
     num_heads: number of attetion heads
     """
 
-    def __init__(self, embed_dim, num_heads, aggr, dev, edge_dim, dropout=0.1):
+    def __init__(self, embed_dim, num_heads, aggr, dev, edge_dim, 
+            gcn_norm, mult_edge_weight, dropout=0.1):
         super(MultiHeadDotProduct, self).__init__()
+        print("MultiHeadDotProduct")
         self.embed_dim = embed_dim
         self.head_dim = embed_dim // num_heads
         self.num_heads = num_heads
         self.aggr = aggr
         self.dev = dev
+        self.gcn_norm = gcn_norm
+        self.mult_edge_weight = mult_edge_weight
 
         # FC Layers for input
         self.q_linear = LinearFun(embed_dim+edge_dim, embed_dim+edge_dim)
@@ -296,6 +305,14 @@ class MultiHeadDotProduct(nn.Module):
 
         # H x edge_index.shape(0) x head_dim
         out = scores * v.index_select(1, row)
+        
+        if self.gcn_norm:
+            edge_index, edge_attr = gcn_norm(
+                edge_index, edge_attr, bs, dtype=out.dtype) 
+        
+        if self.mult_edge_weight:
+            out = edge_attr.view(-1, 1) * out
+
         out = self.aggr(out, col, 1, bs)
 
         if (torch.isnan(out) == True).any().item():
@@ -332,11 +349,13 @@ class MultiHeadMLP(nn.Module):
 
         # from embed dim to num_heads * head_dim = embed_dim
         self.fc = LinearFun(embed_dim, embed_dim, bias=False)
-
+        
         if edge_dim != 0:
             self.edge_head_dim = edge_dim // num_heads
             self.fc_edge = LinearFun(edge_dim, edge_dim, bias=False)
-
+        else:
+            self.edge_head_dim = 0
+        
         self.att = torch.nn.Parameter(
             torch.Tensor(self.num_heads,
                          2 * self.head_dim + self.edge_head_dim, 1))
@@ -374,7 +393,8 @@ class MultiHeadMLP(nn.Module):
         # num_heads x bs x head_dim
         feats = self.fc(feats).view(bs, self.num_heads,
                                     self.head_dim).transpose(0, 1)
-        if edge_attr != None:
+        
+        if self.edge_head_dim:
             e = edge_attr.shape[0]
             # num_heads x e x edge_head_dim
             edge_attr_att = self.fc_edge(edge_attr).view(e, self.num_heads,
