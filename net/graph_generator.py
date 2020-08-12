@@ -53,4 +53,7 @@ class GraphGenerator():
         W = self._get_W(x)
         W, A = self._get_A(W)
 
-        return W, torch.nonzero(A), x
+        A = torch.nonzero(A)
+        W = W[A[:, 0], A[:, 1]]
+
+        return W, A, x
