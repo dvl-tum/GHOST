@@ -373,7 +373,7 @@ class Trainer():
             eps = list(range(len(v)))
             plt.plot(eps, v)
             plt.xlim(left=0)
-            plt.ylim(bottom=0)
+            plt.ylim(bottom=0, top=14)
             plt.xlabel('Epochs')
         plt.legend(self.losses_mean.keys(), loc='upper right')
         plt.grid(True)
