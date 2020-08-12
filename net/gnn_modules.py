@@ -417,7 +417,7 @@ class MultiHeadMLP(nn.Module):
     def _attention(self, feats, edge_index, bs, edge_attr=None):
         row, col = edge_index[:, 0], edge_index[:, 1]
 
-        if edge_attr is None:
+        if not self.edge_head_dim:
             # num_heads x edge_index.shape(0) x 2 * C
             out = torch.cat(
                 [feats.index_select(1, col), feats.index_select(1, row)],
