@@ -400,7 +400,8 @@ class MultiHeadMLP(nn.Module):
             edge_attr_att = self.fc_edge(edge_attr).view(e, self.num_heads,
                                                          self.edge_head_dim
                                                          ).transpose(0, 1)
-
+        else:
+            edge_attr_att = edge_attr
         # num_heads x bs x out_dim
         out = self._attention(feats, edge_index, bs, edge_attr_att)
         out = out.transpose(0, 1).contiguous().view(bs,
