@@ -62,7 +62,7 @@ class CombineSampler(Sampler):
         if len(split_list_of_indices) % self.cl_b != 0:
             b = np.random.choice(np.arange(len(split_list_of_indices)), size=len(split_list_of_indices) % self.cl_b, replace=False).tolist()
 
-        [split_list_of_indices.append(split_list_of_indices[m]) for m in b]
+            [split_list_of_indices.append(split_list_of_indices[m]) for m in b]
 
         self.flat_list = [item for sublist in split_list_of_indices for item in sublist]
         return iter(self.flat_list)

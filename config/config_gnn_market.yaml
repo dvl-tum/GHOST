@@ -1,8 +1,8 @@
-mode: "train" # train/test/hyper_search/pretraining
+mode: "hyper_search" #train/test/hyper_search/pretraining
 
 models:
   encoder_params:
-    pretrained_path: "no" # path to pretrained model
+    pretrained_path: "no" #"pretrained_resnet_Market.pth" # path to pretrained model
     net_type: "resnet50"
     neck: 1
     last_stride: 0
@@ -16,11 +16,20 @@ models:
     use_edge_model: 0
     use_node_encoder: 0
     gnn:
-      num_layers: 4
+      num_layers: 1
       aggregator: "add"
       jumping_knowledge: 0
       num_heads: 4
-      attention: "dot"
+      attention: "dot" #"dot_pygeo"
+      mlp: 0
+      norm1: 0
+      norm2: 1
+      mult_edge_weight: 0
+      gcn_norm: 0
+      res1: 0
+      res2: 0
+      dropout_p1: 0.4
+      dropout_p2: 0
     edge:
       fc_dims: [2048]
       dropout_p: 0.4
