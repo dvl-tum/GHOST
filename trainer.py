@@ -65,9 +65,12 @@ class Trainer():
             self.graph_generator = net.GraphGenerator(self.device, **self.config['graph_params'])
             
             self.evaluator = Evaluator(**self.config['eval_params'])
-
-            param_groups = [{'params': list(set(self.encoder.parameters())) +
-                                       list(set(self.gnn.parameters())),
+            
+            #for param in self.encoder.parameters():
+            #    param.requires_grad = False
+            params = list(self.gnn.parameters()) + list(self.encoder.parameters())
+            # list(set(self.encoder.parameters())) + list(set(self.gnn.parameters()))
+            param_groups = [{'params': params,
                              'lr': self.config['train_params']['lr']}]
 
             self.opt = RAdam(param_groups,
@@ -239,10 +242,17 @@ class Trainer():
         if not self.config['mode'] == 'pretraining':
             
             if self.gnn_loss:
+                #print("Next Batch")
+                #print(torch.argmax(probs, dim=1), Y)
+                #print(fc7)
                 edge_attr, edge_index, fc7 = self.graph_generator.get_graph(fc7)
+                #print(fc7)
                 pred, feats = self.gnn(fc7, edge_index, edge_attr)
-
+                
                 loss1 = self.gnn_loss(pred, Y)
+                #print(torch.argmax(pred, dim =1), Y)
+                print(loss1)
+
                 loss += train_params['loss_fn']['scaling_gnn'] * loss1
                 self.losses['GNN'].append(loss1.item())
 

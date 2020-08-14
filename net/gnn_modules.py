@@ -107,7 +107,7 @@ class GNNReID(nn.Module):
 
         if self.params['use_node_encoder']:
             feats = self.node_encoder(feats)
-
+        #print(feats)
         feats, _, _ = self.gnn_model(feats, edge_index, edge_attr)
 
         if (torch.isnan(feats) == True).any().item():
@@ -115,6 +115,9 @@ class GNNReID(nn.Module):
             print(feats)
 
         x = self.classifier(feats)
+        #print("classified")
+        #print(x)
+        
         if (torch.isnan(x) == True).any().item():
             print(111)
             print(x)
@@ -161,6 +164,8 @@ class GNN(nn.Module):
     def forward(self, feats, edge_index, edge_attr=None):
         feats, edge_index, edge_attr = self.multi_att(feats, edge_index,
                                                       edge_attr)
+        #print("After attention")
+        #print(feats)
         return feats, edge_index, edge_attr
 
 
@@ -197,10 +202,13 @@ class DotAttentionLayer(nn.Module):
         self.fc = MLP(embed_dim, fc_dims=[embed_dim*4, embed_dim]) if gnn_params['mlp'] else None
 
     def forward(self, feats, egde_index, edge_attr):
-
+        #print("IN ATTENTION")
         feats2 = self.layer_norm1(feats) if self.layer_norm1 is not None else feats
+        #print(feats)
+        
         feats2, egde_index, edge_attr = self.multi_att(feats2, egde_index,
                                                        edge_attr)
+        #print("AFTER ATTENTION")
         feats = feats + self.dropout1(feats2) if self.res1 else self.dropout1(feats2)
         feats2 = self.layer_norm2(feats) if self.layer_norm2 is not None else feats
         feats2 = self.fc(feats2) if self.fc is not None else feats2
@@ -232,6 +240,7 @@ class MultiHeadDotProduct(nn.Module):
         self.q_linear = LinearFun(embed_dim+edge_dim, embed_dim+edge_dim)
         self.v_linear = LinearFun(embed_dim, embed_dim)
         self.k_linear = LinearFun(embed_dim, embed_dim)
+        self.act = nn.ReLU()
 
         self.dropout = nn.Dropout(dropout)
 
@@ -242,6 +251,7 @@ class MultiHeadDotProduct(nn.Module):
 
     def forward(self, feats: torch.tensor, edge_index: torch.tensor,
                 edge_attr: torch.tensor):
+        
         q = k = v = feats
         bs = q.size(0)
 
@@ -249,6 +259,10 @@ class MultiHeadDotProduct(nn.Module):
         k = self.k_linear(k).view(bs, self.num_heads, self.head_dim).transpose(0, 1)
         q = self.q_linear(q).view(bs, self.num_heads, self.head_dim).transpose(0, 1)
         v = self.v_linear(v).view(bs, self.num_heads, self.head_dim).transpose(0, 1)
+        #k = k.view(bs, self.num_heads, self.head_dim).transpose(0, 1)
+        #q = q.view(bs, self.num_heads, self.head_dim).transpose(0, 1)
+        #v = v.view(bs, self.num_heads, self.head_dim).transpose(0, 1)
+
 
         # perform multihead attention
         out = self._attention(q, k, v, self.head_dim, dropout=self.dropout,
@@ -274,21 +288,21 @@ class MultiHeadDotProduct(nn.Module):
                    edge_attr=None, bs=None):
         row, col = edge_index[:, 0], edge_index[:, 1]
         e = edge_index.shape[0]
-
+        #print(q, k, v)
         # TODO: Edge attributes
         # # H x edge_index.shape(0) x 1
-        scores = torch.bmm(
-            q.index_select(1, col).view(self.num_heads * e, head_dim).unsqueeze(dim=-2),
-            k.index_select(1, row).view(self.num_heads * e, head_dim).unsqueeze(
-                dim=-1)).view(self.num_heads, e, 1) / math.sqrt(head_dim)
-
+        scores = torch.matmul(
+            q.index_select(1, col).unsqueeze(dim=-2), k.index_select(1, row).unsqueeze(dim=-1)).view(self.num_heads, e, 1) / math.sqrt(head_dim)
         if (torch.isnan(scores) == True).any().item():
             print(243)
             print(scores)
             print(torch.max(scores, dim=-1))
 
         scores_before = scores
+        #print(scores)
         scores = softmax(scores, col, 1, bs)
+        #print("After softmax")
+        #print(scores)
 
         if (torch.isnan(scores) == True).any().item():
             print(249)
@@ -440,6 +454,17 @@ class MultiHeadMLP(nn.Module):
 
 def softmax(src, index, dim, dim_size):
     src = src - scatter_max(src.float(), index, dim=dim, dim_size=dim_size)[0].index_select(dim, index)
+    #print([src[0][i].item() for i in range(src[0].shape[0]) if index[0] == index[i]], sum([src[0][i].item() for i in range(src[0].shape[0]) if index[0] == index[i]]), index[0])
+
+    #print(scatter_max(src.float(), index, dim=dim, dim_size=dim_size)[0][0][index[0]], max([src[0][i].item() for i in range(src[0].shape[0]) if index[0] == index[i]]))
+    
+    #print((torch.tensor([src[0][i].item() for i in range(src[0].shape[0]) if index[0] == index[i]]).to('cuda:0') - scatter_max(src.float(), index, dim=dim, dim_size=dim_size)[0][0][index[0]]))
+    
+    #print(torch.exp(torch.tensor([src[0][i].item() for i in range(src[0].shape[0]) if index[0] == index[i]]).to('cuda:0') - scatter_max(src.float(), index, dim=dim, dim_size=dim_size)[0][0][index[0]]))
+    
+    #print(torch.sum(torch.exp(torch.tensor([src[0][i].item() for i in range(src[0].shape[0]) if index[0] == index[i]]).to('cuda:0') - scatter_max(src.float(), index, dim=dim, dim_size=dim_size)[0][0][index[0]])))
+
+    #print(torch.exp(torch.tensor([src[0][i].item() for i in range(src[0].shape[0]) if index[0] == index[i]]).to('cuda:0') - scatter_max(src.float(), index, dim=dim, dim_size=dim_size)[0][0][index[0]]) / torch.sum(torch.exp(torch.tensor([src[0][i].item() for i in range(src[0].shape[0]) if index[0] == index[i]]).to('cuda:0') - scatter_max(src.float(), index, dim=dim, dim_size=dim_size)[0][0][index[0]])))
     denom = scatter_add(torch.exp(src), index, dim=dim, dim_size=dim_size)
     out = torch.exp(src) / denom.index_select(dim, index)
 
