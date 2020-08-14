@@ -62,10 +62,10 @@ class Trainer():
             """self.gnn = net.GNNReID(self.device, self.config['models']['gnn_params'], sz_embed).to(
                 self.device)"""
             self.gnn = net.TransformerEncoder(d_embed=2048,
-                                              nhead=self.config['models']['gnn_params']['num_heads'],
-                                              num_layers=self.config['models']['gnn_params']['num_layers'],
+                                              nhead=self.config['models']['gnn_params']['gnn']['num_heads'],
+                                              num_layers=self.config['models']['gnn_params']['gnn']['num_layers'],
                                               neck=0,
-                                              num_classes=self.config['dataset']['num_classes'])
+                                              num_classes=self.config['dataset']['num_classes']).to(self.device)
 
             self.graph_generator = net.GraphGenerator(self.device, **self.config['graph_params'])
             
@@ -257,7 +257,7 @@ class Trainer():
                 
                 loss1 = self.gnn_loss(pred, Y)
                 #print(torch.argmax(pred, dim =1), Y)
-                print(loss1)
+                #print(loss1)
 
                 loss += train_params['loss_fn']['scaling_gnn'] * loss1
                 self.losses['GNN'].append(loss1.item())

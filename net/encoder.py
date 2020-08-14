@@ -10,6 +10,7 @@ import math
 class TransformerEncoder(nn.Module):
     def __init__(self, d_embed, nhead, num_layers, neck, num_classes):
         super(TransformerEncoder, self).__init__()
+        print("TRANSFORMER")
         encoder_layer = TransformerEncoderLayer(d_embed=d_embed, nhead=nhead)
         self.layers = ModuleList(
             [copy.deepcopy(encoder_layer) for i in range(num_layers)])

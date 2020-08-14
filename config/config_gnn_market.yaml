@@ -1,4 +1,4 @@
-mode: "hyper_search" #train/test/hyper_search/pretraining
+mode: "train" #train/test/hyper_search/pretraining
 
 models:
   encoder_params:
