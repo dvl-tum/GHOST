@@ -18,18 +18,16 @@ models:
     gnn:
       num_layers: 1
       aggregator: "add"
-      jumping_knowledge: 0
       num_heads: 4
       attention: "dot" #"dot_pygeo"
-      mlp: 0
-      norm1: 0
+      mlp: 1
+      dropout_mlp: 0.4
+      norm1: 1
       norm2: 1
-      mult_edge_weight: 0
-      gcn_norm: 0
-      res1: 0
-      res2: 0
-      dropout_p1: 0.4
-      dropout_p2: 0
+      res1: 1
+      res2: 1
+      dropout_1: 0.4
+      dropout_2: 0.4
     edge:
       fc_dims: [2048]
       dropout_p: 0.4
@@ -43,7 +41,7 @@ models:
       dropout_p: 0.4
       use_batchnorm: 0
     classifier:
-      fc_dims: [751]
+      neck: [751]
       dropout_p: 0.4
       use_batchnorm: 0
 
