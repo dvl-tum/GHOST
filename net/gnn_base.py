@@ -198,10 +198,10 @@ class DotAttentionLayer(nn.Module):
         self.act = F.relu
 
     def forward(self, feats, egde_index, edge_attr):
-        feats, egde_index, edge_attr = self.att(feats, egde_index, edge_attr)
-        feats2 = self.norm1(feats) if self.norm1 is not None else feats
+        feats2, egde_index, edge_attr = self.att(feats, egde_index, edge_attr)
         feats2 = self.dropout1(feats2)
         feats = feats + feats2 if self.res1 else feats2
+        feats = self.norm1(feats) if self.norm1 is not None else feats
 
         if self.mlp:
             feats2 = self.linear2(self.dropout(self.act(self.linear1(feats))))

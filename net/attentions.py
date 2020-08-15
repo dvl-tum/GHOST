@@ -76,7 +76,7 @@ class MultiHeadDotProduct(nn.Module):
         nn.init.xavier_uniform_(self.k_linear.weight)
         nn.init.constant_(self.k_linear.bias, 0.)
 
-        nn.init.xavier_uniform_(self.out.weight)
+        #nn.init.xavier_uniform_(self.out.weight)
         nn.init.constant_(self.out.bias, 0.)
 
 
