@@ -253,7 +253,7 @@ class Trainer():
                 #print(fc7)
                 edge_attr, edge_index, fc7 = self.graph_generator.get_graph(fc7)
                 #print(fc7)
-                pred, feats = self.gnn(fc7, edge_index, edge_attr)
+                pred, feats = self.gnn(fc7, edge_index, edge_attr, train_params['output_train'])
                 #pred, feats = self.gnn(fc7, train_params['output_train'])
                 
                 loss1 = self.gnn_loss(pred, Y)
