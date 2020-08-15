@@ -225,7 +225,7 @@ class Trainer():
         self.opt.zero_grad()
         if self.center:
             self.opt_center.zero_grad()
-        probs, fc7 = self.encoder(x.to(self.device),
+        probs, fc7, student_feats = self.encoder(x.to(self.device),
                                   output_option=train_params['output_train'])
 
         # Add feature vectors to dict if distance sampling
@@ -276,10 +276,10 @@ class Trainer():
 
             # Compute MSE regularization
             if self.of:
-                p = copy.deepcopy(feats).requires_grad_(False)
-                of_reg = self.of(fc7, feats)
+                p = feats.detach()
+                of_reg = self.of(student_feats, p)
                 loss += train_params['loss_fn']['scaling_of'] * of_reg
-                losses['OF'].append(of_reg.item())
+                self.losses['OF'].append(of_reg.item())
             self.losses['Total Loss'].append(loss.item())
         else:
             # For pretraining just use acc as evaluation

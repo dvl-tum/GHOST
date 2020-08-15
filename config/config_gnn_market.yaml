@@ -71,12 +71,12 @@ train_params:
   temperatur: 70
   output_train: "norm"
   loss_fn:
-    fns: "lsce_gnn" #ce/focalce can be used instead of lsce and lsgnn/focalgnn instead of gnn, rest can be added by ce_gnn_center...
+    fns: "lsce_gnn_of" #ce/focalce can be used instead of lsce and lsgnn/focalgnn instead of gnn, rest can be added by ce_gnn_center...
     scaling_ce: 1
     scaling_gnn: 1
     scaling_center: 0.5
     scaling_triplet: 1
-    scaling_of: 1
+    scaling_of: 5
 
 eval_params:
   re_rank: 0
