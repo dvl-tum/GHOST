@@ -191,8 +191,9 @@ class Trainer():
                             for param in self.gnn.parameters():
                                 if torch.isnan(param).any():
                                     print(param)
-                                if torch.isnan(param.grad).any():
-                                    print(param, param.grad)
+                                if param.grad is not None:
+                                    if torch.isnan(param.grad).any():
+                                        print(param, param.grad)
 
                         if self.center:
                             for param in self.center.parameters():

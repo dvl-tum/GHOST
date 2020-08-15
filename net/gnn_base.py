@@ -59,7 +59,7 @@ class MetaLayer(torch.nn.Module):
 class GNNReID(nn.Module):
     def __init__(self, dev, params: dict = None, embed_dim: int = 2048):
         super(GNNReID, self).__init__()
-
+        num_classes = params['classifier']['num_classes']
         self.dev = dev
         self.params = params
         self.node_endocer_params = params['node_encoder']
@@ -79,14 +79,14 @@ class GNNReID(nn.Module):
         # classifier
         self.neck = params['classifier']['neck']
         if self.neck:
-            self.bottleneck = nn.BatchNorm1d(d_embed)
+            self.bottleneck = nn.BatchNorm1d(embed_dim)
             self.bottleneck.bias.requires_grad_(False)  # no shift
-            self.fc = nn.Linear(d_embed, num_classes, bias=False)
+            self.fc = nn.Linear(embed_dim, num_classes, bias=False)
 
             self.bottleneck.apply(weights_init_kaiming)
             self.fc.apply(weights_init_classifier)
         else:
-            self.fc = nn.Linear(d_embed, num_classes)
+            self.fc = nn.Linear(embed_dim, num_classes)
 
     def _build_GNN_Net(self, embed_dim: int = 2048):
 
@@ -162,7 +162,7 @@ class GNNReID(nn.Module):
 
 
 class DotAttentionLayer(nn.Module):
-    def __init__(self, embed_dim, aggr, dev, edge_dim, params):
+    def __init__(self, embed_dim, aggr, dev, edge_dim, params, d_hid=None):
         super(DotAttentionLayer, self).__init__()
         num_heads = params['num_heads']
         self.res1 = params['res1']
@@ -170,7 +170,7 @@ class DotAttentionLayer(nn.Module):
 
         # try AttentionLayerDot
         if params['attention'] == "dot":
-            self.att = MultiHeadDotProduct(embed_dim, num_heads, aggr, dev,
+            self.att = MultiHeadDotProduct(embed_dim, num_heads, aggr,
                                            edge_dim)
         elif params['attention'] == "dot_pygeo":
             self.att = AttentionLayerDot(embed_dim, num_heads)
@@ -183,7 +183,7 @@ class DotAttentionLayer(nn.Module):
                 "Invalid attention option {}. Please choose from dot/dot_pygeo/mlp".format(
                     self.params['attention']))
 
-        d_hid = 4 * d_embed if d_hid is None else d_hid
+        d_hid = 4 * embed_dim if d_hid is None else d_hid
         self.mlp = params['mlp']
 
         self.linear1 = nn.Linear(embed_dim, d_hid) if params['mlp'] else None
@@ -192,7 +192,7 @@ class DotAttentionLayer(nn.Module):
 
         self.norm1 = LayerNorm(embed_dim) if params['norm1'] else None
         self.norm2 = LayerNorm(embed_dim) if params['norm2'] else None
-        self.dropout2 = nn.Dropout(params['dropout_1'])
+        self.dropout1 = nn.Dropout(params['dropout_1'])
         self.dropout2 = nn.Dropout(params['dropout_2'])
 
         self.act = F.relu

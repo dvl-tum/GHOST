@@ -1,5 +1,7 @@
 from .utils import *
 from torch import nn
+import torch
+import math
 
 
 class MultiHeadDotProduct(nn.Module):

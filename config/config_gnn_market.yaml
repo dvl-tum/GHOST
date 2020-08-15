@@ -41,7 +41,8 @@ models:
       dropout_p: 0.4
       use_batchnorm: 0
     classifier:
-      neck: [751]
+      neck: 1
+      num_classes: 751
       dropout_p: 0.4
       use_batchnorm: 0
 
