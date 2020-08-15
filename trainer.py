@@ -61,11 +61,12 @@ class Trainer():
 
             self.gnn = net.GNNReID(self.device, self.config['models']['gnn_params'], sz_embed).to(
                 self.device)
+
             """self.gnn = net.TransformerEncoder(d_embed=2048,
-                                              nhead=self.config['models']['gnn_params']['num_heads'],
-                                              num_layers=self.config['models']['gnn_params']['num_layers'],
+                                              nhead=self.config['models']['gnn_params']['gnn']['num_heads'],
+                                              num_layers=self.config['models']['gnn_params']['gnn']['num_layers'],
                                               neck=0,
-                                              num_classes=self.config['dataset']['num_classes'])"""
+                                              num_classes=self.config['dataset']['num_classes']).to(self.device)"""
 
             self.graph_generator = net.GraphGenerator(self.device, **self.config['graph_params'])
             
@@ -225,7 +226,7 @@ class Trainer():
         self.opt.zero_grad()
         if self.center:
             self.opt_center.zero_grad()
-        probs, fc7 = self.encoder(x.to(self.device),
+        probs, fc7, student_feats = self.encoder(x.to(self.device),
                                   output_option=train_params['output_train'])
 
         # Add feature vectors to dict if distance sampling
@@ -257,7 +258,7 @@ class Trainer():
                 
                 loss1 = self.gnn_loss(pred, Y)
                 #print(torch.argmax(pred, dim =1), Y)
-                print(loss1)
+                #print(loss1)
 
                 loss += train_params['loss_fn']['scaling_gnn'] * loss1
                 self.losses['GNN'].append(loss1.item())
@@ -276,10 +277,10 @@ class Trainer():
 
             # Compute MSE regularization
             if self.of:
-                p = copy.deepcopy(feats).requires_grad_(False)
-                of_reg = self.of(fc7, feats)
+                p = feats.detach()
+                of_reg = self.of(student_feats, p)
                 loss += train_params['loss_fn']['scaling_of'] * of_reg
-                losses['OF'].append(of_reg.item())
+                self.losses['OF'].append(of_reg.item())
             self.losses['Total Loss'].append(loss.item())
         else:
             # For pretraining just use acc as evaluation

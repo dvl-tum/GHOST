@@ -188,6 +188,15 @@ class ResNet(nn.Module):
             self.fc.apply(weights_init_classifier)
         else:
             self.fc = nn.Linear(512 * block.expansion, num_classes)
+        
+        # student blocks
+        d_embed = 512 * block.expansion
+        d_hid = 4 * d_embed
+        dropout = 0.4
+        self.linear1 = nn.Linear(d_embed, d_hid)
+        self.dropout = nn.Dropout(dropout)
+        self.linear2 = nn.Linear(d_hid, d_embed)
+        self.activation = F.relu 
 
         for m in self.modules():
             if isinstance(m, nn.Conv2d):
@@ -243,24 +252,27 @@ class ResNet(nn.Module):
 
         x = self.avgpool(x)
         fc7 = torch.flatten(x, 1)
+        
+        # student
+        feats = self.linear2(self.dropout(self.activation(self.linear1(fc7))))
 
         if self.neck:
-            feat = self.bottleneck(fc7)
+            feats_after = self.bottleneck(feats)
         else:
-            feat = fc7
-
-        x = self.fc(feat)
+            feats_after = feats
+        
+        x = self.fc(feats_after)
 
         if output_option == 'norm':
-            return x, fc7
+            return x, fc7, feats
         elif output_option == 'plain':
-            return x, F.normalize(fc7, p=2, dim=1)
+            return x, F.normalize(fc7, p=2, dim=1), F.normalize(feats, p=2, dim=1)
         elif output_option == 'neck' and self.neck:
-            return x, feat
+            return x, fc7, feats_after
         elif output_option == 'neck' and not self.neck:
             print("Output option neck only avaiable if bottleneck (neck) is "
                   "enabeled - giving back x and fc7")
-            return x, fc7
+            return x, fc7, feats
 
     # Allow for accessing forward method in a inherited class
     forward = _forward
