@@ -29,7 +29,7 @@ class Evaluator():
         with torch.no_grad():
             for X, Y, P in dataloader:
                 if torch.cuda.is_available(): X = X.cuda()
-                _, fc7 = model(X, output_option=self.output_test)
+                _, _, fc7 = model(X, output_option=self.output_test)
                 for path, out, y in zip(P, fc7, Y):
                     features[path] = out
                     labels[path] = y
