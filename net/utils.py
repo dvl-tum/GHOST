@@ -57,7 +57,7 @@ class LayerNorm(nn.Module):
         x = x.view(shape)
 
         x = (x - x.mean(dim=-1, keepdim=True)) / (
-                    x.std(dim=-1, keepdim=True) + self.eps)
+                    torch.sqrt(x.var(unbiased=False, dim=-1, keepdim=True) + self.eps))
 
         x = x.view(init_shape)
 
