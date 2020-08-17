@@ -32,38 +32,38 @@ class CombineSampler(Sampler):
 
         # add elements till every class has the same num of obs
         # np.random.choice(idxs, size=self.num_instances, replace=True)
-        for inds in l_inds:
-            choose = copy.deepcopy(inds)
-            while len(inds) < self.max:
-                inds += [random.choice(choose)]
-        print("NEW MAX")
+        #for inds in l_inds:
+        #    choose = copy.deepcopy(inds)
+        #    while len(inds) < self.max:
+        #        inds += [random.choice(choose)]
+        #print("NEW MAX")
 
         #for inds in l_inds:
         #    n_els = self.max - len(inds) + 1  # take out 1?
         #    inds.extend(inds[:n_els])  # max + 1
         #print("OLD MAX")
 
-        #for inds in l_inds:
-        #    choose = copy.deepcopy(inds)
-        #    while len(inds) < self.n_cl:
-        #        inds += [random.choice(choose)]
-        #print("Num samples")
+        for inds in l_inds:
+            choose = copy.deepcopy(inds)
+            while len(inds) < self.n_cl:
+                inds += [random.choice(choose)]
+        print("Num samples")
 
         # split lists of a class every n_cl elements
         split_list_of_indices = []
         for inds in l_inds:
+            inds = inds + np.random.choice(inds, size=(len(inds) // self.n_cl + 1)*self.n_cl - len(inds), replace=False).tolist()
             # drop the last < n_cl elements
             while len(inds) >= self.n_cl:
                 split_list_of_indices.append(inds[:self.n_cl])
-                inds = inds[self.n_cl:]
-
+                inds = inds[self.n_cl:] 
+            assert len(inds) == 0
         # shuffle the order of classes --> Could it be that same class appears twice in one batch?
         random.shuffle(split_list_of_indices)
         if len(split_list_of_indices) % self.cl_b != 0:
-            b = np.random.choice(np.arange(len(split_list_of_indices)), size=len(split_list_of_indices) % self.cl_b, replace=False).tolist()
-
+            b = np.random.choice(np.arange(len(split_list_of_indices)), size=self.cl_b - len(split_list_of_indices) % self.cl_b, replace=False).tolist()
             [split_list_of_indices.append(split_list_of_indices[m]) for m in b]
-
+        
         self.flat_list = [item for sublist in split_list_of_indices for item in sublist]
         return iter(self.flat_list)
 

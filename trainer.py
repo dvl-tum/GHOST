@@ -146,14 +146,14 @@ class Trainer():
             if not self.config['mode'] == 'test':
                 logger.info(
                     'Epoch {}/{}'.format(e, train_params['num_epochs']))
-                if e == 1131:
+                if e == 31:
                     print("reduces Learning rate")
                     self.encoder.load_state_dict(torch.load(
                         osp.join(self.save_folder_nets, self.fn + '.pth')))
                     for g in self.opt.param_groups:
                         g['lr'] = train_params['lr'] / 10.
 
-                if e == 1161:
+                if e == 61:
                     print("reduces Learning rate")
                     self.encoder.load_state_dict(torch.load(
                         osp.join(self.save_folder_nets, self.fn + '.pth')))
