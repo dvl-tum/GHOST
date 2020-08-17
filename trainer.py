@@ -306,7 +306,6 @@ class Trainer():
         if not self.config['mode'] == 'pretraining':
             with torch.no_grad():
                 logger.info('EVALUATION')
-
                 if self.config['mode'] != 'gnn':
                     mAP, top = self.evaluator.evaluate_reid(self.encoder, self.dl_ev,
                             self.query, gallery=self.gallery)

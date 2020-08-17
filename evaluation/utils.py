@@ -1,5 +1,9 @@
 from . import calc_mean_average_precision
 import torch
+import logging
+
+logger = logging.getLogger('GNNReID.Evaluator')
+
 
 class Evaluator():
     def __init__(self, lamb, k1, k2, output_test='norm',
@@ -17,9 +21,12 @@ class Evaluator():
         if not gnn:
             _, _, features, _ = self.predict_batchwise_reid(model, dataloader)
         else:
+            gnn_is_training = gnn.training
+            gnn.eval()
             _, _, features, _ = self.predict_batchwise_gnn(model, gnn,
                                                            graph_generator,
                                                            dataloader)
+            gnn.train(gnn_is_training)
         mAP, cmc = calc_mean_average_precision(features, query, gallery,
                                                self.re_rank, self.lamb,
                                                self.k1, self.k2)
@@ -48,9 +55,7 @@ class Evaluator():
         fc7s, L = [], []
         features = dict()
         labels = dict()
-
         with torch.no_grad():
-            i = 0
             for X, Y, P in dataloader:
                 if torch.cuda.is_available(): X = X.cuda()
                 _, _, fc7 = model(X, output_option=self.output_test)
@@ -60,8 +65,6 @@ class Evaluator():
                 for path, out, y in zip(P, fc7, Y):
                     features[path] = out
                     labels[path] = y
-                print("batch {}/{}".format(i, len(dataloader)))
-                i += 1
                 fc7s.append(fc7.cpu())
                 L.append(Y)
         fc7, Y = torch.cat(fc7s), torch.cat(L)
