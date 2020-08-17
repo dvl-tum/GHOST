@@ -55,8 +55,15 @@ def load_net(dataset, nb_classes, mode, net_type, bn_inception={'embed': 0, 'sz_
                 model.fc = nn.Linear(2048, nb_classes)
 
         if not mode  == 'pretraining' and pretrained_path != 'no':
-            print(pretrained_path)
-            model.load_state_dict(torch.load(pretrained_path))
+            no_load = ["linear1.weight", "linear1.bias", "linear2.weight", "linear2.bias",
+                        "bottleneck.weight", "bottleneck.bias", "bottleneck.running_mean",
+                        "bottleneck.running_var", "bottleneck.num_batches_tracked", "fc.weight"]
+            no_load = []
+            load_dict = {k: v for k, v in torch.load(pretrained_path).items() if k not in no_load}
+            model_dict = model.state_dict()
+            model_dict.update(load_dict)
+            model.load_state_dict(model_dict)
+            #model.load_state_dict(torch.load(pretrained_path))
 
     elif net_type == 'resnet101':
         sz_embed = 2048

@@ -69,11 +69,21 @@ class Trainer():
                                               num_classes=self.config['dataset']['num_classes']).to(self.device)"""
 
             self.graph_generator = net.GraphGenerator(self.device, **self.config['graph_params'])
-            
+             
             self.evaluator = Evaluator(**self.config['eval_params'])
             
-            #for param in self.encoder.parameters():
-            #    param.requires_grad = False
+            '''update_list = ["linear1.weight", "linear1.bias", "linear2.weight", "linear2.bias",
+                        "bottleneck.weight", "bottleneck.bias", "bottleneck.running_mean",
+                        "bottleneck.running_var", "bottleneck.num_batches_tracked", "fc.weight"]
+            update_list = []
+
+            for name, param in self.encoder.named_parameters():
+                if name not in update_list:
+                    param.requires_grad=False
+
+            for param in self.gnn.parameters():
+                param.requires_gras=False'''
+
             params = list(self.gnn.parameters()) + list(self.encoder.parameters())
             # list(set(self.encoder.parameters())) + list(set(self.gnn.parameters()))
             param_groups = [{'params': params,
@@ -248,7 +258,7 @@ class Trainer():
         # Add other losses of not pretraining
         if not self.config['mode'] == 'pretraining':
             
-            if self.gnn_loss:
+            if self.gnn_loss or self.of:
                 #print("Next Batch")
                 #print(torch.argmax(probs, dim=1), Y)
                 #print(fc7)
@@ -256,13 +266,13 @@ class Trainer():
                 #print(fc7)
                 pred, feats = self.gnn(fc7, edge_index, edge_attr, train_params['output_train'])
                 #pred, feats = self.gnn(fc7, train_params['output_train'])
-                
-                loss1 = self.gnn_loss(pred, Y)
-                #print(torch.argmax(pred, dim =1), Y)
-                #print(loss1)
+                if self.gnn_loss:
+                    loss1 = self.gnn_loss(pred, Y)
+                    #print(torch.argmax(pred, dim =1), Y)
+                    #print(loss1)
 
-                loss += train_params['loss_fn']['scaling_gnn'] * loss1
-                self.losses['GNN'].append(loss1.item())
+                    loss += train_params['loss_fn']['scaling_gnn'] * loss1
+                    self.losses['GNN'].append(loss1.item())
 
             # Compute center loss
             if self.center:
