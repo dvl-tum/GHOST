@@ -10,11 +10,16 @@ class Evaluator():
         self.output_test = output_test
         self.re_rank = re_rank
 
-    def evaluate_reid(self, model, dataloader, query=None, gallery=None):
+    def evaluate_reid(self, model, dataloader, gnn=None, graph_generator=None,
+                      query=None, gallery=None):
         model_is_training = model.training
         model.eval()
-
-        _, _, features, _ = self.predict_batchwise_reid(model, dataloader)
+        if not gnn:
+            _, _, features, _ = self.predict_batchwise_reid(model, dataloader)
+        else:
+            _, _, features, _ = self.predict_batchwise_gnn(model, gnn,
+                                                           graph_generator,
+                                                           dataloader)
         mAP, cmc = calc_mean_average_precision(features, query, gallery,
                                                self.re_rank, self.lamb,
                                                self.k1, self.k2)
@@ -30,6 +35,27 @@ class Evaluator():
             for X, Y, P in dataloader:
                 if torch.cuda.is_available(): X = X.cuda()
                 _, _, fc7 = model(X, output_option=self.output_test)
+                for path, out, y in zip(P, fc7, Y):
+                    features[path] = out
+                    labels[path] = y
+                fc7s.append(fc7.cpu())
+                L.append(Y)
+        fc7, Y = torch.cat(fc7s), torch.cat(L)
+
+        return torch.squeeze(fc7), torch.squeeze(Y), features, labels
+
+    def predict_batchwise_gnn(self, model, gnn, graph_generator, dataloader):
+        fc7s, L = [], []
+        features = dict()
+        labels = dict()
+
+        with torch.no_grad():
+            for X, Y, P in dataloader:
+                if torch.cuda.is_available(): X = X.cuda()
+                _, _, fc7 = model(X, output_option=self.output_test)
+                edge_attr, edge_index, fc7 = graph_generator.get_graph(fc7)
+                _, fc7 = gnn(fc7, edge_index, edge_attr,
+                             output_option=self.output_test)
                 for path, out, y in zip(P, fc7, Y):
                     features[path] = out
                     labels[path] = y

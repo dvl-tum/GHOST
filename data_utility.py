@@ -127,6 +127,7 @@ def create_loaders(data_root, num_workers, size_batch, num_classes_iter=None,
     if pretraining:
         return dl_tr
 
+
     if mode != 'all':
         dataset_ev = dataset.Birds(
                 root=data_root,
@@ -143,13 +144,47 @@ def create_loaders(data_root, num_workers, size_batch, num_classes_iter=None,
             eval_reid=True
         )
 
-    dl_ev = torch.utils.data.DataLoader(
-        dataset_ev,
-        batch_size=50,
-        shuffle=False,
-        num_workers=1,
-        pin_memory=True
-    )
+    if mode == 'gnn':
+        ddict = defaultdict(list)
+        for idx, label in enumerate(dataset_ev.ys):
+            ddict[label].append(idx)
+
+        list_of_indices_for_each_class = []
+        for key in ddict:
+            list_of_indices_for_each_class.append(ddict[key])
+
+        if distance_sampler == 'orig_pre' or distance_sampler == 'orig_pre_soft' or distance_sampler == 'orig_only' or distance_sampler == 'orig_alternating':
+            print(distance_sampler)
+            sampler = DistanceSamplerOrig(num_classes_iter, num_elements_class,
+                                          ddict, distance_sampler, m)
+            drop_last = True
+        elif distance_sampler == 'pre' or distance_sampler == 'pre_soft' or distance_sampler == 'only' or distance_sampler == 'alternating':
+            print(distance_sampler)
+            sampler = DistanceSampler(num_classes_iter, num_elements_class,
+                                      ddict, distance_sampler, m)
+            drop_last = True
+        else:
+            sampler = CombineSampler(list_of_indices_for_each_class,
+                                     num_classes_iter, num_elements_class)
+            drop_last = True
+
+        dl_ev = torch.utils.data.DataLoader(
+            dataset_ev,
+            batch_size=size_batch,
+            shuffle=False,
+            sampler=sampler,
+            num_workers=num_workers,
+            drop_last=drop_last,
+            pin_memory=True
+        )
+    else:
+        dl_ev = torch.utils.data.DataLoader(
+            dataset_ev,
+            batch_size=50,
+            shuffle=False,
+            num_workers=1,
+            pin_memory=True
+        )
 
     return dl_tr, dl_ev, query, gallery
 

@@ -306,8 +306,14 @@ class Trainer():
         if not self.config['mode'] == 'pretraining':
             with torch.no_grad():
                 logger.info('EVALUATION')
-                mAP, top = self.evaluator.evaluate_reid(self.encoder, self.dl_ev,
-                        self.query, gallery=self.gallery)
+
+                if self.config['mode'] != 'gnn':
+                    mAP, top = self.evaluator.evaluate_reid(self.encoder, self.dl_ev,
+                            self.query, gallery=self.gallery)
+                else:
+                    mAP, top = self.evaluator.evaluate_reid(self.encoder,
+                                                            self.dl_ev, self.gnn,
+                                                            self.graph_generator)
 
                 logger.info('Mean AP: {:4.1%}'.format(mAP))
 
@@ -552,6 +558,6 @@ class Trainer():
             self.dl_tr = data_utility.create_loaders(size_batch=64,
                                                      data_root=self.args.cub_root,
                                                      num_workers=self.args.nb_workers,
-                                                     mode=self.args.mode,
+                                                     mode=mode,
                                                      trans=self.args.trans,
                                                      pretraining=self.args.pretraining)
