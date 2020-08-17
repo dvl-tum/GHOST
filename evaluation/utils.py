@@ -10,8 +10,8 @@ class Evaluator():
         self.output_test = output_test
         self.re_rank = re_rank
 
-    def evaluate_reid(self, model, dataloader, gnn=None, graph_generator=None,
-                      query=None, gallery=None):
+    def evaluate_reid(self, model, dataloader, query=None, gallery=None, 
+            gnn=None, graph_generator=None):
         model_is_training = model.training
         model.eval()
         if not gnn:
@@ -50,6 +50,7 @@ class Evaluator():
         labels = dict()
 
         with torch.no_grad():
+            i = 0
             for X, Y, P in dataloader:
                 if torch.cuda.is_available(): X = X.cuda()
                 _, _, fc7 = model(X, output_option=self.output_test)
@@ -59,6 +60,8 @@ class Evaluator():
                 for path, out, y in zip(P, fc7, Y):
                     features[path] = out
                     labels[path] = y
+                print("batch {}/{}".format(i, len(dataloader)))
+                i += 1
                 fc7s.append(fc7.cpu())
                 L.append(Y)
         fc7, Y = torch.cat(fc7s), torch.cat(L)

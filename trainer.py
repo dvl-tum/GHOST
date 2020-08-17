@@ -311,9 +311,8 @@ class Trainer():
                     mAP, top = self.evaluator.evaluate_reid(self.encoder, self.dl_ev,
                             self.query, gallery=self.gallery)
                 else:
-                    mAP, top = self.evaluator.evaluate_reid(self.encoder,
-                                                            self.dl_ev, self.gnn,
-                                                            self.graph_generator)
+                    mAP, top = self.evaluator.evaluate_reid(self.encoder, self.dl_ev,
+                            self.query, self.gallery, self.gnn, self.graph_generator)
 
                 logger.info('Mean AP: {:4.1%}'.format(mAP))
 
