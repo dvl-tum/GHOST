@@ -65,7 +65,7 @@ train_params:
   num_elements_class: 7
   lr: 6.675128594588672e-05
   weight_decay: 4.1985936929920846e-12
-  num_epochs: 100
+  num_epochs: 30
   is_apex: 1
   temperatur: 70
   output_train: "norm"
