@@ -195,6 +195,7 @@ class ResNet(nn.Module):
         dropout = 0.4
         self.linear1 = nn.Linear(d_embed, d_hid)
         self.dropout = nn.Dropout(dropout)
+        #self.linear2 = nn.Linear(d_hid, d_hid)
         self.linear2 = nn.Linear(d_hid, d_embed)
         self.activation = F.relu 
 
@@ -255,7 +256,7 @@ class ResNet(nn.Module):
         
         # student
         feats = self.linear2(self.dropout(self.activation(self.linear1(fc7))))
-        feats = fc7
+        #feats = fc7
         if self.neck:
             feats_after = self.bottleneck(feats)
         else:

@@ -1,4 +1,4 @@
-mode: "train" #train/test/hyper_search/pretraining
+mode: "hyper_search" #train/test/hyper_search/pretraining
 
 models:
   encoder_params:
@@ -20,14 +20,14 @@ models:
       aggregator: "add"
       num_heads: 4
       attention: "dot" #"dot_pygeo"
-      mlp: 0
+      mlp: 1
       dropout_mlp: 0.1
       norm1: 1
-      norm2: 0
+      norm2: 1
       res1: 1
-      res2: 0
+      res2: 1
       dropout_1: 0.1
-      dropout_2: 0
+      dropout_2: 0.1
     edge:
       fc_dims: [2048]
       dropout_p: 0.4

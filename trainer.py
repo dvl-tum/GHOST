@@ -187,7 +187,8 @@ class Trainer():
                         # Check possible net divergence
                         if torch.isnan(loss):
                             logger.error("We have NaN numbers, closing\n\n\n")
-                            sys.exit(0)
+                            #sys.exit(0)
+                            return 0.0, self.encoder
 
                         # Backpropagation
                         if train_params['is_apex']:
@@ -500,7 +501,8 @@ class Trainer():
                   'num_classes_iter': random.randint(3, 15),
                   'num_elements_class': random.randint(5, 15),
                   'temperature': random.randint(10, 80),
-                  'num_epochs': 30}
+                  'num_epochs': 30, 
+                  'scaling_of': random.choice(range(1, 11))}
         self.config['train_params'].update(config)
 
     def get_data(self, config, train_params, mode):
