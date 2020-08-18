@@ -20,14 +20,14 @@ models:
       aggregator: "add"
       num_heads: 4
       attention: "dot" #"dot_pygeo"
-      mlp: 1
+      mlp: 0
       dropout_mlp: 0.1
       norm1: 1
-      norm2: 1
+      norm2: 0
       res1: 1
-      res2: 1
+      res2: 0
       dropout_1: 0.1
-      dropout_2: 0.1
+      dropout_2: 0
     edge:
       fc_dims: [2048]
       dropout_p: 0.4
@@ -75,7 +75,7 @@ train_params:
     scaling_gnn: 1
     scaling_center: 0.5
     scaling_triplet: 1
-    scaling_of: 1
+    scaling_of: 5
 
 eval_params:
   re_rank: 0
