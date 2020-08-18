@@ -190,13 +190,13 @@ class ResNet(nn.Module):
             self.fc = nn.Linear(512 * block.expansion, num_classes)
         
         # student blocks
-        '''d_embed = 512 * block.expansion
+        d_embed = 512 * block.expansion
         d_hid = 4 * d_embed
         dropout = 0.4
         self.linear1 = nn.Linear(d_embed, d_hid)
         self.dropout = nn.Dropout(dropout)
         self.linear2 = nn.Linear(d_hid, d_embed)
-        self.activation = F.relu''' 
+        self.activation = F.relu 
 
         for m in self.modules():
             if isinstance(m, nn.Conv2d):
@@ -254,7 +254,7 @@ class ResNet(nn.Module):
         fc7 = torch.flatten(x, 1)
         
         # student
-        #feats = self.linear2(self.dropout(self.activation(self.linear1(fc7))))
+        feats = self.linear2(self.dropout(self.activation(self.linear1(fc7))))
         feats = fc7
         if self.neck:
             feats_after = self.bottleneck(feats)
