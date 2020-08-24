@@ -45,7 +45,11 @@ class Trainer():
 
     def train(self):
         best_recall = 0
+        self.num_iter = 10
+        num_layers = list(range(9, 21))
         for i in range(self.num_iter):
+            print("Iter {}/{}".format(i+1, self.num_iter))
+            self.config['models']['gnn_params']['gnn']['num_layers'] = num_layers[i]
             logger.info('Search iteration {}'.format(i + 1))
             mode = self.get_save_name()
             self.update_params()
@@ -102,6 +106,7 @@ class Trainer():
 
             if torch.cuda.device_count() > 1:
                 self.encoder = nn.DataParallel(self.encoder)
+                #self.gnn = nn.DataParallel(self.gnn)
 
             self.get_data(self.config['dataset'], self.config['train_params'],
                           self.config['mode'])
@@ -118,6 +123,9 @@ class Trainer():
             if best_accuracy > best_recall and not self.config['mode'] == 'test':
                 os.rename(osp.join(self.save_folder_nets, self.fn + '.pth'),
                           str(best_accuracy) + mode + self.net_type + '_' +
+                          self.dataset_short + '.pth')
+                os.rename(osp.join(self.save_folder_nets, 'gnn_' + self.fn + '.pth'),
+                          str(best_accuracy) + 'gnn_' + mode + self.net_type + '_' +
                           self.dataset_short + '.pth')
                 best_recall = best_accuracy
                 best_hypers = ', '.join(
@@ -335,6 +343,9 @@ class Trainer():
                     torch.save(self.encoder.state_dict(),
                                osp.join(self.save_folder_nets,
                                         self.fn + '.pth'))
+                    torch.save(self.gnn.state_dict(), 
+                            osp.join(self.save_folder_nets,
+                                        'gnn_' + self.fn + '.pth'))
 
         else:
             logger.info(

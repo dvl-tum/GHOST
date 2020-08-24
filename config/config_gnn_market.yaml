@@ -1,8 +1,8 @@
-mode: "hyper_search" #train/test/hyper_search/pretraining
+mode: "gnn" #train/test/hyper_search/pretraining
 
 models:
   encoder_params:
-    pretrained_path: "pretrained_resnet_Market.pth"  # "pretrained_resenet_Market_with_Student_then_GNN.pth" #"pretrained_resnet_Market_with_student.pth" #"pretrained_resnet_Market.pth" # path to pretrained model
+    pretrained_path: "pretrained_resnet_Market.pth" #"0.6173059768064229resnet50_Market.pth"  # "pretrained_resenet_Market_with_Student_then_GNN.pth" #"pretrained_resnet_Market_with_student.pth" #"pretrained_resnet_Market.pth" # path to pretrained model
     net_type: "resnet50"
     neck: 1
     last_stride: 0
@@ -20,14 +20,14 @@ models:
       aggregator: "add"
       num_heads: 4
       attention: "dot" #"dot_pygeo"
-      mlp: 1
+      mlp: 0
       dropout_mlp: 0.1
       norm1: 1
-      norm2: 1
+      norm2: 0
       res1: 1
-      res2: 1
+      res2: 0
       dropout_1: 0.1
-      dropout_2: 0.1
+      dropout_2: 0
     edge:
       fc_dims: [2048]
       dropout_p: 0.4
@@ -70,7 +70,7 @@ train_params:
   temperatur: 70
   output_train: "norm"
   loss_fn:
-    fns: "gnn_of" #ce/focalce can be used instead of lsce and lsgnn/focalgnn instead of gnn, rest can be added by ce_gnn_center...
+    fns: "gnn" #ce/focalce can be used instead of lsce and lsgnn/focalgnn instead of gnn, rest can be added by ce_gnn_center...
     scaling_ce: 1
     scaling_gnn: 1
     scaling_center: 0.5

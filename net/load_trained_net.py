@@ -58,6 +58,7 @@ def load_net(dataset, nb_classes, mode, net_type, bn_inception={'embed': 0, 'sz_
             no_load = ["linear1.weight", "linear1.bias", "linear2.weight", "linear2.bias",
                         "bottleneck.weight", "bottleneck.bias", "bottleneck.running_mean",
                         "bottleneck.running_var", "bottleneck.num_batches_tracked", "fc.weight"]
+            no_load = ['fc.bias']
             no_load = []
             load_dict = {k: v for k, v in torch.load(pretrained_path).items() if k not in no_load}
             model_dict = model.state_dict()
