@@ -77,6 +77,7 @@ train_params:
     scaling_center: 0.5
     scaling_triplet: 1
     scaling_of: 5
+    scaling_distill: 1
 
 eval_params:
   re_rank: 0
