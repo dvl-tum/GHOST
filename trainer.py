@@ -19,6 +19,7 @@ from evaluation import Evaluator
 import utils.utils as utils
 import matplotlib.pyplot as plt
 import os
+import json
 #from torch import autograd
 #autograd.set_detect_anomaly(True)
 
@@ -277,7 +278,7 @@ class Trainer():
                 #print(fc7)
                 pred, feats = self.gnn(fc7, edge_index, edge_attr, train_params['output_train'])
                 for path,  pre in zip(I, pred):
-                    self.preds[path] = pre
+                    self.preds[path.item()] = pre.detach()
  
                 #pred, feats = self.gnn(fc7, train_params['output_train'])
                 if self.gnn_loss:
