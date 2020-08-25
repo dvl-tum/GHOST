@@ -19,6 +19,7 @@ from evaluation import Evaluator
 import utils.utils as utils
 import matplotlib.pyplot as plt
 import os
+import json
 #from torch import autograd
 #autograd.set_detect_anomaly(True)
 
@@ -306,7 +307,16 @@ class Trainer():
                 of_reg = self.of(student_feats, p)
                 loss += train_params['loss_fn']['scaling_of'] * of_reg
                 self.losses['OF'].append(of_reg.item())
+
+            # Compute MSE loss with soft targets = predictions of gnn
+            if self.distill:
+                target = torch.tensor([self.soft_targets[i.item()] for i in I])
+                distill = self.distill(probs, target)
+                loss += train_params['loss_fn']['scaling_distill'] * distill
+                self.losses['Distillation'].append(distill.item())
+
             self.losses['Total Loss'].append(loss.item())
+
         else:
             # For pretraining just use acc as evaluation
             _, preds = torch.max(probs, 1)
@@ -494,6 +504,14 @@ class Trainer():
             self.of = nn.MSELoss().to(self.device)
         else:
             self.of = None
+
+        if 'distill' in params['fns'].split('_'):
+            self.distill = nn.MSELoss().to(self.device)
+            with open('preds.json', 'r') as f:
+                self.soft_targets = json.load(f)
+            self.soft_targets = {k: torch.tensor(v) for k, v in self.soft_targets.items()}
+        else:
+            self.distill = None
 
     def get_save_name(self):
         if self.config['mode'] == 'pretraining':
