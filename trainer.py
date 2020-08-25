@@ -45,16 +45,16 @@ class Trainer():
 
     def train(self):
         best_recall = 0
-        self.num_iter = 10
-        num_layers = list(range(9, 21))
+        #self.num_iter = 10
+        #num_layers = list(range(9, 21))
         for i in range(self.num_iter):
-            print("Iter {}/{}".format(i+1, self.num_iter))
-            self.config['models']['gnn_params']['gnn']['num_layers'] = num_layers[i]
+            #print("Iter {}/{}".format(i+1, self.num_iter))
+            #self.config['models']['gnn_params']['gnn']['num_layers'] = num_layers[i]
             logger.info('Search iteration {}'.format(i + 1))
             mode = self.get_save_name()
             self.update_params()
-            print(self.config)
-            print(self.timer)
+            logger.info(self.config)
+            logger.info(self.timer)
 
             encoder, sz_embed = net.load_net(
                 self.config['dataset']['dataset_short'],
@@ -65,12 +65,9 @@ class Trainer():
 
             self.gnn = net.GNNReID(self.device, self.config['models']['gnn_params'], sz_embed).to(
                 self.device)
-
-            """self.gnn = net.TransformerEncoder(d_embed=2048,
-                                              nhead=self.config['models']['gnn_params']['gnn']['num_heads'],
-                                              num_layers=self.config['models']['gnn_params']['gnn']['num_layers'],
-                                              neck=0,
-                                              num_classes=self.config['dataset']['num_classes']).to(self.device)"""
+            
+            if self.config['models']['gnn_params']['pretrained_path'] != "no":
+                self.gnn.load_state_dict(torch.load(self.config['models']['gnn_params']['pretrained_path']))
 
             self.graph_generator = net.GraphGenerator(self.device, **self.config['graph_params'])
              
@@ -120,7 +117,7 @@ class Trainer():
             logger.info('Used Parameters: ' + hypers)
 
             logger.info('Best Recall: {}'.format(best_accuracy))
-            if best_accuracy > best_recall and not self.config['mode'] == 'test':
+            if best_accuracy > best_recall and not self.config['mode'] == 'test' and not self.config['mode'] == 'gnn_test':
                 os.rename(osp.join(self.save_folder_nets, self.fn + '.pth'),
                           str(best_accuracy) + mode + self.net_type + '_' +
                           self.dataset_short + '.pth')
@@ -130,7 +127,7 @@ class Trainer():
                 best_recall = best_accuracy
                 best_hypers = ', '.join(
                         [str(k) + ': ' + str(v) for k, v in self.config.items()])
-            elif self.config['mode'] == 'test':
+            elif self.config['mode'] == 'test' or self.config['mode'] == 'gnn_test':
                 best_recall = best_accuracy
                 best_hypers = ', '.join(
                         [str(k) + ': ' + str(v) for k, v in self.config.items()])
@@ -144,14 +141,18 @@ class Trainer():
         since = time.time()
         best_accuracy = 0
         scores = list()
+        self.preds = dict()
+        self.best_preds = dict()
 
         # feature dict for distance sampling
         if self.distance_sampling != 'no':
             self.feature_dict = dict()
 
         for e in range(1, train_params['num_epochs'] + 1):
+            if self.config['mode'] == 'test' or self.config['mode'] == 'gnn_test':
+                best_accuracy = self.evaluate(eval_params, scores, 0, 0, 0)
             # If not testing
-            if not self.config['mode'] == 'test':
+            else:
                 logger.info(
                     'Epoch {}/{}'.format(e, train_params['num_epochs']))
                 if e == 31:
@@ -225,15 +226,16 @@ class Trainer():
                         or (self.distance_sampling == 'pre' and e == 1) \
                         or (self.distance_sampling == 'pre_soft' and e == 1):
                     self.encoder.train(model_is_training)
-            
+                
+                best_accuracy = self.evaluate(eval_params, scores, e, loss,
+                                          best_accuracy)
+
             [self.losses_mean[k].append(sum(v) / len(v)) for k, v in
              self.losses.items()]
             losses = defaultdict(list)
             logger.info('Loss Values: ')
             logger.info(', '.join([str(k) + ': ' + str(v[-1]) for k, v in self.losses_mean.items()]))
             # compute ranks and mAP at the end of each epoch
-            best_accuracy = self.evaluate(eval_params, scores, e, loss,
-                                          best_accuracy)
 
         end = time.time()
 
@@ -274,6 +276,9 @@ class Trainer():
                 edge_attr, edge_index, fc7 = self.graph_generator.get_graph(fc7)
                 #print(fc7)
                 pred, feats = self.gnn(fc7, edge_index, edge_attr, train_params['output_train'])
+                for path,  pre in zip(I, pred):
+                    self.preds[path] = pre
+ 
                 #pred, feats = self.gnn(fc7, train_params['output_train'])
                 if self.gnn_loss:
                     loss1 = self.gnn_loss(pred, Y)
@@ -315,7 +320,7 @@ class Trainer():
         if not self.config['mode'] == 'pretraining':
             with torch.no_grad():
                 logger.info('EVALUATION')
-                if self.config['mode'] != 'gnn':
+                if self.config['mode'] != 'gnn' and self.config['mode'] != 'gnn_test':
                     mAP, top = self.evaluator.evaluate_reid(self.encoder, self.dl_ev,
                             self.query, gallery=self.gallery)
                 else:
@@ -340,6 +345,7 @@ class Trainer():
                 self.encoder.current_epoch = e
                 if top[self.dataset_short][0] > best_accuracy:
                     best_accuracy = top[self.dataset_short][0]
+                    self.best_preds = self.preds
                     torch.save(self.encoder.state_dict(),
                                osp.join(self.save_folder_nets,
                                         self.fn + '.pth'))
@@ -413,16 +419,17 @@ class Trainer():
         utils.make_dir(results_dir)
 
         # plot losses
-        for k, v in self.losses_mean.items():
-            eps = list(range(len(v)))
-            plt.plot(eps, v)
-            plt.xlim(left=0)
-            plt.ylim(bottom=0, top=14)
-            plt.xlabel('Epochs')
-        plt.legend(self.losses_mean.keys(), loc='upper right')
-        plt.grid(True)
-        plt.savefig(osp.join(results_dir, k + '.png'))
-        plt.close()
+        if not self.config['mode'] == 'test' and not self.config['mode'] == 'gnn_test':
+            for k, v in self.losses_mean.items():
+                eps = list(range(len(v)))
+                plt.plot(eps, v)
+                plt.xlim(left=0)
+                plt.ylim(bottom=0, top=14)
+                plt.xlabel('Epochs')
+            plt.legend(self.losses_mean.keys(), loc='upper right')
+            plt.grid(True)
+            plt.savefig(osp.join(results_dir, k + '.png'))
+            plt.close()
 
         # plot scores
         scores = [[score[0], score[1][0], score[1][1], score[1][2]] for score
@@ -438,6 +445,10 @@ class Trainer():
             plt.grid(True)
             plt.savefig(osp.join(results_dir, name + '.png'))
             plt.close()
+        
+        with open(osp.join(results_dir, "preds.json"), "w") as f:
+            save_features = {k: v.tolist() for k, v in self.best_preds.items()}
+            json.dump(save_features, f)
 
     def get_loss_fn(self, params, num_classes):
         self.losses = defaultdict(list)
@@ -500,7 +511,7 @@ class Trainer():
         if self.config['dataset']['val']:
             self.config['dataset']['num_classes'] -= 100
 
-        if self.config['mode'] == 'test':
+        if self.config['mode'] == 'test' or self.config['mode'] == 'gnn_test':
             self.config['train_params']['num_epochs'] = 1
 
         if self.config['dataset']['sampling'] != 'no':

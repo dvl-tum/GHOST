@@ -12,11 +12,12 @@ models:
       sz_embedding: 512
 
   gnn_params:
+    pretrained_path: "no" #"0.9857227840571089gnn_neck_resnet50_Market.pth"
     use_edge_encoder: 0
     use_edge_model: 0
     use_node_encoder: 0
     gnn:
-      num_layers: 4
+      num_layers: 9
       aggregator: "add"
       num_heads: 4
       attention: "dot" #"dot_pygeo"

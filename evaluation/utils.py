@@ -1,6 +1,7 @@
 from . import calc_mean_average_precision
 import torch
 import logging
+import json
 
 logger = logging.getLogger('GNNReID.Evaluator')
 
