@@ -314,7 +314,7 @@ class Trainer():
 
             # Compute MSE loss with soft targets = predictions of gnn
             if self.distill:
-                target = torch.tensor([self.soft_targets[i.item()] for i in I])
+                target = torch.stack([self.soft_targets[p] for p in P]).to(self.device)
                 distill = self.distill(probs, target)
                 loss += train_params['loss_fn']['scaling_distill'] * distill
                 self.losses['Distillation'].append(distill.item())
@@ -531,7 +531,7 @@ class Trainer():
             self.of = None
 
         if 'distill' in params['fns'].split('_'):
-            self.distill = nn.MSELoss().to(self.device)
+            self.distill = losses.CrossEntropyDistill.to(self.device)
             with open('preds.json', 'r') as f:
                 self.soft_targets = json.load(f)
             self.soft_targets = {k: torch.tensor(v) for k, v in self.soft_targets.items()}

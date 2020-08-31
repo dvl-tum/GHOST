@@ -5,6 +5,32 @@ from torch.autograd import Variable
 
 
 # cross entropy and center loss
+class CrossEntropyDistill(torch.nn.Module):
+    """Cross entropy loss with label smoothing regularizer.
+    Reference:
+    Szegedy et al. Rethinking the Inception Architecture for Computer Vision. CVPR 2016.
+    Equation: y = (1 - epsilon) * y + epsilon / K.
+    Args:
+        num_classes (int): number of classes.
+        epsilon (float): weight.
+    """
+    def __init__(self, num_classes, use_gpu=True):
+        super(CrossEntropyDistill, self).__init__()
+        self.use_gpu = use_gpu
+        self.logsoftmax = torch.nn.LogSoftmax(dim=1)
+
+    def forward(self, inputs, targets):
+        """
+        Args:
+            inputs: prediction matrix (before softmax) with shape (batch_size, num_classes)
+            targets: ground truth labels with shape (batch_size, num_classes)
+        """
+        log_probs = self.logsoftmax(inputs)
+        loss = (- targets * log_probs).mean(0).sum()
+        return loss
+
+
+# cross entropy and center loss
 class CrossEntropyLabelSmooth(torch.nn.Module):
     """Cross entropy loss with label smoothing regularizer.
     Reference:
