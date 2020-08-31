@@ -42,7 +42,7 @@ class Trainer():
 
         self.best_recall = 0
         self.best_hypers = None
-        self.num_iter = 30 if config['mode'] == 'hyper_search' else 1
+        self.num_iter = 30 if config['mode'] == 'hyper_search' or config['mode'] == 'gnn_hyper_search' else 1
 
     def train(self):
         best_recall = 0
@@ -330,7 +330,7 @@ class Trainer():
         if not self.config['mode'] == 'pretraining':
             with torch.no_grad():
                 logger.info('EVALUATION')
-                if self.config['mode'] != 'gnn' and self.config['mode'] != 'gnn_test':
+                if self.config['mode'] != 'gnn' and self.config['mode'] != 'gnn_test' and self.config['mode'] != 'gnn_hyper_search':
                     mAP, top = self.evaluator.evaluate_reid(self.encoder, self.dl_ev,
                             self.query, gallery=self.gallery)
                 else:
@@ -524,7 +524,7 @@ class Trainer():
         return mode
 
     def update_params(self):
-        self.sample_hypers() if self.config['mode'] == 'hyper_search' else None
+        self.sample_hypers() if self.config['mode'] == 'hyper_search' or self.config['mode'] == 'gnn_hyper_search' else None
 
         if self.config['dataset']['val']:
             self.config['dataset']['num_classes'] -= 100
@@ -538,12 +538,18 @@ class Trainer():
     def sample_hypers(self):
         config = {'lr': 10 ** random.uniform(-8, -3),
                   'weight_decay': 10 ** random.uniform(-15, -6),
-                  'num_classes_iter': random.randint(3, 15),
-                  'num_elements_class': random.randint(5, 15),
+                  'num_classes_iter': random.randint(4, 70),
+                  'num_elements_class': random.randint(5, 7),
                   'temperature': random.randint(10, 80),
-                  'num_epochs': 30, 
-                  'scaling_of': random.choice(range(1, 11))}
+                  'num_epochs': 20}
         self.config['train_params'].update(config)
+
+        config = {'num_layers': random.randint(1, 12),
+                  'num_heads': random.choice([1, 2, 4, 8, 16])}
+        self.config['models']['gnn_params']['gnn'].update(config)
+
+        logger.info("Updated Hyperparameters:")
+        logger.info(self.config)
 
     def get_data(self, config, train_params, mode):
 

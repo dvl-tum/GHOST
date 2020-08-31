@@ -144,7 +144,7 @@ def create_loaders(data_root, num_workers, size_batch, num_classes_iter=None,
             eval_reid=True
         )
 
-    if mode == 'gnn' or mode == 'gnn_test':
+    if mode == 'gnn' or mode == 'gnn_test' or mode == 'gnn_hyper_search':
         ddict = defaultdict(list)
         for idx, label in enumerate(dataset_ev.ys):
             ddict[label].append(idx)
