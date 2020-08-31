@@ -531,7 +531,7 @@ class Trainer():
             self.of = None
 
         if 'distill' in params['fns'].split('_'):
-            self.distill = losses.CrossEntropyDistill.to(self.device)
+            self.distill = losses.CrossEntropyDistill().to(self.device)
             with open('preds.json', 'r') as f:
                 self.soft_targets = json.load(f)
             self.soft_targets = {k: torch.tensor(v) for k, v in self.soft_targets.items()}
@@ -563,7 +563,7 @@ class Trainer():
     def sample_hypers(self):
         config = {'lr': 10 ** random.uniform(-8, -3),
                   'weight_decay': 10 ** random.uniform(-15, -6),
-                  'num_classes_iter': random.randint(4, 70),
+                  'num_classes_iter': random.randint(4, 35),
                   'num_elements_class': random.randint(5, 7),
                   'temperature': random.randint(10, 80),
                   'num_epochs': 20}

@@ -14,9 +14,8 @@ class CrossEntropyDistill(torch.nn.Module):
         num_classes (int): number of classes.
         epsilon (float): weight.
     """
-    def __init__(self, num_classes, use_gpu=True):
+    def __init__(self):
         super(CrossEntropyDistill, self).__init__()
-        self.use_gpu = use_gpu
         self.logsoftmax = torch.nn.LogSoftmax(dim=1)
 
     def forward(self, inputs, targets):
