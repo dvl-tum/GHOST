@@ -96,7 +96,7 @@ class Birds(torch.utils.data.Dataset):
 
         if self.eval_reid:
             return im, self.ys[index], self.im_paths[index]
-        return im, self.ys[index], index
+        return im, self.ys[index], index, self.im_paths[index]
 
 
 class All(torch.utils.data.Dataset):

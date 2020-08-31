@@ -142,8 +142,8 @@ class Trainer():
         since = time.time()
         best_accuracy = 0
         scores = list()
-        self.preds = dict()
-        self.best_preds = dict()
+        self.preds, self.feats, self.labs, self.preds_before, self.feats_before = dict(), dict(), dict(), dict(), dict()
+        self.best_preds, self.best_labs, self.best_feats, self.best_preds_before, self.best_feats_before = dict(), dict(), dict(), dict(), dict()
 
         # feature dict for distance sampling
         if self.distance_sampling != 'no':
@@ -191,8 +191,8 @@ class Trainer():
 
                 # Normal training with backpropagation
                 else:
-                    for x, Y, I in self.dl_tr:
-                        loss = self.forward_pass(x, Y, I, train_params)
+                    for x, Y, I, P in self.dl_tr:
+                        loss = self.forward_pass(x, Y, I, P, train_params)
 
                         # Check possible net divergence
                         if torch.isnan(loss):
@@ -244,7 +244,7 @@ class Trainer():
 
         return best_accuracy, self.encoder
 
-    def forward_pass(self, x, Y, I, train_params):
+    def forward_pass(self, x, Y, I, P, train_params):
         Y = Y.to(self.device)
         self.opt.zero_grad()
         if self.center:
@@ -259,7 +259,7 @@ class Trainer():
                     self.feature_dict[y.data.item()][i.item()] = f
                 else:
                     self.feature_dict[y.data.item()] = {i.item(): f}
-
+        
         # Compute CE Loss
         loss = 0
         if self.ce:
@@ -277,8 +277,12 @@ class Trainer():
                 edge_attr, edge_index, fc7 = self.graph_generator.get_graph(fc7)
                 #print(fc7)
                 pred, feats = self.gnn(fc7, edge_index, edge_attr, train_params['output_train'])
-                for path,  pre in zip(I, pred):
-                    self.preds[path.item()] = pre.detach()
+                for path,  pre, f, pre_b, f_b, lab in zip(P, pred, feats, fc7, probs, Y):
+                    self.preds[path] = pre.detach()
+                    self.feats[path] = f.detach()
+                    self.preds_before[path] = pre_b.detach()
+                    self.feats_before[path] = f_b.detach()
+                    self.labs[path] = lab
  
                 #pred, feats = self.gnn(fc7, train_params['output_train'])
                 if self.gnn_loss:
@@ -356,6 +360,10 @@ class Trainer():
                 if top[self.dataset_short][0] > best_accuracy:
                     best_accuracy = top[self.dataset_short][0]
                     self.best_preds = self.preds
+                    self.best_labs = self.labs
+                    self.best_feats = self.feats
+                    self.best_preds_before = self.preds_before
+                    self.best_feats_before = self.feats_before
                     torch.save(self.encoder.state_dict(),
                                osp.join(self.save_folder_nets,
                                         self.fn + '.pth'))
@@ -457,8 +465,25 @@ class Trainer():
             plt.close()
         
         with open(osp.join(results_dir, "preds.json"), "w") as f:
-            save_features = {k: v.tolist() for k, v in self.best_preds.items()}
-            json.dump(save_features, f)
+            save = {k: v.tolist() for k, v in self.best_preds.items()}
+            json.dump(save, f)
+
+        with open(osp.join(results_dir, "labs.json"), "w") as f:
+            save = {k: v.tolist() for k, v in self.best_labs.items()}
+            json.dump(save, f)
+
+        with open(osp.join(results_dir, "feats.json"), "w") as f:
+            save = {k: v.tolist() for k, v in self.best_feats.items()}
+            json.dump(save, f)
+        
+        with open(osp.join(results_dir, "preds_before.json"), "w") as f:
+            save = {k: v.tolist() for k, v in self.best_preds_before.items()}
+            json.dump(save, f)
+
+        with open(osp.join(results_dir, "feats_before.json"), "w") as f:
+            save = {k: v.tolist() for k, v in self.best_feats_before.items()}
+            json.dump(save, f)
+
 
     def get_loss_fn(self, params, num_classes):
         self.losses = defaultdict(list)
