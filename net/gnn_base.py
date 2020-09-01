@@ -10,6 +10,7 @@ import logging
 from .dot_attention_pygeo import AttentionLayerDot, gcn_norm
 from .utils import *
 from .attentions import MultiHeadDotProduct, MultiHeadMLP
+import torch.utils.checkpoint as checkpoint
 
 logger = logging.getLogger('GNNReID.GNNModule')
 
@@ -200,8 +201,18 @@ class DotAttentionLayer(nn.Module):
 
         self.act = F.relu
 
+    def custom(self):
+        def custom_forward(*inputs):
+            feats2, egde_index, edge_attr = self.att(inputs[0], inputs[1], inputs[2])
+            return feats2, egde_index, edge_attr
+
+        return custom_forward
+
     def forward(self, feats, egde_index, edge_attr):
+
         feats2, egde_index, edge_attr = self.att(feats, egde_index, edge_attr)
+        #feats2, egde_index, edge_attr = checkpoint.checkpoint(self.custom(), preserve_rng_state=True, args=(feats, egde_index, edge_attr))
+
         feats2 = self.dropout1(feats2)
         feats = feats + feats2 if self.res1 else feats2
         feats = self.norm1(feats) if self.norm1 is not None else feats
