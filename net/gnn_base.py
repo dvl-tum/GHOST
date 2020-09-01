@@ -128,6 +128,9 @@ class GNNReID(nn.Module):
         return MetaLayer(edge_model=edge_model, node_model=gnn)
 
     def forward(self, feats, edge_index, edge_attr=None, output_option='norm'):
+        feats = feats.cuda(2)
+        edge_index = edge_index.cuda(2)
+        edge_attr = edge_attr.cuda(2)
         r, c = edge_index[:, 0], edge_index[:, 1]
 
         if self.params['use_edge_encoder']:
