@@ -43,7 +43,7 @@ class GraphGenerator():
             W = W.cuda()
 
         if self.set_negative == 'hard':
-            W = self.set_negative_to_zero(W.cuda())
+            W = self.set_negative_to_zero(W.to(self.dev))
         else:
             W = self.set_negative_to_zero_soft(W)
 

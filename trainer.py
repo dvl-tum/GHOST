@@ -62,11 +62,10 @@ class Trainer():
                 self.config['dataset']['num_classes'],
                 self.config['mode'],
                 **self.config['models']['encoder_params'])
-            self.encoder = encoder.to(self.device)
+            self.encoder = encoder.to(self.device) 
 
-            self.gnn = net.GNNReID(self.device, self.config['models']['gnn_params'], sz_embed).to(
-                self.device)
-            
+            self.gnn = net.GNNReID(self.device, self.config['models']['gnn_params'], sz_embed).to(self.device)
+
             if self.config['models']['gnn_params']['pretrained_path'] != "no":
                 self.gnn.load_state_dict(torch.load(self.config['models']['gnn_params']['pretrained_path']))
 
@@ -99,13 +98,14 @@ class Trainer():
 
             # Do training in mixed precision
             if self.config['train_params']['is_apex']:
-                self.encoder, self.opt = amp.initialize(self.encoder, self.opt,
+                [self.encoder, self.gnn], self.opt = amp.initialize([self.encoder, self.gnn], self.opt,
                                                         opt_level="O1")
-
+            #print(torch.cuda.device_count())
+            #quit()
             if torch.cuda.device_count() > 1:
                 self.encoder = nn.DataParallel(self.encoder)
                 #self.gnn = nn.DataParallel(self.gnn)
-
+            
             self.get_data(self.config['dataset'], self.config['train_params'],
                           self.config['mode'])
 
@@ -534,7 +534,7 @@ class Trainer():
             self.distill = losses.CrossEntropyDistill().to(self.device)
             with open('preds.json', 'r') as f:
                 self.soft_targets = json.load(f)
-            self.soft_targets = {k: torch.tensor(v) for k, v in self.soft_targets.items()}
+            self.soft_targets = {k: F.softmax(torch.tensor(v)) for k, v in self.soft_targets.items()}
         else:
             self.distill = None
 
@@ -563,8 +563,8 @@ class Trainer():
     def sample_hypers(self):
         config = {'lr': 10 ** random.uniform(-8, -3),
                   'weight_decay': 10 ** random.uniform(-15, -6),
-                  'num_classes_iter': random.randint(4, 35),
-                  'num_elements_class': random.randint(5, 7),
+                  'num_classes_iter': random.randint(4, 65),
+                  'num_elements_class': random.randint(4, 7),
                   'temperature': random.randint(10, 80),
                   'num_epochs': 20}
         self.config['train_params'].update(config)
