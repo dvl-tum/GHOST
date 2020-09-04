@@ -20,11 +20,12 @@ import utils.utils as utils
 import matplotlib.pyplot as plt
 import os
 import json
-#from torch import autograd
-#autograd.set_detect_anomaly(True)
+from torch import autograd
+autograd.set_detect_anomaly(True)
 
 logger = logging.getLogger('GNNReID.Training')
 
+torch.manual_seed(0)
 
 class Trainer():
     def __init__(self, config, save_folder_nets, save_folder_results,
@@ -65,7 +66,6 @@ class Trainer():
             self.encoder = encoder.to(self.device) 
 
             self.gnn = net.GNNReID(self.device, self.config['models']['gnn_params'], sz_embed).to(self.device)
-
             if self.config['models']['gnn_params']['pretrained_path'] != "no":
                 self.gnn.load_state_dict(torch.load(self.config['models']['gnn_params']['pretrained_path']))
 
@@ -194,6 +194,16 @@ class Trainer():
                     for x, Y, I, P in self.dl_tr:
                         loss = self.forward_pass(x, Y, I, P, train_params)
 
+                        if self.gnn_loss:
+                            for param in self.gnn.parameters():
+                                if torch.isnan(param).any():
+                                    logger.info("Parameters")
+                                    logger.info(param)
+                                if param.grad is not None:
+                                    if torch.isnan(param.grad).any():
+                                        logger.info("Gradient")
+                                        logger.info(param, param.grad)
+
                         # Check possible net divergence
                         if torch.isnan(loss):
                             logger.error("We have NaN numbers, closing\n\n\n")
@@ -287,8 +297,6 @@ class Trainer():
                 #pred, feats = self.gnn(fc7, train_params['output_train'])
                 if self.gnn_loss:
                     loss1 = self.gnn_loss(pred, Y)
-                    #print(torch.argmax(pred, dim =1), Y)
-                    #print(loss1)
 
                     loss += train_params['loss_fn']['scaling_gnn'] * loss1
                     self.losses['GNN'].append(loss1.item())
@@ -563,7 +571,7 @@ class Trainer():
     def sample_hypers(self):
         config = {'lr': 10 ** random.uniform(-8, -3),
                   'weight_decay': 10 ** random.uniform(-15, -6),
-                  'num_classes_iter': random.randint(4, 65),
+                  'num_classes_iter': random.randint(4, 100),
                   'num_elements_class': random.randint(4, 7),
                   'temperature': random.randint(10, 80),
                   'num_epochs': 20}

@@ -58,9 +58,32 @@ def load_net(dataset, nb_classes, mode, net_type, bn_inception={'embed': 0, 'sz_
             no_load = ["linear1.weight", "linear1.bias", "linear2.weight", "linear2.bias",
                         "bottleneck.weight", "bottleneck.bias", "bottleneck.running_mean",
                         "bottleneck.running_var", "bottleneck.num_batches_tracked", "fc.weight"]
-            no_load = ['fc.bias']
-            no_load = []
+            #no_load = ['fc.bias']
+            #no_load = []
             load_dict = {k: v for k, v in torch.load(pretrained_path).items() if k not in no_load}
+
+            '''load_dict_new = dict()
+            for k, v in load_dict.items():
+                if k.split('.')[0] == 'conv1':
+                    load_dict_new[k] = v
+                elif k.split('.')[0][:-1] != 'layer':
+                    load_dict_new['features.' + k] = v
+                else:
+                    load_dict_new['features.' + 'Bottleneck_' + k.split('.')[0][-1] + '_' + k.split('.')[1] + '.' +('.').join(k.split('.')[2:])] = v
+            load_dict = load_dict_new
+            del load_dict_new
+            '''
+            '''
+            # new new
+            load_dict_new = dict()
+            for k, v in load_dict.items():
+                if k.split('.')[0][:-1] != 'layer':
+                    load_dict_new[k] = v
+                else:
+                    load_dict_new[k.split('.')[0] +  '.module.' + ('.').join(k.split('.')[1:])] = v
+            load_dict = load_dict_new
+            del load_dict_new
+            '''
             model_dict = model.state_dict()
             model_dict.update(load_dict)
             model.load_state_dict(model_dict)

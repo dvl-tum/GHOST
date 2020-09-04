@@ -32,7 +32,7 @@ class MultiHeadDotProduct(nn.Module):
         self.reset_parameters()
 
     def forward(self, feats: torch.tensor, edge_index: torch.tensor,
-                edge_attr: torch.tensor):
+            edge_attr: torch.tensor, dummy_arg: torch.tensor = None):
         q = k = v = feats
         bs = q.size(0)
 
@@ -43,13 +43,12 @@ class MultiHeadDotProduct(nn.Module):
 
         # perform multi-head attention
         feats = self._attention(q, k, v, edge_index, edge_attr, bs)
-
         # concatenate heads and put through final linear layer
         feats = feats.transpose(0, 1).contiguous().view(
             bs, self.nhead * self.hdim)
         feats = self.out(feats)
 
-        return feats, edge_index, edge_attr
+        return feats #, edge_index, edge_attr
 
     def _attention(self, q, k, v, edge_index=None, edge_attr=None, bs=None):
         r, c, e = edge_index[:, 0], edge_index[:, 1], edge_index.shape[0]
