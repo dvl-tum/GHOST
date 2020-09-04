@@ -3,12 +3,29 @@ import math
 import pdb, time, sys
 from collections import OrderedDict
 from torch.utils.checkpoint import checkpoint, checkpoint_sequential
+from torch.utils.model_zoo import load_url as load_state_dict_from_url
+import torch.nn.functional as F
+
+
+model_urls = {
+    'resnet18': 'https://download.pytorch.org/models/resnet18-5c106cde.pth',
+    'resnet34': 'https://download.pytorch.org/models/resnet34-333f7ec4.pth',
+    'resnet50': 'https://download.pytorch.org/models/resnet50-19c8e357.pth',
+    'resnet101': 'https://download.pytorch.org/models/resnet101-5d3b4d8f.pth',
+    'resnet152': 'https://download.pytorch.org/models/resnet152-b121ed2d.pth',
+    'resnext50_32x4d': 'https://download.pytorch.org/models/resnext50_32x4d-7cdf4587.pth',
+    'resnext101_32x8d': 'https://download.pytorch.org/models/resnext101_32x8d-8ba56ff5.pth',
+    'wide_resnet50_2': 'https://download.pytorch.org/models/wide_resnet50_2-95faca4d.pth',
+    'wide_resnet101_2': 'https://download.pytorch.org/models/wide_resnet101_2-32ee1156.pth',
+}
+
 
 __all__ = ['ResNet', 'resnet18', 'resnet34', 'resnet50', 'resnet101',
            'resnet152', 'resnet200', 'resnet1001']
 
 def _resnet(arch, block, layers, pretrained, progress, last_stride=0, neck=0, **kwargs):
-    model = ResNet(block, layers, last_stride=last_stride, neck=neck, **kwargs)
+    print(block)
+    model = ResNetCheck(block, layers, last_stride=last_stride, neck=neck, **kwargs)
     if pretrained:
         if not neck:
             state_dict = load_state_dict_from_url(model_urls[arch],
@@ -17,10 +34,19 @@ def _resnet(arch, block, layers, pretrained, progress, last_stride=0, neck=0, **
         else:
             state_dict = load_state_dict_from_url(model_urls[arch],
                                               progress=progress)
-            for i in state_dict:
+
+            state_dict_new = dict()
+            for k, v in state_dict.items():
+                if k.split('.')[0][:-1] != 'layer':
+                    state_dict_new['features.' + k] = v
+                else:
+                    state_dict_new['features.' + 'Bottleneck_' + k.split('.')[0][-1] + '_' + k.split('.')[1] + '.' +('.').join(k.split('.')[2:])] = v
+
+            #state_dict = {'features.' + 'Bottleneck_' + k.split('.')[0][-1] + '_' + k.split('.')[1] + '.' +('.').join(k.split('.')[2:]): v for k, v in state_dict.items()} 
+            for i in state_dict_new:
                 if 'fc' in i:
                     continue
-                model.state_dict()[i].copy_(state_dict[i])
+                model.state_dict()[i].copy_(state_dict_new[i])
     return model
 
 def resnet18(pretrained=False, **kwargs):
@@ -232,15 +258,18 @@ class ResNet(nn.Module):
 class ResNetCheck(nn.Module):
 
     def __init__(self, block, layers, num_classes=10, neck=0, last_stride=0):
-        self.inplanes = 16
+        print(block)
+        self.inplanes = 64
+        self.dilation = 1
+
         self.neck = neck
         self.last_stride = last_stride
-        super(PreActResNet, self).__init__()
+        super(ResNetCheck, self).__init__()
 
         self.features = nn.Sequential(OrderedDict([
-            ('conv1', nn.Conv2d(3, 16, kernel_size=3, stride=1, padding=1, bias=False)),
-            ('bn1', nn.BatchNorm2d(16)),
-            ('relu1', nn.ReLU(inplace=True)),
+            ('conv1', nn.Conv2d(3, 64, kernel_size=7, stride=2, padding=3, bias=False)),
+            ('bn1', nn.BatchNorm2d(self.inplanes)),
+            ('relu', nn.ReLU(inplace=True)),
             ('max_pool', nn.MaxPool2d(kernel_size=3, stride=2, padding=1))
         ]))
 
@@ -248,8 +277,19 @@ class ResNetCheck(nn.Module):
         self._make_layer(block, 128, layers[1], stride=2, stage=2)
         self._make_layer(block, 256, layers[2], stride=2, stage=3)
         self._make_layer(block, 512, layers[3], stride=2, stage=4)
-        self.features.add_module('avgpool', nn.AvgPool2d(8, stride=1))
+        self.features.add_module('avgpool', nn.AdaptiveAvgPool2d((1, 1)))
         
+        # student
+        '''
+        d_embed = 512 * block.expansion
+        d_hid = 4 * d_embed
+        dropout = 0.4
+        self.linear1 = nn.Linear(d_embed, d_hid)
+        self.dropout = nn.Dropout(dropout)
+        #self.linear2 = nn.Linear(d_hid, d_hid)
+        self.linear2 = nn.Linear(d_hid, d_embed)
+        self.activation = F.relu 
+        '''
         if self.neck:
             self.bottleneck = nn.BatchNorm1d(512 * block.expansion)
             self.bottleneck.bias.requires_grad_(False)  # no shift
@@ -272,28 +312,34 @@ class ResNetCheck(nn.Module):
     def _make_layer(self, block, planes, blocks, stride=1, stage=1):
         downsample = None
         if stride != 1 or self.inplanes != planes * block.expansion:
+            #downsample = nn.Sequential(
+            #    nn.BatchNorm2d(self.inplanes),
+            #    nn.Conv2d(self.inplanes, planes * block.expansion,
+            #              kernel_size=1, stride=stride, bias=False),
+            #)
             downsample = nn.Sequential(
-                nn.BatchNorm2d(self.inplanes),
-                nn.Conv2d(self.inplanes, planes * block.expansion,
-                          kernel_size=1, stride=stride, bias=False),
+                nn.Conv2d(self.inplanes, planes * block.expansion, kernel_size=1, stride=stride, bias=False),
+                nn.BatchNorm2d(planes * block.expansion),
             )
 
         self.features.add_module(
-            'PreActBottleneck_%d_%d' % (stage, 0),
+            'Bottleneck_%d_%d' % (stage, 0),
             block(self.inplanes, planes, stride, downsample))
         self.inplanes = planes * block.expansion
         for i in range(1, blocks):
             self.features.add_module(
-                'PreActBottleneck_%d_%d' % (stage, i),
+                'Bottleneck_%d_%d' % (stage, i),
                 block(self.inplanes, planes))
 
     def forward(self, x, output_option='norm', chunks=3):
         modules = [module for k, module in self._modules.items()][0]
-        x = checkpoint_sequential(modules, chunks, x)
+        x = checkpoint_sequential(modules, chunks, x.requires_grad_())
+        print(x.requires_grad)
         fc7 = x.view(x.size(0), -1)
 
         # here student can be added
         feats = fc7
+        #feats = self.linear2(self.dropout(self.activation(self.linear1(fc7)))) 
 
         if self.neck:
             feats_after = self.bottleneck(feats)
@@ -313,3 +359,27 @@ class ResNetCheck(nn.Module):
             print("Output option neck only avaiable if bottleneck (neck) is "
                   "enabeled - giving back x and fc7")
             return x, fc7, feats
+
+
+
+def weights_init_kaiming(m):
+    classname = m.__class__.__name__
+    if classname.find('Linear') != -1:
+        nn.init.kaiming_normal_(m.weight, a=0, mode='fan_out')
+        nn.init.constant_(m.bias, 0.0)
+    elif classname.find('Conv') != -1:
+        nn.init.kaiming_normal_(m.weight, a=0, mode='fan_in')
+        if m.bias is not None:
+            nn.init.constant_(m.bias, 0.0)
+    elif classname.find('BatchNorm') != -1:
+        if m.affine:
+            nn.init.constant_(m.weight, 1.0)
+            nn.init.constant_(m.bias, 0.0)
+
+
+def weights_init_classifier(m):
+    classname = m.__class__.__name__
+    if classname.find('Linear') != -1:
+        nn.init.normal_(m.weight, std=0.001)
+        if m.bias:
+            nn.init.constant_(m.bias, 0.0)
