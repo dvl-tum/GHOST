@@ -2,6 +2,9 @@ from torch import nn
 import torch
 from torch_scatter import scatter_max, scatter_add
 import numpy as np
+import logging
+
+logger = logging.getLogger('GNNReID.Util')
 
 
 class Sequential(nn.Sequential):
@@ -153,4 +156,13 @@ def softmax(src, index, dim, dim_size):
         0].index_select(dim, index)
     denom = scatter_add(torch.exp(src), index, dim=dim, dim_size=dim_size)
     src = torch.exp(src) / denom.index_select(dim, index)
+
     return src
+
+'''def softmax(src, index, dim, dim_size, margin: float = 0.):
+    src_max = torch.clamp(scatter_max(src.float(), index, dim=dim, dim_size=dim_size)[0], min=0.)
+    src = (src - src_max.index_select(dim=dim, index=index)).exp()
+    denom = scatter_add(src, index, dim=dim, dim_size=dim_size)
+    out = src / (denom + (margin - src_max).exp()).index_select(dim, index)
+
+    return out'''
