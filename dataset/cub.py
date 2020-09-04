@@ -64,6 +64,8 @@ class Birds(torch.utils.data.Dataset):
             trans = utils.make_transform_bot(is_train=not self.eval_reid)
         elif self.trans == 'imgaug':
             trans = utils.make_transform_imaug(is_train=not self.eval_reid)
+        elif self.trans == 'randaug':
+            trans = utils.make_rand_aug(is_train=not self.eval_reid)
         elif self.trans == 'appearance':
             ddict = defaultdict(list)
             for idx, label in enumerate(self.ys):

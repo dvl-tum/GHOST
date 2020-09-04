@@ -6,6 +6,7 @@ import math
 import numpy as np
 import imgaug as ia
 import imgaug.augmenters as iaa
+from .randaug import *
 
 
 def std_per_channel(images):
@@ -120,6 +121,32 @@ def make_transform_bot(sz_crop=[384, 128], mean=[0.485, 0.456, 0.406],
             RandomErasing(probability=0.5,
                           mean=(0.4914, 0.4822, 0.4465))
         ])
+    else:
+        transform = transforms.Compose([
+            transforms.Resize(sz_crop),
+            transforms.ToTensor(),
+            normalize_transform
+        ])
+
+    return transform
+
+
+# transformations for paper Bag of Tricks
+def make_rand_aug(sz_crop=[384, 128], mean=[0.485, 0.456, 0.406],
+                       std=[0.299, 0.224, 0.225], is_train=True, N=2, M=27):
+    normalize_transform = transforms.Normalize(mean=mean, std=std)
+    if is_train:
+        transform = transforms.Compose([
+            transforms.Resize(sz_crop),
+            transforms.RandomHorizontalFlip(p=0.5),
+            transforms.Pad(10),
+            transforms.RandomCrop(sz_crop),
+            transforms.ToTensor(),
+            normalize_transform,
+            RandomErasing(probability=0.5,
+                          mean=(0.4914, 0.4822, 0.4465))
+        ])
+        transform.transforms.insert(0, RandAugment(N, M))
     else:
         transform = transforms.Compose([
             transforms.Resize(sz_crop),
