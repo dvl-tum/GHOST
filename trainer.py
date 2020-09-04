@@ -336,7 +336,7 @@ class Trainer():
                 logger.info('EVALUATION')
                 if self.config['mode'] != 'gnn' and self.config['mode'] != 'gnn_test' and self.config['mode'] != 'gnn_hyper_search':
                     mAP, top = self.evaluator.evaluate_reid(self.encoder, self.dl_ev,
-                            self.query, gallery=self.gallery)
+                            self.query, gallery=self.gallery, dl_ev_gnn=self.dl_ev_gnn)
                 else:
                     mAP, top = self.evaluator.evaluate_reid(self.encoder, self.dl_ev,
                             self.query, self.gallery, self.gnn, self.graph_generator)
@@ -610,7 +610,7 @@ class Trainer():
                     seed=seed)
             # If testing or normal training
             else:
-                self.dl_tr, self.dl_ev, self.query, self.gallery = data_utility.create_loaders(
+                self.dl_tr, self.dl_ev, self.query, self.gallery, self.dl_ev_gnn = data_utility.create_loaders(
                     data_root=config['dataset_path'],
                     num_workers=config['nb_workers'],
                     num_classes_iter=train_params['num_classes_iter'],
