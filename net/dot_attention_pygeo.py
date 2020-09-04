@@ -175,7 +175,7 @@ class MultiHead(Attention):
 class AttentionLayerDot(MessagePassing):
 
     def __init__(self, channels: int, heads: int = 1, groups: int = 1,
-                dropout: float = 0., gcn_norm: int = 0, mult_edge_weight: int = 1,
+                dropout: float = 0., gcn_norm: int = 0, mult_edge_weight: int = 0,
                 add_self_loops: bool = True, bias: bool = True, **kwargs):
         super(AttentionLayerDot, self).__init__(aggr='add', node_dim=0,
                                                 **kwargs)
@@ -216,7 +216,7 @@ class AttentionLayerDot(MessagePassing):
 
         # propagate_type: (x: Tensor, edge_weight: OptTensor)
         return self.propagate(edge_index, x=x, edge_weight=edge_weight,
-                              size=None), edge_index, edge_weight
+                              size=None)#, edge_index, edge_weight
 
     def message(self, x_i: Tensor, x_j: Tensor, edge_weight: Tensor,
                 index: Tensor) -> Tensor:
