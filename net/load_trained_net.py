@@ -6,7 +6,7 @@ import torch.nn.utils.weight_norm as weightNorm
 
 
 def load_net(dataset, nb_classes, mode, net_type, bn_inception={'embed': 0, 'sz_embedding': 512},
-             last_stride=0, neck=0, pretrained_path=None, weight_norm=0):
+             last_stride=0, neck=0, pretrained_path=None, weight_norm=0, final_drop=0.5, stoch_depth=0.8):
     if net_type == 'bn_inception':
         sz_embed = 1024
         model = net.bn_inception(pretrained=True)
@@ -35,7 +35,7 @@ def load_net(dataset, nb_classes, mode, net_type, bn_inception={'embed': 0, 'sz_
 
     elif net_type == 'resnet50':
         sz_embed = 2048
-        model = net.resnet50(pretrained=True, last_stride=last_stride, neck=neck)
+        model = net.resnet50(pretrained=True, last_stride=last_stride, neck=neck, final_drop=final_drop, stoch_depth=stoch_depth)
         #model.fc = nn.Linear(2048, nb_classes)
         #if neck: model.bottleneck = nn.BatchNorm1d(2048)
         if neck:
@@ -59,7 +59,7 @@ def load_net(dataset, nb_classes, mode, net_type, bn_inception={'embed': 0, 'sz_
                         "bottleneck.weight", "bottleneck.bias", "bottleneck.running_mean",
                         "bottleneck.running_var", "bottleneck.num_batches_tracked", "fc.weight"]
             #no_load = ['fc.bias']
-            #no_load = []
+            no_load = []
             load_dict = {k: v for k, v in torch.load(pretrained_path).items() if k not in no_load}
 
             '''load_dict_new = dict()
