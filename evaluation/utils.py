@@ -49,7 +49,7 @@ class Evaluator():
         with torch.no_grad():
             for X, Y, P in dataloader:
                 if torch.cuda.is_available(): X = X.cuda()
-                _, _, fc7 = model(X, output_option=self.output_test)
+                _, _, fc7 = model(X, output_option=self.output_test, val=True)
                 for path, out, y in zip(P, fc7, Y):
                     features[path] = out
                     labels[path] = y
@@ -66,7 +66,7 @@ class Evaluator():
         with torch.no_grad():
             for X, Y, P in dataloader:
                 if torch.cuda.is_available(): X = X.cuda()
-                _, _, fc7 = model(X, output_option=self.output_test) ##### Actually _, fc7, _ CHECK THIS
+                _, _, fc7 = model(X, output_option=self.output_test, val=True) ##### Actually _, fc7, _ CHECK THIS
                 edge_attr, edge_index, fc7 = graph_generator.get_graph(fc7)
                 _, fc7 = gnn(fc7, edge_index, edge_attr,
                              output_option=self.output_test)
