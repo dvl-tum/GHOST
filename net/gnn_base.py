@@ -44,7 +44,7 @@ class MetaLayer(torch.nn.Module):
 
         if self.node_model is not None:
             feats, edge_index, edge_attr = self.node_model(feats, edge_index,
-                                                           edge_attr, val)
+                                                           edge_attr)
 
         return feats, edge_index, edge_attr
 
@@ -139,7 +139,7 @@ class GNNReID(nn.Module):
         if self.params['use_node_encoder']:
             feats = self.node_encoder(feats)
 
-        feats, _, _ = self.gnn_model(feats, edge_index, edge_attr, val)
+        feats, _, _ = self.gnn_model(feats, edge_index, edge_attr)
 
         if self.neck:
             features = self.bottleneck(feats)
@@ -202,6 +202,12 @@ class DotAttentionLayer(nn.Module):
 
         self.dummy_tensor = torch.ones(1, requires_grad=True)
 
+    def custom(self):
+        def custom_forward(*inputs):
+            feats2 = self.att(inputs[0], inputs[1], inputs[2])
+            return feats2
+        return custom_forward
+    
     def forward(self, feats, egde_index, edge_attr):
         #feats2  = self.att(feats, egde_index, edge_attr)
         feats2 = checkpoint.checkpoint(self.custom(), feats, egde_index, edge_attr, preserve_rng_state=True)

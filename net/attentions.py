@@ -32,7 +32,7 @@ class MultiHeadDotProduct(nn.Module):
         self.reset_parameters()
 
     def forward(self, feats: torch.tensor, edge_index: torch.tensor,
-            edge_attr: torch.tensor, dummy_arg: torch.tensor = None):
+            edge_attr: torch.tensor):
         q = k = v = feats
         bs = q.size(0)
 
