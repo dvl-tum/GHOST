@@ -44,7 +44,7 @@ class MetaLayer(torch.nn.Module):
 
         if self.node_model is not None:
             feats, edge_index, edge_attr = self.node_model(feats, edge_index,
-                                                           edge_attr)
+                                                           edge_attr, val)
 
         return feats, edge_index, edge_attr
 
@@ -129,9 +129,6 @@ class GNNReID(nn.Module):
         return MetaLayer(edge_model=edge_model, node_model=gnn)
 
     def forward(self, feats, edge_index, edge_attr=None, output_option='norm'):
-        feats = feats.cuda(2)
-        edge_index = edge_index.cuda(2)
-        edge_attr = edge_attr.cuda(2)
         r, c = edge_index[:, 0], edge_index[:, 1]
 
         if self.params['use_edge_encoder']:
@@ -142,7 +139,7 @@ class GNNReID(nn.Module):
         if self.params['use_node_encoder']:
             feats = self.node_encoder(feats)
 
-        feats, _, _ = self.gnn_model(feats, edge_index, edge_attr)
+        feats, _, _ = self.gnn_model(feats, edge_index, edge_attr, val)
 
         if self.neck:
             features = self.bottleneck(feats)
@@ -195,23 +192,19 @@ class DotAttentionLayer(nn.Module):
         self.linear2 = nn.Linear(d_hid, embed_dim) if params['mlp'] else None
 
         self.norm1 = LayerNorm(embed_dim) if params['norm1'] else None
+        #self.norm1 = nn.LayerNorm(embed_dim)
         self.norm2 = LayerNorm(embed_dim) if params['norm2'] else None
+        #self.norm2 = nn.LayerNorm(embed_dim)
         self.dropout1 = nn.Dropout(params['dropout_1'])
         self.dropout2 = nn.Dropout(params['dropout_2'])
 
         self.act = F.relu
 
-    def custom(self):
-        def custom_forward(*inputs):
-            feats2, egde_index, edge_attr = self.att(inputs[0], inputs[1], inputs[2])
-            return feats2, egde_index, edge_attr
-
-        return custom_forward
+        self.dummy_tensor = torch.ones(1, requires_grad=True)
 
     def forward(self, feats, egde_index, edge_attr):
-
-        feats2, egde_index, edge_attr = self.att(feats, egde_index, edge_attr)
-        #feats2, egde_index, edge_attr = checkpoint.checkpoint(self.custom(), preserve_rng_state=True, args=(feats, egde_index, edge_attr))
+        #feats2  = self.att(feats, egde_index, edge_attr)
+        feats2 = checkpoint.checkpoint(self.custom(), feats, egde_index, edge_attr, preserve_rng_state=True)
 
         feats2 = self.dropout1(feats2)
         feats = feats + feats2 if self.res1 else feats2
