@@ -143,7 +143,7 @@ def create_loaders(data_root, num_workers, size_batch, num_classes_iter=None,
             trans=trans,
             eval_reid=True
         )
-
+ 
     if mode == 'gnn' or mode == 'gnn_test' or mode == 'gnn_hyper_search':
         ddict = defaultdict(list)
         for idx, label in enumerate(dataset_ev.ys):
@@ -177,6 +177,39 @@ def create_loaders(data_root, num_workers, size_batch, num_classes_iter=None,
             drop_last=drop_last,
             pin_memory=True
         )
+
+        dl_ev_gnn = None
+
+    elif mode == 'pseudo':
+        ddict = defaultdict(list)
+        for idx, label in enumerate(dataset_ev.ys):
+            ddict[label].append(idx)
+
+        list_of_indices_for_each_class = []
+        for key in ddict:
+            list_of_indices_for_each_class.append(ddict[key])
+        
+        sampler = CombineSampler(list_of_indices_for_each_class,
+                                 num_classes_iter, num_elements_class)
+        drop_last = True
+
+        dl_ev_gnn = torch.utils.data.DataLoader(
+            dataset_ev,
+            batch_size=size_batch,
+            shuffle=False,
+            sampler=sampler,
+            num_workers=num_workers,
+            drop_last=drop_last,
+            pin_memory=True)
+
+        dl_ev = torch.utils.data.DataLoader(
+            dataset_ev,
+            batch_size=50,
+            shuffle=False,
+            num_workers=1,
+            pin_memory=True
+        )
+
     else:
         dl_ev = torch.utils.data.DataLoader(
             dataset_ev,
@@ -186,7 +219,9 @@ def create_loaders(data_root, num_workers, size_batch, num_classes_iter=None,
             pin_memory=True
         )
 
-    return dl_tr, dl_ev, query, gallery
+        dl_ev_gnn = None
+
+    return dl_tr, dl_ev, query, gallery, dl_ev_gnn
 
 
 def get_labeled_and_unlabeled_points(labels, num_points_per_class,

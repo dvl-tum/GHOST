@@ -16,11 +16,18 @@ class Evaluator():
         self.re_rank = re_rank
 
     def evaluate_reid(self, model, dataloader, query=None, gallery=None, 
-            gnn=None, graph_generator=None):
+            gnn=None, graph_generator=None, dl_ev_gnn=None):
         model_is_training = model.training
         model.eval()
         if not gnn:
             _, _, features, _ = self.predict_batchwise_reid(model, dataloader)
+        elif dl_ev_gnn:
+            gnn_is_training = gnn.training
+            gnn.eval()
+            _, _, features, _ = self.predict_batchwise_pseudo(model, gnn,
+                                                           graph_generator,
+                                                           dataloader, dl_ev_gnn)
+            gnn.train(gnn_is_training)
         else:
             gnn_is_training = gnn.training
             gnn.eval()
@@ -59,7 +66,7 @@ class Evaluator():
         with torch.no_grad():
             for X, Y, P in dataloader:
                 if torch.cuda.is_available(): X = X.cuda()
-                _, _, fc7 = model(X, output_option=self.output_test)
+                _, _, fc7 = model(X, output_option=self.output_test) ##### Actually _, fc7, _ CHECK THIS
                 edge_attr, edge_index, fc7 = graph_generator.get_graph(fc7)
                 _, fc7 = gnn(fc7, edge_index, edge_attr,
                              output_option=self.output_test)
@@ -72,3 +79,34 @@ class Evaluator():
 
         return torch.squeeze(fc7), torch.squeeze(Y), features, labels
 
+    def predict_batchwise_pseudo(self, model, gnn, graph_generator, dataloader, dl_ev_gnn):
+        fc7s, L = [], []
+        preds = dict()
+        features = dict()
+        labels = dict()
+        with torch.no_grad():
+            for X, Y, P in dataloader:
+                if torch.cuda.is_available(): X = X.cuda()
+                pred, _, fc7 = model(X, output_option=self.output_test)
+                for path, out, y in zip(P, fc7, Y):
+                    features[path] = fc7
+                    preds[path] = torch.argmax(pred).detach()
+                    labels[path] = y
+
+            for k, v in preds.items():
+                ind = dl_ev_gnn.dataset.im_paths.index([k])
+                dl_ev_gnn.dataset.ys[ind] = v
+
+            for X, Y, P in dl_ev_gnn:
+                fc7 = torch.stack([features[p] for p in P])
+                edge_attr, edge_index, fc7 = graph_generator.get_graph(fc7)
+                _, fc7 = gnn(fc7, edge_index, edge_attr,
+                             output_option=self.output_test)
+                for path, out, y in zip(P, fc7, Y):
+                    features[path] = out
+                    labels[path] = y
+                fc7s.append(fc7.cpu())
+                L.append(Y)
+        fc7, Y = torch.cat(fc7s), torch.cat(L)
+
+        return torch.squeeze(fc7), torch.squeeze(Y), features, labels
