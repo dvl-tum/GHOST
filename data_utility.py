@@ -198,7 +198,7 @@ def create_loaders(data_root, num_workers, size_batch, num_classes_iter=None,
             batch_size=size_batch,
             shuffle=False,
             sampler=sampler,
-            num_workers=num_workers,
+            num_workers=1,
             drop_last=drop_last,
             pin_memory=True)
 

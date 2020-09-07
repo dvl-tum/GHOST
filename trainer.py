@@ -342,12 +342,13 @@ class Trainer():
         if not self.config['mode'] == 'pretraining':
             with torch.no_grad():
                 logger.info('EVALUATION')
-                if self.config['mode'] != 'gnn' and self.config['mode'] != 'gnn_test' and self.config['mode'] != 'gnn_hyper_search':
+                if self.config['mode'] != 'gnn' and self.config['mode'] != 'gnn_test' and self.config['mode'] != 'gnn_hyper_search' and self.config['mode'] != 'pseudo':
                     mAP, top = self.evaluator.evaluate_reid(self.encoder, self.dl_ev,
-                            self.query, gallery=self.gallery, dl_ev_gnn=self.dl_ev_gnn)
+                            self.query, gallery=self.gallery)
                 else:
                     mAP, top = self.evaluator.evaluate_reid(self.encoder, self.dl_ev,
-                            self.query, self.gallery, self.gnn, self.graph_generator)
+                            self.query, self.gallery, self.gnn, self.graph_generator, 
+                            dl_ev_gnn=self.dl_ev_gnn)
 
                 logger.info('Mean AP: {:4.1%}'.format(mAP))
 
