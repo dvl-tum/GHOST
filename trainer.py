@@ -320,12 +320,19 @@ class Trainer():
                 loss += train_params['loss_fn']['scaling_of'] * of_reg
                 self.losses['OF'].append(of_reg.item())
 
-            # Compute MSE loss with soft targets = predictions of gnn
+            # Compute CE loss with soft targets = predictions of gnn
             if self.distill:
                 target = torch.stack([self.soft_targets[p] for p in P]).to(self.device)
                 distill = self.distill(probs, target)
                 loss += train_params['loss_fn']['scaling_distill'] * distill
                 self.losses['Distillation'].append(distill.item())
+
+            # compute MSE loss with feature vectors from gnn
+            if self.of_pre:
+                target = torch.stack([self.feat_targets[p] for p in P]).to(self.device)
+                of_pre = self.of_pre(student_feats, target)
+                loss += train_params['loss_fn']['scaling_of_pre'] * of_pre
+                self.losses['OF Pretrained'].append(of_pre.item())
 
             self.losses['Total Loss'].append(loss.item())
 
@@ -543,9 +550,16 @@ class Trainer():
             self.distill = losses.CrossEntropyDistill().to(self.device)
             with open('preds.json', 'r') as f:
                 self.soft_targets = json.load(f)
-            self.soft_targets = {k: F.softmax(torch.tensor(v)) for k, v in self.soft_targets.items()}
+            self.soft_targets = {k: F.softmax(torch.tensor(v/params['soft_temp'])) for k, v in self.soft_targets.items()}
         else:
             self.distill = None
+
+        if 'ofpre' in params['fns'].split('_'):
+            self.of_pre = nn.MSELoss().to(self.device)
+            with open('feats.json', 'r') as f:
+                self.feat_targets = json.load(f)
+        else:
+            self.of_pre = None
 
     def get_save_name(self):
         if self.config['mode'] == 'pretraining':
