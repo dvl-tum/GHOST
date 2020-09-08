@@ -595,6 +595,14 @@ class Trainer():
         config = {'num_layers': random.randint(1, 12),
                   'num_heads': random.choice([1, 2, 4, 8, 16])}
         self.config['models']['gnn_params']['gnn'].update(config)
+        
+        '''config = {'final_drop': random.random(),
+                  'stoch_depth': random.random()}
+        self.config['models']['encoder_params'].update(config)
+        
+        config = {'magnitude': random.randint(0, 30), 
+                  'number_aug': random.randint(0, 14)}
+        self.config['dataset'].update(config)'''
 
         logger.info("Updated Hyperparameters:")
         logger.info(self.config)
@@ -616,6 +624,8 @@ class Trainer():
                         'num_elements_class'],
                     mode=mode,
                     trans=config['trans'],
+                    number_aug=config['number_aug'],
+                    magnitude=config['magnitude'],
                     distance_sampler=config['sampling'],
                     val=config['val'],
                     seed=seed)
@@ -628,6 +638,8 @@ class Trainer():
                         'num_elements_class'],
                     mode=mode,
                     trans=config['trans'],
+                    number_aug=config['number_aug'],
+                    magnitude=config['magnitude'],
                     distance_sampler='no',
                     val=config['val'],
                     seed=seed)
@@ -642,6 +654,8 @@ class Trainer():
                         'num_elements_class'],
                     mode=mode,
                     trans=config['trans'],
+                    number_aug=config['number_aug'],
+                    magnitude=config['magnitude'],
                     distance_sampler=config['sampling'],
                     val=config['val'])
 

@@ -26,8 +26,10 @@ def show_dataset(img, y):
 
 class Birds(torch.utils.data.Dataset):
     def __init__(self, root, labels, paths, trans=None,
-                 eval_reid=False):
+                 eval_reid=False, magnitude=15, number_aug=0):
         self.trans = trans
+        self.magnitude = magnitude
+        self.number_aug = number_aug
         self.eval_reid = eval_reid
         # e.g., labels = range(0, 50) for using first 50 classes only
         self.labels = labels
@@ -65,7 +67,7 @@ class Birds(torch.utils.data.Dataset):
         elif self.trans == 'imgaug':
             trans = utils.make_transform_imaug(is_train=not self.eval_reid)
         elif self.trans == 'randaug':
-            trans = utils.make_rand_aug(is_train=not self.eval_reid)
+            trans = utils.make_rand_aug(is_train=not self.eval_reid, M=self.magnitude, N=self.number_aug)
         elif self.trans == 'appearance':
             ddict = defaultdict(list)
             for idx, label in enumerate(self.ys):

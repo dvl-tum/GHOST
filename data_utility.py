@@ -12,7 +12,7 @@ import matplotlib.pyplot as plt
 def create_loaders(data_root, num_workers, size_batch, num_classes_iter=None,
                    num_elements_class=None, pretraining=False,
                    input_size=[384, 128], mode='single', trans= 'norm',
-                   distance_sampler='only', val=0, m=100, seed=0):
+                   distance_sampler='only', val=0, m=100, seed=0, magnitude=15, number_aug=0):
     labels, paths = dataset.load_data(root=data_root, mode=mode, val=val, seed=seed)
     labels = labels[0]
     paths = paths[0]
@@ -83,12 +83,16 @@ def create_loaders(data_root, num_workers, size_batch, num_classes_iter=None,
         Dataset = dataset.Birds(root=data_root,
                                 labels=labels['bounding_box_train'],
                                 paths=paths['bounding_box_train'],
-                                trans=trans)
+                                trans=trans,
+                                magnitude=magnitude,
+                                number_aug=number_aug)
     else:
         Dataset = dataset.All(root=data_root,
                                 labels=labels['bounding_box_train'],
                                 paths=paths['bounding_box_train'],
-                                trans=trans)
+                                trans=trans,
+                                magnitude=magnitude,
+                                number_aug=number_aug)
 
     ddict = defaultdict(list)
     for idx, label in enumerate(Dataset.ys):
