@@ -1,0 +1,99 @@
+mode: "pseudo" #train/test/hyper_search/pretraining
+
+models:
+  encoder_params:
+    pretrained_path: "0.5564285714285714neck_resnet50_cuhk03-np.pth" #"no" #"0.5514285714285714neck_resnet50_cuhk03-np.pth" #"no" # path to pretrained model
+    net_type: "resnet50"
+    neck: 1
+    last_stride: 0
+    weight_norm: 0
+    final_drop: 0 #0.5
+    stoch_depth: 1 #0.8
+    bn_inception:
+      embed: 0
+      sz_embedding: 512
+
+  gnn_params:
+    pretrained_path: "no"
+    use_edge_encoder: 0
+    use_edge_model: 0
+    use_node_encoder: 0
+    gnn:
+      num_layers: 9
+      aggregator: "add"
+      num_heads: 4
+      attention: "dot" #"dot_pygeo"
+      mlp: 0
+      dropout_mlp: 0.1
+      norm1: 1
+      norm2: 0
+      res1: 1
+      res2: 0
+      dropout_1: 0.1
+      dropout_2: 0
+    edge:
+      fc_dims: [2048]
+      dropout_p: 0.4
+      use_batchnorm: 0
+    node_encoder:
+      fc_dims: [2048]
+      dropout_p: 0.4
+      use_batchnorm: 0
+    edge_encoder:
+      fc_dims: [2048]
+      dropout_p: 0.4
+      use_batchnorm: 0
+    classifier:
+      neck: 1
+      num_classes: 767
+      dropout_p: 0.4
+      use_batchnorm: 0
+
+graph_params:
+  sim_type: "correlation"
+  thresh: 0
+  set_negative: "hard"
+
+dataset:
+  dataset_path: "../../datasets/cuhk03-np/detected"
+  dataset_short: "cuhk03-np"
+  num_classes: 767
+  trans: "bot" #"randaug" #"bot"
+  number_aug: 2
+  magnitude: 27
+  sampling: "no"
+  val: 0
+  nb_workers: 4
+
+train_params:
+  num_classes_iter: 12 #13
+  num_elements_class: 7
+  lr: 8.636803564073289e-05 #6.675128594588672e-05  #6.675128594588672e-05
+  weight_decay: 2.791224636510333e-10 #4.1985936929920846e-12
+  num_epochs: 20
+  is_apex: 0
+  temperatur: 70
+  output_train: "norm"
+  loss_fn:
+    fns: "gnn" #ce/focalce can be used instead of lsce and lsgnn/focalgnn instead of gnn, rest can be added by ce_gnn_center...
+    scaling_ce: 1
+    scaling_gnn: 1
+    scaling_center: 0.5
+    scaling_triplet: 1
+    scaling_of: 5
+    scaling_of_pre: 1
+    scaling_distill: 1
+    soft_temp: 1
+eval_params:
+  re_rank: 0
+  lamb: 0.3
+  k1: 20
+  k2: 6
+  output_test: "norm"
+
+
+
+
+
+
+

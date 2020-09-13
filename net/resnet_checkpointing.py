@@ -218,6 +218,10 @@ class ResNet(nn.Module):
         #self.layer5 = self._make_layer(block, 512, layers[3], stride=last,
         #                               dilate=replace_stride_with_dilation[2])
 
+        #self.layer6 = self._make_layer(block, 512, layers[3], stride=last,
+        #                               dilate=replace_stride_with_dilation[2])
+
+
         self.avgpool = nn.AdaptiveAvgPool2d((1, 1))
         self.final_drop = nn.Dropout(final_drop)
 
@@ -314,6 +318,9 @@ class ResNet(nn.Module):
         
         #x = self.layer5(x, val)
         #x = checkpoint.checkpoint(self.layer5, x, val)
+        
+        #x = self.layer6(x, val)
+        #x = checkpoint.checkpoint(self.layer6, x, val)
 
         x = self.avgpool(x)
         fc7 = torch.flatten(x, 1)
