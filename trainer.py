@@ -47,8 +47,8 @@ class Trainer():
 
     def train(self):
         best_recall = 0
-        #self.num_iter = 10
-        #num_layers = list(range(9, 21))
+        #self.num_iter = 13
+        #num_layers = list(range(1, 14))
         for i in range(self.num_iter):
             #print("Iter {}/{}".format(i+1, self.num_iter))
             #self.config['models']['gnn_params']['gnn']['num_layers'] = num_layers[i]
