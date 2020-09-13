@@ -47,8 +47,8 @@ class Trainer():
 
     def train(self):
         best_recall = 0
-        #self.num_iter = 10
-        #num_layers = list(range(9, 21))
+        #self.num_iter = 13
+        #num_layers = list(range(1, 14))
         for i in range(self.num_iter):
             #print("Iter {}/{}".format(i+1, self.num_iter))
             #self.config['models']['gnn_params']['gnn']['num_layers'] = num_layers[i]
@@ -323,13 +323,13 @@ class Trainer():
             # Compute CE loss with soft targets = predictions of gnn
             if self.distill:
                 target = torch.stack([self.soft_targets[p] for p in P]).to(self.device)
-                distill = self.distill(probs, target)
+                distill = self.distill(probs/self.config['train_params']['loss_fn']['soft_temp'], target)
                 loss += train_params['loss_fn']['scaling_distill'] * distill
                 self.losses['Distillation'].append(distill.item())
 
             # compute MSE loss with feature vectors from gnn
             if self.of_pre:
-                target = torch.stack([self.feat_targets[p] for p in P]).to(self.device)
+                target = torch.stack([torch.tensor(self.feat_targets[p]) for p in P]).to(self.device)
                 of_pre = self.of_pre(student_feats, target)
                 loss += train_params['loss_fn']['scaling_of_pre'] * of_pre
                 self.losses['OF Pretrained'].append(of_pre.item())
@@ -367,14 +367,20 @@ class Trainer():
                                 .format(k, top['allshots'][k - 1],
                                         top['cuhk03'][k - 1],
                                         top['Market'][k - 1]))
-
+                
+                if self.dataset_short == 'cuhk03-np':
+                    eval_method = 'Market'
+                elif self.dataset_short == 'dukemtmc':
+                    eval_method = 'Market'
+                else:
+                    eval_method = self.dataset_short
                 scores.append((mAP,
-                               [top[self.dataset_short][k - 1] for k
+                               [top[eval_method][k - 1] for k
                                 in
                                 [1, 5, 10]]))
                 self.encoder.current_epoch = e
-                if top[self.dataset_short][0] > best_accuracy:
-                    best_accuracy = top[self.dataset_short][0]
+                if top[eval_method][0] > best_accuracy:
+                    best_accuracy = top[eval_method][0]
                     self.best_preds = self.preds
                     self.best_labs = self.labs
                     self.best_feats = self.feats
@@ -550,7 +556,7 @@ class Trainer():
             self.distill = losses.CrossEntropyDistill().to(self.device)
             with open('preds.json', 'r') as f:
                 self.soft_targets = json.load(f)
-            self.soft_targets = {k: F.softmax(torch.tensor(v/params['soft_temp'])) for k, v in self.soft_targets.items()}
+            self.soft_targets = {k: F.softmax(torch.tensor(v)/params['soft_temp']) for k, v in self.soft_targets.items()}
         else:
             self.distill = None
 
@@ -586,15 +592,15 @@ class Trainer():
     def sample_hypers(self):
         config = {'lr': 10 ** random.uniform(-8, -3),
                   'weight_decay': 10 ** random.uniform(-15, -6),
-                  'num_classes_iter': random.randint(4, 100),
+                  'num_classes_iter': random.randint(4, 15), #100
                   'num_elements_class': random.randint(4, 7),
-                  'temperature': random.randint(10, 80),
+                  'temperatur': random.randint(10, 80),
                   'num_epochs': 20}
         self.config['train_params'].update(config)
 
-        config = {'num_layers': random.randint(1, 12),
+        '''config = {'num_layers': random.randint(1, 12),
                   'num_heads': random.choice([1, 2, 4, 8, 16])}
-        self.config['models']['gnn_params']['gnn'].update(config)
+        self.config['models']['gnn_params']['gnn'].update(config)'''
         
         '''config = {'final_drop': random.random(),
                   'stoch_depth': random.random()}
