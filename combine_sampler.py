@@ -71,6 +71,71 @@ class CombineSampler(Sampler):
         return len(self.flat_list)
 
 
+class TrainTestCombi(Sampler):
+    """
+    l_inds (list of lists)
+    cl_b (int): classes in a batch
+    n_cl (int): num of obs per class inside the batch
+    """
+
+    def __init__(self, l_inds, cl_b, n_cl, l_inds_train=None, l_inds_gallery=None):
+        self.l_inds = l_inds
+        self.l_inds_train = l_inds_train
+        self.l_inds_gallery = l_inds_gallery
+        self.max = -1
+        self.cl_b = cl_b
+        self.n_cl = n_cl
+        self.batch_size = cl_b * n_cl
+        self.flat_list = []
+
+        for inds in l_inds:
+            if len(inds) > self.max:
+                self.max = len(inds)
+
+    def get_train_inds(self):
+        l_inds = list(map(lambda a: random.sample(a, len(a)), self.l_inds_train))
+        for inds in l_inds:
+            choose = copy.deepcopy(inds)
+            while len(inds) < self.n_cl:
+                inds += [random.choice(choose)]
+        print("Num samples")
+
+        split_list_of_indices = []
+        for inds in l_inds:
+            inds = inds + np.random.choice(inds, size=(len(
+                inds) // self.n_cl + 1) * self.n_cl - len(inds),
+                                           replace=False).tolist()
+            # drop the last < n_cl elements
+            while len(inds) >= self.n_cl:
+                split_list_of_indices.append(inds[:self.n_cl])
+                inds = inds[self.n_cl:]
+            assert len(inds) == 0
+
+        random.shuffle(split_list_of_indices)
+
+        self.train_samples = [item for sublist in split_list_of_indices for item in
+                          sublist[:self.cl_b]]
+
+        [self.train_samples.pop(ind) for ind in random.sample(list(range(len(self.train_samples))), 2)]
+
+    def __iter__(self):
+        self.flat_list = list()
+        for query_class in self.l_inds:
+            for query in query_class:
+                for gallery_class in self.l_inds_gallery:
+                    for gallery in gallery_class:
+                        batch = self.train_samples + [gallery, query]
+                        self.flat_list.append(batch)
+
+        self.flat_list = [item for batch in self.flat_list for item in
+                          batch]
+
+        return iter(self.flat_list)
+
+    def __len__(self):
+        return len(self.flat_list)
+
+
 class DistanceSamplerOrig(Sampler):
     def __init__(self, num_classes, num_samples, samples, strategy):
         print("USING DIST")

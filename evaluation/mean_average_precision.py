@@ -6,6 +6,17 @@ import os
 from collections import defaultdict
 
 
+def dist_traintest(features, query=None, gallery=None):
+    dist = torch.zeros(len(query), len(gallery))
+    for i, qu in enumerate(query):
+        for j, gal in enumerate(gallery):
+            dist[i, j] = features[qu][gal][qu] @ features[qu][gal][qu] + \
+                            features[qu][gal][gal] @ features[qu][gal][gal] - \
+                            2 * (features[qu][gal][gal] @ features[qu][gal][qu])
+
+    return dist
+
+
 def pairwise_distance(features, query=None, gallery=None):
 
     x = torch.cat([features[f].unsqueeze(0) for f in query], 0)
@@ -256,7 +267,9 @@ def re_ranking(features, query, gallery, k1=20, k2=6, lambda_value=0.3,
 
 
 def calc_mean_average_precision(features, query, gallery, re_rank=False, lamb=0.3, k1=20, k2=6):
-    if re_rank:
+    if type(features[features.keys[0]]) == dict:
+        distmat = dist_traintest(features, query, gallery)
+    elif re_rank:
         distmat = re_ranking(features, query, gallery, k1=k1, k2=k2, lambda_value=lamb)
     else:
         distmat = pairwise_distance(features, query, gallery)

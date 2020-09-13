@@ -3,7 +3,7 @@ import torch
 from collections import defaultdict
 from combine_sampler import CombineSampler, CombineSamplerAdvanced, \
     CombineSamplerSuperclass, CombineSamplerSuperclass2, PretraingSampler, \
-    DistanceSampler, DistanceSamplerMean, DistanceSamplerOrig
+    DistanceSampler, DistanceSamplerMean, DistanceSamplerOrig, TrainTestCombi
 import numpy as np
 import os
 import matplotlib.pyplot as plt
@@ -139,6 +139,17 @@ def create_loaders(data_root, num_workers, size_batch, num_classes_iter=None,
                 paths=paths_ev,
                 trans=trans,
                 eval_reid=True)
+    elif mode == 'traintest':
+        dataset_ev = dataset.Birds(
+            root=data_root,
+            labels=labels['query'],
+            paths=paths['query'],
+            trans=trans,
+            eval_reid=True,
+            labels_train=labels['bounding_box_train'],
+            paths_train=paths['bounding_box_train'],
+            labels_gallery=labels['bounding_box_test'],
+            paths_gallery=labels['bounding_box_test'])
     else:
         dataset_ev = dataset.All(
             root-data_root,
@@ -214,6 +225,53 @@ def create_loaders(data_root, num_workers, size_batch, num_classes_iter=None,
             pin_memory=True
         )
 
+    elif mode == 'traintest':
+        ddict_query = defaultdict(list)
+        for idx, label in enumerate(dataset_ev.ys):
+            ddict_query[label].append(idx)
+
+        list_of_indices_for_each_class_query = []
+        for key in ddict:
+            list_of_indices_for_each_class_query.append(ddict_query[key])
+
+        ddict_train = defaultdict(list)
+        for idx, label in enumerate(dataset_ev.ys_train):
+            ddict_train[label].append(idx)
+
+        list_of_indices_for_each_class_train = []
+        for key in ddict:
+            list_of_indices_for_each_class_train.append(ddict_train[key])
+
+        ddict_gallery = defaultdict(list)
+        for idx, label in enumerate(dataset_ev.ys_gallery):
+            ddict_gallery[label].append(idx)
+
+        list_of_indices_for_each_class_gallery = []
+        for key in ddict:
+            list_of_indices_for_each_class_gallery.append(ddict_gallery[key])
+
+        sampler = TrainTestCombi(list_of_indices_for_each_class_query,
+                                 num_classes_iter, num_elements_class,
+                                 list_of_indices_for_each_class_train,
+                                 list_of_indices_for_each_class_gallery)
+        drop_last = True
+
+        dl_ev_gnn = torch.utils.data.DataLoader(
+            dataset_ev,
+            batch_size=size_batch,
+            shuffle=False,
+            sampler=sampler,
+            num_workers=1,
+            drop_last=drop_last,
+            pin_memory=True)
+
+        dl_ev = torch.utils.data.DataLoader(
+            dataset_ev,
+            batch_size=50,
+            shuffle=False,
+            num_workers=1,
+            pin_memory=True
+        )
     else:
         dl_ev = torch.utils.data.DataLoader(
             dataset_ev,

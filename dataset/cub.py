@@ -26,7 +26,9 @@ def show_dataset(img, y):
 
 class Birds(torch.utils.data.Dataset):
     def __init__(self, root, labels, paths, trans=None,
-                 eval_reid=False, magnitude=15, number_aug=0):
+                 eval_reid=False, magnitude=15, number_aug=0,
+                 labels_train=None, paths_train=None, labels_gallery=None,
+                 paths_gallery=None):
         self.trans = trans
         self.magnitude = magnitude
         self.number_aug = number_aug
@@ -35,6 +37,10 @@ class Birds(torch.utils.data.Dataset):
         self.labels = labels
         self.ys = list()
         self.im_paths = list()
+        self.labels_train = labels_train
+        self.paths_train = paths_train
+        self.labels_gallery = labels_gallery
+        self.paths_gallery = paths_gallery
 
         # when cuhk03 detected and labeled should be used
         if os.path.basename(root) == 'cuhk03' or os.path.basename(root) == 'cuhk03-np':
@@ -57,7 +63,27 @@ class Birds(torch.utils.data.Dataset):
                 self.im_paths.append(os.path.join(root, 'images', '{:05d}'.format(
                     int(paths[i].split('_')[0])), paths[i]))
 
-        self.transform = self.get_transform()
+        if self.labels_train is not None:
+            self.ys_train = list()
+            self.im_paths_train = list()
+            self.map_train = {lab: i for i, lab in
+                        enumerate(sorted(set(self.labels_train)))}
+            for i, y in enumerate(self.labels_train):
+                self.ys_train.append(self.map_train[y])
+                self.im_paths_train.append(
+                    os.path.join(root, 'images', '{:05d}'.format(
+                        int(paths_train[i].split('_')[0])), paths_train[i]))
+
+        if self.labels_gallery is not None:
+            self.ys_gallery = list()
+            self.im_paths_gallery = list()
+            for i, y in enumerate(self.labels_gallery):
+                self.ys_gallery.append(self.map[y])
+                self.im_paths_gallery.append(
+                    os.path.join(root, 'images', '{:05d}'.format(
+                        int(paths_gallery[i].split('_')[0])), paths_gallery[i]))
+
+    self.transform = self.get_transform()
 
     def get_transform(self):
         if self.trans == 'norm':
@@ -97,7 +123,9 @@ class Birds(torch.utils.data.Dataset):
         else:
             im = self.transform(im)
         #show_dataset(im, self.ys[index])
-
+        if self.ys_train is not None:
+            return im, self.ys_train[index[:-2]] + self.ys_gallery[index[-2]] + self.ys[index[-1]], \
+                   self.im_paths_train[index[:-2]] + self.im_paths_gallery[-2] + self.im_paths[index[-1]]
         if self.eval_reid:
             return im, self.ys[index], self.im_paths[index]
         return im, self.ys[index], index, self.im_paths[index]

@@ -2,6 +2,7 @@ from . import calc_mean_average_precision
 import torch
 import logging
 import json
+from collections import defaultdict
 
 logger = logging.getLogger('GNNReID.Evaluator')
 
@@ -21,6 +22,14 @@ class Evaluator():
         model.eval()
         if not gnn:
             _, _, features, _ = self.predict_batchwise_reid(model, dataloader)
+        elif dl_ev_gnn.dataset.ys_train is not None:
+            gnn_is_training = gnn.training
+            gnn.eval()
+            _, _, features, _ = self.predict_batchwise_traintest(model, gnn,
+                                                              graph_generator,
+                                                              dataloader,
+                                                              dl_ev_gnn)
+            gnn.train(gnn_is_training)
         elif dl_ev_gnn is not None:
             gnn_is_training = gnn.training
             gnn.eval()
@@ -113,3 +122,34 @@ class Evaluator():
         fc7, Y = torch.cat(fc7s), torch.cat(L)
 
         return torch.squeeze(fc7), torch.squeeze(Y), features_new, labels
+
+    def predict_batchwise_traintest(self, model, gnn, graph_generator,
+                                    dataloader, dl_ev_gnn):
+
+        preds = dict()
+        features = dict()
+        labels = dict()
+        with torch.no_grad():
+            for X, Y, P in dataloader:
+                if torch.cuda.is_available(): X = X.cuda()
+                pred, _, fc7 = model(X, output_option=self.output_test,
+                                     val=True)
+                for path, out, y, p in zip(P, fc7, Y, pred):
+                    features[path] = out
+                    preds[path] = torch.argmax(p).detach()
+                    labels[path] = y
+
+        for k, v in preds.items():
+            ind = dl_ev_gnn.dataset.im_paths.index(k)
+            dl_ev_gnn.dataset.ys[ind] = v.item()
+
+        features_new = defaultdict(dict)
+        with torch.no_grad():
+            for X, Y, P in dl_ev_gnn:
+                fc7 = torch.stack([features[p] for p in P])
+                edge_attr, edge_index, fc7 = graph_generator.get_graph(fc7)
+                _, fc7 = gnn(fc7, edge_index, edge_attr,
+                             output_option=self.output_test)
+                features_new[P[-1]][P[-2]] = {P[-1]: fc7[-1], P[-2]: fc7[-2]}
+
+        return _, _, features_new, _
