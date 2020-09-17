@@ -216,8 +216,7 @@ class DistanceSamplerOrig(Sampler):
         random.shuffle(batches)
         if len(batches) % self.num_classes != 0:
             b = np.random.choice(np.arange(len(batches)), size=len(batches) % self.num_classes, replace=False).tolist()
-
-        [batches.append(batches[m]) for m in b]
+            [batches.append(batches[m]) for m in b]
 
 
         self.flat_list = [s for batch in batches for s in batch]
@@ -396,8 +395,7 @@ class DistanceSampler(Sampler):
         random.shuffle(batches)
         if len(batches) % self.num_classes != 0:
             b = np.random.choice(np.arange(len(batches)), size=len(batches) % self.num_classes, replace=False).tolist()
-
-        [batches.append(batches[m]) for m in b]
+            [batches.append(batches[m]) for m in b]
 
         self.flat_list = [s for batch in batches for s in batch]
 
