@@ -45,7 +45,7 @@ def make_transform(sz_resize=[384, 128], sz_crop=[384, 128],
                    mean=[0.485, 0.456, 0.406], std=[0.299, 0.224, 0.225],
                    is_train=True):
     return transforms.Compose([
-        transforms.Compose([  # train: horizontal flip and random resized crop
+        transforms.Compose([  # train: resize, random flip, pad, random crop again, normalization
             transforms.Resize(sz_crop),
             transforms.RandomHorizontalFlip(p=0.5),
             transforms.Pad(10),
