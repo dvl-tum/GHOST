@@ -5,7 +5,9 @@ import torch
 import sklearn.metrics.pairwise
 from collections import defaultdict
 import numpy as np
+import logging
 
+logger = logging.getLogger('GNNReID.CombineSampler')
 
 class CombineSampler(Sampler):
     """
@@ -78,7 +80,7 @@ class TrainTestCombi(Sampler):
     n_cl (int): num of obs per class inside the batch
     """
 
-    def __init__(self, l_inds, cl_b, n_cl, l_inds_train=None, l_inds_gallery=None):
+    def __init__(self, l_inds, cl_b, n_cl, l_inds_train=None, l_inds_gallery=None, backbone=False):
         self.l_inds = l_inds
         self.l_inds_train = l_inds_train
         self.l_inds_gallery = l_inds_gallery
@@ -87,12 +89,16 @@ class TrainTestCombi(Sampler):
         self.n_cl = n_cl
         self.batch_size = cl_b * n_cl
         self.flat_list = []
+        self.backbone = backbone
 
         for inds in l_inds:
             if len(inds) > self.max:
                 self.max = len(inds)
+        self.get_train_inds()
 
     def get_train_inds(self):
+        random.seed(0)
+        np.random.seed(0)
         l_inds = list(map(lambda a: random.sample(a, len(a)), self.l_inds_train))
         for inds in l_inds:
             choose = copy.deepcopy(inds)
@@ -112,23 +118,29 @@ class TrainTestCombi(Sampler):
             assert len(inds) == 0
 
         random.shuffle(split_list_of_indices)
-
-        self.train_samples = [item for sublist in split_list_of_indices for item in
-                          sublist[:self.cl_b]]
-
+        self.train_samples = [item for sublist in split_list_of_indices[:self.cl_b] for item in
+                          sublist]
         [self.train_samples.pop(ind) for ind in random.sample(list(range(len(self.train_samples))), 2)]
-
+        
     def __iter__(self):
-        self.flat_list = list()
-        for query_class in self.l_inds:
-            for query in query_class:
-                for gallery_class in self.l_inds_gallery:
-                    for gallery in gallery_class:
-                        batch = self.train_samples + [gallery, query]
+        if self.backbone:
+            self.flat_list = [samp for cl in self.l_inds for samp in cl]
+            gallery_list = [samp for cl in self.l_inds_gallery for samp in cl]
+            self.flat_list = self.flat_list + gallery_list + self.train_samples
+        else:
+            self.flat_list = list()
+            for i in range(5):
+                for query_class in self.l_inds:
+                    query_idx = random.choice(query_class)
+                    gallery_classes = random.choices(self.l_inds_gallery, k=20) 
+                    for gallery_class in gallery_classes: #self.l_inds_gallery:
+                        gallery_idx = random.choice(gallery_class)
+                        batch = self.train_samples + [gallery_idx, query_idx]
                         self.flat_list.append(batch)
 
-        self.flat_list = [item for batch in self.flat_list for item in
-                          batch]
+            logger.info("{} batches".format(len(self.flat_list)))
+            self.flat_list = [item for batch in self.flat_list for item in
+                              batch]
 
         return iter(self.flat_list)
 

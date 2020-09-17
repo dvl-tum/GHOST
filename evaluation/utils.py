@@ -20,24 +20,26 @@ class Evaluator():
             gnn=None, graph_generator=None, dl_ev_gnn=None):
         model_is_training = model.training
         model.eval()
-        if not gnn:
+
+        if not gnn: # normal setting
             _, _, features, _ = self.predict_batchwise_reid(model, dataloader)
-        elif dl_ev_gnn.dataset.ys_train is not None:
-            gnn_is_training = gnn.training
-            gnn.eval()
-            _, _, features, _ = self.predict_batchwise_traintest(model, gnn,
-                                                              graph_generator,
-                                                              dataloader,
-                                                              dl_ev_gnn)
-            gnn.train(gnn_is_training)
-        elif dl_ev_gnn is not None:
-            gnn_is_training = gnn.training
-            gnn.eval()
-            _, _, features, _ = self.predict_batchwise_pseudo(model, gnn,
-                                                           graph_generator,
-                                                           dataloader, dl_ev_gnn)
-            gnn.train(gnn_is_training)
-        else:
+        elif dl_ev_gnn is not None: # either pseudo or traintest
+            if dl_ev_gnn.dataset.labels_train is not None: # traintest
+                gnn_is_training = gnn.training
+                gnn.eval()
+                _, _, features, _ = self.predict_batchwise_traintest(model, gnn,
+                                                                  graph_generator,
+                                                                  dataloader,
+                                                                  dl_ev_gnn)
+                gnn.train(gnn_is_training)
+            else: # pseudo
+                gnn_is_training = gnn.training
+                gnn.eval()
+                _, _, features, _ = self.predict_batchwise_pseudo(model, gnn,
+                                                               graph_generator,
+                                                               dataloader, dl_ev_gnn)
+                gnn.train(gnn_is_training)
+        else: #gnn
             gnn_is_training = gnn.training
             gnn.eval()
             _, _, features, _ = self.predict_batchwise_gnn(model, gnn,
@@ -125,31 +127,28 @@ class Evaluator():
 
     def predict_batchwise_traintest(self, model, gnn, graph_generator,
                                     dataloader, dl_ev_gnn):
-
-        preds = dict()
         features = dict()
-        labels = dict()
         with torch.no_grad():
             for X, Y, P in dataloader:
                 if torch.cuda.is_available(): X = X.cuda()
-                pred, _, fc7 = model(X, output_option=self.output_test,
-                                     val=True)
+                pred, _, fc7 = model(X, output_option=self.output_test, val=True)
                 for path, out, y, p in zip(P, fc7, Y, pred):
                     features[path] = out
-                    preds[path] = torch.argmax(p).detach()
-                    labels[path] = y
 
-        for k, v in preds.items():
-            ind = dl_ev_gnn.dataset.im_paths.index(k)
-            dl_ev_gnn.dataset.ys[ind] = v.item()
-
+        logger.info("GNN")
         features_new = defaultdict(dict)
         with torch.no_grad():
+            #for i in len(dl_ev_gnn.l_inds)):
+            i = 0
             for X, Y, P in dl_ev_gnn:
+                if torch.cuda.is_available(): X = X.cuda()
                 fc7 = torch.stack([features[p] for p in P])
                 edge_attr, edge_index, fc7 = graph_generator.get_graph(fc7)
                 _, fc7 = gnn(fc7, edge_index, edge_attr,
                              output_option=self.output_test)
-                features_new[P[-1]][P[-2]] = {P[-1]: fc7[-1], P[-2]: fc7[-2]}
-
+                #features_new[P[-1]][P[-2]] = {P[-1]: fc7[-1], P[-2]: fc7[-2]}
+                features_new[P[-1]][P[-2]] = (fc7[-1] @ fc7[-1] + fc7[-2] @ fc7[-2] - 2 * (fc7[-1] @ fc7[-2])).detach()
+                if i % 10000 == 0:
+                    logger.info(i)
+                i += 1
         return _, _, features_new, _

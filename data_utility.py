@@ -7,7 +7,9 @@ from combine_sampler import CombineSampler, CombineSamplerAdvanced, \
 import numpy as np
 import os
 import matplotlib.pyplot as plt
+import logging
 
+logger = logging.getLogger('GNNReID.DataUtility')
 
 def create_loaders(data_root, num_workers, size_batch, num_classes_iter=None,
                    num_elements_class=None, pretraining=False,
@@ -131,15 +133,14 @@ def create_loaders(data_root, num_workers, size_batch, num_classes_iter=None,
     if pretraining:
         return dl_tr
 
-
-    if mode != 'all':
+    if mode != 'all' and mode != 'traintest' and mode != 'traintest_test':
         dataset_ev = dataset.Birds(
                 root=data_root,
                 labels=labels_ev,
                 paths=paths_ev,
                 trans=trans,
                 eval_reid=True)
-    elif mode == 'traintest':
+    elif mode == 'traintest' or mode == 'traintest_test':
         dataset_ev = dataset.Birds(
             root=data_root,
             labels=labels['query'],
@@ -149,7 +150,7 @@ def create_loaders(data_root, num_workers, size_batch, num_classes_iter=None,
             labels_train=labels['bounding_box_train'],
             paths_train=paths['bounding_box_train'],
             labels_gallery=labels['bounding_box_test'],
-            paths_gallery=labels['bounding_box_test'])
+            paths_gallery=paths['bounding_box_test'])
     else:
         dataset_ev = dataset.All(
             root-data_root,
@@ -195,7 +196,7 @@ def create_loaders(data_root, num_workers, size_batch, num_classes_iter=None,
 
         dl_ev_gnn = None
 
-    elif mode == 'pseudo':
+    elif mode == 'pseudo' or mode == 'pseudo_test':
         ddict = defaultdict(list)
         for idx, label in enumerate(dataset_ev.ys):
             ddict[label].append(idx)
@@ -225,30 +226,38 @@ def create_loaders(data_root, num_workers, size_batch, num_classes_iter=None,
             pin_memory=True
         )
 
-    elif mode == 'traintest':
+    elif mode == 'traintest' or mode == 'traintest_test':
         ddict_query = defaultdict(list)
-        for idx, label in enumerate(dataset_ev.ys):
+        for idx, label in enumerate(dataset_ev.ys_query):
             ddict_query[label].append(idx)
+            max_idx_query = idx
 
         list_of_indices_for_each_class_query = []
-        for key in ddict:
+        for key in ddict_query:
             list_of_indices_for_each_class_query.append(ddict_query[key])
 
         ddict_train = defaultdict(list)
         for idx, label in enumerate(dataset_ev.ys_train):
-            ddict_train[label].append(idx)
+            ddict_train[label].append(idx + 1 + max_idx_query) # +1 becuase idx starts from 0
+            max_idx_train = idx + 1 + max_idx_query
 
         list_of_indices_for_each_class_train = []
-        for key in ddict:
+        for key in ddict_train:
             list_of_indices_for_each_class_train.append(ddict_train[key])
-
+        
         ddict_gallery = defaultdict(list)
         for idx, label in enumerate(dataset_ev.ys_gallery):
-            ddict_gallery[label].append(idx)
-
+            ddict_gallery[label].append(idx + 1 + max_idx_train)
+        
         list_of_indices_for_each_class_gallery = []
-        for key in ddict:
+        for key in ddict_gallery:
             list_of_indices_for_each_class_gallery.append(ddict_gallery[key])
+        
+        sampler_backbone = TrainTestCombi(list_of_indices_for_each_class_query,
+                                 num_classes_iter, num_elements_class,
+                                 list_of_indices_for_each_class_train,
+                                 list_of_indices_for_each_class_gallery, 
+                                 backbone=True)
 
         sampler = TrainTestCombi(list_of_indices_for_each_class_query,
                                  num_classes_iter, num_elements_class,
@@ -258,20 +267,20 @@ def create_loaders(data_root, num_workers, size_batch, num_classes_iter=None,
 
         dl_ev_gnn = torch.utils.data.DataLoader(
             dataset_ev,
+            sampler=sampler,
             batch_size=size_batch,
             shuffle=False,
-            sampler=sampler,
             num_workers=1,
-            drop_last=drop_last,
             pin_memory=True)
 
         dl_ev = torch.utils.data.DataLoader(
             dataset_ev,
-            batch_size=50,
+            sampler= sampler_backbone,
+            batch_size=64,
             shuffle=False,
             num_workers=1,
-            pin_memory=True
-        )
+            pin_memory=True)
+        
     else:
         dl_ev = torch.utils.data.DataLoader(
             dataset_ev,
