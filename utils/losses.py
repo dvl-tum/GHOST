@@ -29,6 +29,23 @@ class CrossEntropyDistill(torch.nn.Module):
         return loss
 
 
+class KLDivWithLogSM(torch.nn.Module):
+    def __init__(self):
+        super(KLDivWithLogSM, self).__init__()
+        self.logsoftmax = torch.nn.LogSoftmax(dim=1)
+        self.KLDiv = torch.nn.KLDivLoss()
+
+    def forward(self, inputs, targets):
+        """
+        Args:
+            inputs: prediction matrix (before softmax) with shape (batch_size, num_classes)
+            targets: ground truth labels with shape (batch_size, num_classes)
+        """
+        log_probs = self.logsoftmax(inputs)
+        loss = self.KLDiv(log_probs, targets) 
+        return loss
+
+
 # cross entropy and center loss
 class CrossEntropyLabelSmooth(torch.nn.Module):
     """Cross entropy loss with label smoothing regularizer.

@@ -167,6 +167,11 @@ def load_data(root: str = None, mode: str='single', val=0, seed=0):
                     labels[i]['bounding_box_train'][j] for j in
                     range(len(labels[i]['bounding_box_train'])) if
                     labels[i]['bounding_box_train'][j] not in ind]
+        elif os.path.basename(root) == 'Market-1501-v15.09.15':
+            for key, value in labels.items():
+                junk = [i for i, v in enumerate(value) if v == -1]
+                labels[key] = [v for i, v in enumerate(value) if i not in junk]
+                data[key] = [v for i, v in enumerate(data[key]) if i not in junk]
 
         elif os.path.basename(root) == 'Market-1501-v15.09.15':
             for key, value in labels.items():
@@ -177,7 +182,7 @@ def load_data(root: str = None, mode: str='single', val=0, seed=0):
         # make list if not, for cuhk03 classic split is list
         if type(data) != list:
             data, labels = [data], [labels]
-
+        
     # check if same number of identities in splits
     for split, split_paths in zip(labels, data):
         for t in ['bounding_box_train', 'bounding_box_test', 'query']:

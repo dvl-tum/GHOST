@@ -118,7 +118,7 @@ class Trainer():
             logger.info('Used Parameters: ' + hypers)
 
             logger.info('Best Recall: {}'.format(best_accuracy))
-            if best_accuracy > best_recall and not self.config['mode'] == 'test' and not self.config['mode'] == 'gnn_test':
+            if best_accuracy > best_recall and not self.config['mode'] == 'test' and not self.config['mode'] == 'gnn_test' and not self.config['mode'] == 'traintest_test' and not self.config['mode'] == 'pseudo_test':
                 os.rename(osp.join(self.save_folder_nets, self.fn + '.pth'),
                           str(best_accuracy) + mode + self.net_type + '_' +
                           self.dataset_short + '.pth')
@@ -128,7 +128,7 @@ class Trainer():
                 best_recall = best_accuracy
                 best_hypers = ', '.join(
                         [str(k) + ': ' + str(v) for k, v in self.config.items()])
-            elif self.config['mode'] == 'test' or self.config['mode'] == 'gnn_test':
+            elif self.config['mode'] == 'test' or self.config['mode'] == 'gnn_test' or self.config['mode'] == 'traintest_test' or self.config['mode'] == 'pseudo_test':
                 best_recall = best_accuracy
                 best_hypers = ', '.join(
                         [str(k) + ': ' + str(v) for k, v in self.config.items()])
@@ -150,7 +150,7 @@ class Trainer():
             self.feature_dict = dict()
 
         for e in range(1, train_params['num_epochs'] + 1):
-            if self.config['mode'] == 'test' or self.config['mode'] == 'gnn_test':
+            if self.config['mode'] == 'test' or self.config['mode'] == 'gnn_test' or self.config['mode'] == 'traintest_test' or self.config['mode'] == 'pseudo_test':
                 best_accuracy = self.evaluate(eval_params, scores, 0, 0, 0)
             # If not testing
             else:
@@ -349,7 +349,7 @@ class Trainer():
         if not self.config['mode'] == 'pretraining':
             with torch.no_grad():
                 logger.info('EVALUATION')
-                if self.config['mode'] != 'gnn' and self.config['mode'] != 'gnn_test' and self.config['mode'] != 'gnn_hyper_search' and self.config['mode'] != 'pseudo':
+                if self.config['mode'] != 'gnn' and self.config['mode'] != 'gnn_test' and self.config['mode'] != 'gnn_hyper_search' and self.config['mode'] != 'pseudo' and self.config['mode'] != 'pseudo_test' and self.config['mode'] != 'traintest' and self.config['mode'] != 'traintest_test':
                     mAP, top = self.evaluator.evaluate_reid(self.encoder, self.dl_ev,
                             self.query, gallery=self.gallery)
                 else:
@@ -443,7 +443,7 @@ class Trainer():
 
         file_name = str(
             best_accuracy) + '_' + self.dataset_short + '_' + str(self.timer)
-        if self.config['mode'] == 'test':
+        if self.config['mode'] == 'test' or self.config['mode'] == 'gnn_test' or self.config['mode'] == 'traintest_test' or self.config['mode'] == 'pseudo_test':
             file_name = 'test_' + file_name
         if not self.config['mode'] == 'pretraining':
             with open(
@@ -459,7 +459,7 @@ class Trainer():
         utils.make_dir(results_dir)
 
         # plot losses
-        if not self.config['mode'] == 'test' and not self.config['mode'] == 'gnn_test':
+        if not self.config['mode'] == 'test' and not self.config['mode'] == 'gnn_test' and not self.config['mode'] == 'traintest_test' and not self.config['mode'] == 'pseudo_test':
             for k, v in self.losses_mean.items():
                 eps = list(range(len(v)))
                 plt.plot(eps, v)
@@ -552,8 +552,13 @@ class Trainer():
         else:
             self.of = None
 
-        if 'distill' in params['fns'].split('_'):
+        if 'distillSh' in params['fns'].split('_'):
             self.distill = losses.CrossEntropyDistill().to(self.device)
+            with open('preds.json', 'r') as f:
+                self.soft_targets = json.load(f)
+            self.soft_targets = {k: F.softmax(torch.tensor(v)/params['soft_temp']) for k, v in self.soft_targets.items()}
+        elif 'distillKL' in params['fns'].split('_'):
+            self.distill = losses.KLDivWithLogSM().to(self.device)
             with open('preds.json', 'r') as f:
                 self.soft_targets = json.load(f)
             self.soft_targets = {k: F.softmax(torch.tensor(v)/params['soft_temp']) for k, v in self.soft_targets.items()}
@@ -583,7 +588,7 @@ class Trainer():
         if self.config['dataset']['val']:
             self.config['dataset']['num_classes'] -= 100
 
-        if self.config['mode'] == 'test' or self.config['mode'] == 'gnn_test':
+        if self.config['mode'] == 'test' or self.config['mode'] == 'gnn_test' or self.config['mode'] == 'traintest_test' or self.config['mode'] == 'pseudo_test':
             self.config['train_params']['num_epochs'] = 1
 
         if self.config['dataset']['sampling'] != 'no':

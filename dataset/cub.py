@@ -8,6 +8,10 @@ import tarfile
 import imageio
 import matplotlib.pyplot as plt
 from collections import defaultdict, Counter
+import copy
+import logging
+
+logger = logging.getLogger('GNNReID.Dataset')
 
 
 def pil_loader(path):
@@ -64,26 +68,31 @@ class Birds(torch.utils.data.Dataset):
                     int(paths[i].split('_')[0])), paths[i]))
 
         if self.labels_train is not None:
+            self.ys_query = copy.deepcopy(self.ys) 
             self.ys_train = list()
-            self.im_paths_train = list()
-            self.map_train = {lab: i for i, lab in
+            max_query = max(list(self.map.values()))
+            map_train = {lab: i + 1 + max_query for i, lab in
                         enumerate(sorted(set(self.labels_train)))}
+            self.map.update(map_train)
             for i, y in enumerate(self.labels_train):
-                self.ys_train.append(self.map_train[y])
-                self.im_paths_train.append(
+                self.ys.append(self.map[y])
+                self.ys_train.append(self.map[y])
+                self.im_paths.append(
                     os.path.join(root, 'images', '{:05d}'.format(
                         int(paths_train[i].split('_')[0])), paths_train[i]))
 
         if self.labels_gallery is not None:
             self.ys_gallery = list()
-            self.im_paths_gallery = list()
             for i, y in enumerate(self.labels_gallery):
+                if y not in self.map.keys():
+                    self.map[y] = max(list(self.map.values())) + 1
+                self.ys.append(self.map[y])
                 self.ys_gallery.append(self.map[y])
-                self.im_paths_gallery.append(
+                self.im_paths.append(
                     os.path.join(root, 'images', '{:05d}'.format(
                         int(paths_gallery[i].split('_')[0])), paths_gallery[i]))
 
-    self.transform = self.get_transform()
+        self.transform = self.get_transform()
 
     def get_transform(self):
         if self.trans == 'norm':
@@ -123,9 +132,8 @@ class Birds(torch.utils.data.Dataset):
         else:
             im = self.transform(im)
         #show_dataset(im, self.ys[index])
-        if self.ys_train is not None:
-            return im, self.ys_train[index[:-2]] + self.ys_gallery[index[-2]] + self.ys[index[-1]], \
-                   self.im_paths_train[index[:-2]] + self.im_paths_gallery[-2] + self.im_paths[index[-1]]
+        if self.labels_train is not None:
+            return im, self.ys[index], self.im_paths[index]
         if self.eval_reid:
             return im, self.ys[index], self.im_paths[index]
         return im, self.ys[index], index, self.im_paths[index]
