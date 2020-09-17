@@ -566,7 +566,8 @@ class Trainer():
             self.distill = None
 
         if 'ofpre' in params['fns'].split('_'):
-            self.of_pre = nn.MSELoss().to(self.device)
+            #self.of_pre = nn.MSELoss().to(self.device)
+            self.of_pre = nn.L1Loss().to(self.device)
             with open('feats.json', 'r') as f:
                 self.feat_targets = json.load(f)
         else:

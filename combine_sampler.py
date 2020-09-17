@@ -130,11 +130,11 @@ class TrainTestCombi(Sampler):
         else:
             self.flat_list = list()
             for i in range(5):
-                for query_class in self.l_inds:
-                    query_idx = random.choice(query_class)
-                    gallery_classes = random.choices(self.l_inds_gallery, k=20) 
-                    for gallery_class in gallery_classes: #self.l_inds_gallery:
-                        gallery_idx = random.choice(gallery_class)
+                #for query_class in self.l_inds:
+                query_class = random.choice(self.l_inds)
+                query_idx = random.choice(query_class) 
+                for gallery_class in self.l_inds_gallery:
+                    for gallery_idx in random.choices(gallery_class, k=5): #gallery_class
                         batch = self.train_samples + [gallery_idx, query_idx]
                         self.flat_list.append(batch)
 
