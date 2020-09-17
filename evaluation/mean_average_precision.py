@@ -45,7 +45,7 @@ def cmc(distmat, query_ids=None, gallery_ids=None,
         separate_camera_set=False,
         single_gallery_shot=False,
         first_match_break=False):
-    junk = gallery_ids != -1
+    #junk = gallery_ids != -1
     if type(distmat) != np.ndarray:
         distmat = distmat.cpu().numpy()
     m, n = distmat.shape
@@ -63,6 +63,7 @@ def cmc(distmat, query_ids=None, gallery_ids=None,
         pos = ((gallery_ids[indices[i]] != query_ids[i]) |
                (gallery_cams[indices[i]] != query_cams[i]))
         # filter out samples of class -1 (distractors)
+        junk = gallery_ids[indices[i]] != -1
         pos &= junk
 
         if separate_camera_set:
@@ -105,7 +106,7 @@ def cmc(distmat, query_ids=None, gallery_ids=None,
 
 def mean_ap(dist, ql, qc, gl, gc):
     # TODO: same camera out?
-    junk = gl != -1
+    # junk = gl != -1
     if type(dist) != np.ndarray:
         dist = dist.cpu().numpy()
 
@@ -117,6 +118,7 @@ def mean_ap(dist, ql, qc, gl, gc):
         # Filter out the same id and same camera
         pos = (gl[indices[k]] != ql[k]) | (gc[indices[k]] != qc[k])
         # filter out samples of class -1 (distractors)
+        junk = gl[indices[i]] != -1
         pos &= junk
 
         y_true = matches[k, pos]

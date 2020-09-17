@@ -83,7 +83,7 @@ class TrainTestCombi(Sampler):
     def __init__(self, l_inds, cl_b, n_cl, l_inds_train=None, l_inds_gallery=None, backbone=False):
         self.l_inds = l_inds
         self.l_inds_train = l_inds_train
-        self.l_inds_gallery = l_inds_gallery
+        self.l_inds_gallery = l_inds_gallery if l_inds_gallery is not None else l_inds
         self.max = -1
         self.cl_b = cl_b
         self.n_cl = n_cl
@@ -228,8 +228,7 @@ class DistanceSamplerOrig(Sampler):
         random.shuffle(batches)
         if len(batches) % self.num_classes != 0:
             b = np.random.choice(np.arange(len(batches)), size=len(batches) % self.num_classes, replace=False).tolist()
-
-        [batches.append(batches[m]) for m in b]
+            [batches.append(batches[m]) for m in b]
 
 
         self.flat_list = [s for batch in batches for s in batch]
@@ -408,8 +407,7 @@ class DistanceSampler(Sampler):
         random.shuffle(batches)
         if len(batches) % self.num_classes != 0:
             b = np.random.choice(np.arange(len(batches)), size=len(batches) % self.num_classes, replace=False).tolist()
-
-        [batches.append(batches[m]) for m in b]
+            [batches.append(batches[m]) for m in b]
 
         self.flat_list = [s for batch in batches for s in batch]
 

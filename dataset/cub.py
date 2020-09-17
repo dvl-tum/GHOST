@@ -211,13 +211,91 @@ class All(torch.utils.data.Dataset):
         return im, self.ys[index], index
 
 
-'''     
-if self.imaug:
-    im = imageio.imread(self.im_paths[index])
-    im = TF.to_tensor(self.transform.augment_image(im))
+import os
+from . import utils
+import torch
+import torchvision
+import numpy as np
+import PIL.Image
+import tarfile
 
-else:
-    im = PIL.Image.open(self.im_paths[index])
-    im = self.transform(im)
-            
-'''
+
+class Birds_DML(torch.utils.data.Dataset):
+    def __init__(self, root, labels, is_extracted=False, transform=None,
+                 eval_reid=False, labels_train=None):
+        # e.g., labels = range(0, 50) for using first 50 classes only
+        self.labels = labels
+        self.eval_reid = eval_reid
+        self.trans = transform
+        self.labels_train = labels_train
+        self.ys, self.im_paths = [], []
+        for i in torchvision.datasets.ImageFolder(
+                root=os.path.join(root, 'images')
+        ).imgs:
+            # i[1]: label, i[0]: path to file, including root
+            y = i[1]
+            # fn needed for removing non-images starting with `._`
+            fn = os.path.split(i[0])[1]
+            if y in self.labels and fn[:2] != '._':
+                self.ys += [y]
+                self.im_paths.append(i[0])
+
+        if labels_train is not None:
+            self.ys_test = copy.deepcopy(self.ys)
+            self.ys_train = list()
+            for i in torchvision.datasets.ImageFolder(
+                    root=os.path.join(root, 'images')
+            ).imgs:
+                # i[1]: label, i[0]: path to file, including root
+                y = i[1]
+                # fn needed for removing non-images starting with `._`
+                fn = os.path.split(i[0])[1]
+                if y in self.labels_train and fn[:2] != '._':
+                    self.ys += [y]
+                    self.ys_train += [y]
+                    self.im_paths.append(i[0])
+
+        self.transform = self.get_transform()
+
+    def get_transform(self):
+        if self.trans == 'norm':
+            trans = utils.make_transform(is_train=not self.eval_reid)
+        elif self.trans == 'bot':
+            trans = utils.make_transform_bot(is_train=not self.eval_reid)
+        elif self.trans == 'imgaug':
+            trans = utils.make_transform_imaug(is_train=not self.eval_reid)
+        elif self.trans == 'appearance':
+            ddict = defaultdict(list)
+            for idx, label in enumerate(self.ys):
+                ddict[label].append(idx)
+            self.occurance = {k: len(v) for k, v in ddict.items()}
+            num_im = set(self.occurance.values())
+            ps = [i / max(num_im) for i in num_im]
+            trans = dict()
+            for p, n in zip(ps, num_im):
+                trans[n] = utils.appearance_proportional_augmentation1(
+                    is_train=not self.eval_reid, app=p)
+
+        return trans
+
+    def nb_classes(self):
+        n = len(np.unique(self.ys))
+        assert n == len(self.labels)
+        return n
+
+    def __len__(self):
+        return len(self.ys)
+
+    def __getitem__(self, index):
+        im = pil_loader(self.im_paths[index])
+        #show_dataset(im, self.ys[index])
+        if self.trans == 'appearance':
+            im = self.transform[self.occurance[self.ys[index]]](im)
+        else:
+            im = self.transform(im)
+        #show_dataset(im, self.ys[index])
+        if self.labels_train is not None:
+            return im, self.ys[index], self.im_paths[index]
+        if self.eval_reid:
+            return im, self.ys[index], self.im_paths[index]
+        return im, self.ys[index], index, self.im_paths[index]
