@@ -552,8 +552,13 @@ class Trainer():
         else:
             self.of = None
 
-        if 'distill' in params['fns'].split('_'):
+        if 'distillSh' in params['fns'].split('_'):
             self.distill = losses.CrossEntropyDistill().to(self.device)
+            with open('preds.json', 'r') as f:
+                self.soft_targets = json.load(f)
+            self.soft_targets = {k: F.softmax(torch.tensor(v)/params['soft_temp']) for k, v in self.soft_targets.items()}
+        elif 'distillKL' in params['fns'].split('_'):
+            self.distill = losses.KLDivWithLogSM().to(self.device)
             with open('preds.json', 'r') as f:
                 self.soft_targets = json.load(f)
             self.soft_targets = {k: F.softmax(torch.tensor(v)/params['soft_temp']) for k, v in self.soft_targets.items()}
