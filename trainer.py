@@ -15,7 +15,7 @@ import time
 import torch.nn.functional as F
 import copy
 import sys
-from evaluation import Evaluator
+from evaluation import Evaluator, Evaluator_DML
 import utils.utils as utils
 import matplotlib.pyplot as plt
 import os
@@ -71,7 +71,10 @@ class Trainer():
 
             self.graph_generator = net.GraphGenerator(self.device, **self.config['graph_params'])
              
-            self.evaluator = Evaluator(**self.config['eval_params'])
+            if self.config['application'] == 'DML':
+                self.evaluator = Evaluator_DML(**self.config['eval_params'])
+            else:
+                self.evaluator = Evaluator(**self.config['eval_params'])
             
             '''update_list = ["linear1.weight", "linear1.bias", "linear2.weight", "linear2.bias",
                         "bottleneck.weight", "bottleneck.bias", "bottleneck.running_mean",
@@ -639,7 +642,8 @@ class Trainer():
                     magnitude=config['magnitude'],
                     distance_sampler=config['sampling'],
                     val=config['val'],
-                    seed=seed)
+                    seed=seed,
+                    num_classes=self.config['dataset']['num_classes'])
                 self.dl_tr1, self.dl_ev1, self.query1, self.gallery1 = data_utility.create_loaders(
                     data_root=config['dataset_path'],
                     num_workers=config['nb_workers'],
@@ -653,7 +657,8 @@ class Trainer():
                     magnitude=config['magnitude'],
                     distance_sampler='no',
                     val=config['val'],
-                    seed=seed)
+                    seed=seed,
+                    num_classes=self.config['dataset']['num_classes'])
             # If testing or normal training
             else:
                 self.dl_tr, self.dl_ev, self.query, self.gallery, self.dl_ev_gnn = data_utility.create_loaders(
@@ -668,7 +673,8 @@ class Trainer():
                     number_aug=config['number_aug'],
                     magnitude=config['magnitude'],
                     distance_sampler=config['sampling'],
-                    val=config['val'])
+                    val=config['val'],
+                    num_classes=self.config['dataset']['num_classes'])
 
         # Pretraining dataloader
         else:

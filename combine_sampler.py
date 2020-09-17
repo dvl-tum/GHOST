@@ -83,7 +83,7 @@ class TrainTestCombi(Sampler):
     def __init__(self, l_inds, cl_b, n_cl, l_inds_train=None, l_inds_gallery=None, backbone=False):
         self.l_inds = l_inds
         self.l_inds_train = l_inds_train
-        self.l_inds_gallery = l_inds_gallery
+        self.l_inds_gallery = l_inds_gallery if l_inds_gallery is not None else l_inds
         self.max = -1
         self.cl_b = cl_b
         self.n_cl = n_cl

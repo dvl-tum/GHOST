@@ -14,7 +14,8 @@ logger = logging.getLogger('GNNReID.DataUtility')
 def create_loaders(data_root, num_workers, size_batch, num_classes_iter=None,
                    num_elements_class=None, pretraining=False,
                    input_size=[384, 128], mode='single', trans= 'norm',
-                   distance_sampler='only', val=0, m=100, seed=0, magnitude=15, number_aug=0):
+                   distance_sampler='only', val=0, m=100, seed=0, magnitude=15,
+                   number_aug=0, num_classes=None):
     labels, paths = dataset.load_data(root=data_root, mode=mode, val=val, seed=seed)
     labels = labels[0]
     paths = paths[0]
@@ -73,7 +74,7 @@ def create_loaders(data_root, num_workers, size_batch, num_classes_iter=None,
                       for g in
                       paths['bounding_box_test']['market']]
 
-    else:
+    elif data_root != 'CUB_200_2011' and data_root != 'CARS':
         labels_ev = labels['bounding_box_test'] + labels['query']
         paths_ev = paths['bounding_box_test'] + paths['query']
         query = [os.path.join(data_root, 'images', '{:05d}'.format(int(q.split('_')[0])), q) for
@@ -88,6 +89,12 @@ def create_loaders(data_root, num_workers, size_batch, num_classes_iter=None,
                                 trans=trans,
                                 magnitude=magnitude,
                                 number_aug=number_aug)
+    elif data_root == 'CUB_200_2011' or data_root == 'CARS':
+        Dataset = dataset.Birds_DML(
+            root=data_root,
+            labels=list(range(0, num_classes)),
+            is_extracted=is_extracted,
+            transform=trans)
     else:
         Dataset = dataset.All(root=data_root,
                                 labels=labels['bounding_box_train'],
@@ -111,7 +118,7 @@ def create_loaders(data_root, num_workers, size_batch, num_classes_iter=None,
         print(distance_sampler)
         sampler = DistanceSamplerOrig(num_classes_iter, num_elements_class, ddict, distance_sampler, m)
         drop_last = True
-    elif  distance_sampler == 'pre' or distance_sampler == 'pre_soft' or distance_sampler == 'only' or distance_sampler == 'alternating':
+    elif distance_sampler == 'pre' or distance_sampler == 'pre_soft' or distance_sampler == 'only' or distance_sampler == 'alternating':
         print(distance_sampler)
         sampler = DistanceSampler(num_classes_iter, num_elements_class, ddict, distance_sampler, m)
         drop_last = True
@@ -132,15 +139,15 @@ def create_loaders(data_root, num_workers, size_batch, num_classes_iter=None,
 
     if pretraining:
         return dl_tr
-
-    if mode != 'all' and mode != 'traintest' and mode != 'traintest_test':
+    if mode != 'all' and mode != 'traintest' and mode != 'traintest_test' and \
+            data_root != 'CUB_200_2011' and data_root != 'CARS':
         dataset_ev = dataset.Birds(
                 root=data_root,
                 labels=labels_ev,
                 paths=paths_ev,
                 trans=trans,
                 eval_reid=True)
-    elif mode == 'traintest' or mode == 'traintest_test':
+    elif (mode == 'traintest' or mode == 'traintest_test') and data_root != 'CUB_200_2011' and data_root != 'CARS':
         dataset_ev = dataset.Birds(
             root=data_root,
             labels=labels['query'],
@@ -151,6 +158,21 @@ def create_loaders(data_root, num_workers, size_batch, num_classes_iter=None,
             paths_train=paths['bounding_box_train'],
             labels_gallery=labels['bounding_box_test'],
             paths_gallery=paths['bounding_box_test'])
+    elif (data_root == 'CUB_200_2011' or data_root == 'CARS') and  (mode == 'traintest' or mode == 'traintest_test'):
+        dataset_ev = dataset.Birds_DML(
+            root=data_root,
+            labels=list(range(num_classes, class_end)),
+            labels_train=list(range(0, num_classes)),
+            is_extracted=is_extracted,
+            transform=trans
+        )
+    elif data_root == 'CUB_200_2011' or data_root == 'CARS':
+        dataset_ev = dataset.Birds_DML(
+            root=data_root,
+            labels=list(range(num_classes, class_end)),
+            is_extracted=is_extracted,
+            transform=trans
+        )
     else:
         dataset_ev = dataset.All(
             root-data_root,
@@ -159,7 +181,8 @@ def create_loaders(data_root, num_workers, size_batch, num_classes_iter=None,
             trans=trans,
             eval_reid=True
         )
- 
+
+
     if mode == 'gnn' or mode == 'gnn_test' or mode == 'gnn_hyper_search':
         ddict = defaultdict(list)
         for idx, label in enumerate(dataset_ev.ys):
@@ -226,7 +249,8 @@ def create_loaders(data_root, num_workers, size_batch, num_classes_iter=None,
             pin_memory=True
         )
 
-    elif mode == 'traintest' or mode == 'traintest_test':
+    elif mode == 'traintest' or mode == 'traintest_test' and \
+            data_root != 'CUB_200_2011' and data_root != 'CARS' :
         ddict_query = defaultdict(list)
         for idx, label in enumerate(dataset_ev.ys_query):
             ddict_query[label].append(idx)
@@ -276,6 +300,54 @@ def create_loaders(data_root, num_workers, size_batch, num_classes_iter=None,
         dl_ev = torch.utils.data.DataLoader(
             dataset_ev,
             sampler= sampler_backbone,
+            batch_size=64,
+            shuffle=False,
+            num_workers=1,
+            pin_memory=True)
+
+    elif mode == 'traintest' or mode == 'traintest_test' and \
+            data_root != 'CUB_200_2011' and data_root != 'CARS':
+
+        ddict_test = defaultdict(list)
+        for idx, label in enumerate(dataset_ev.ys_test):
+            ddict_test[label].append(idx)
+            max_idx_test = idx
+
+        list_of_indices_for_each_class_test = []
+        for key in ddict_test:
+            list_of_indices_for_each_class_test.append(ddict_test[key])
+
+        ddict_train = defaultdict(list)
+        for idx, label in enumerate(dataset_ev.ys_train):
+            ddict_train[label].append(
+                idx + 1 + max_idx_test)  # +1 becuase idx starts from 0
+            max_idx_train = idx + 1 + max_idx_test
+
+        list_of_indices_for_each_class_train = []
+        for key in ddict_train:
+            list_of_indices_for_each_class_train.append(ddict_train[key])
+
+        sampler_backbone = TrainTestCombi(list_of_indices_for_each_class_test,
+                                          num_classes_iter, num_elements_class,
+                                          list_of_indices_for_each_class_train,
+                                          backbone=True)
+
+        sampler = TrainTestCombi(list_of_indices_for_each_class_test,
+                                 num_classes_iter, num_elements_class,
+                                 list_of_indices_for_each_class_train)
+        drop_last = True
+
+        dl_ev_gnn = torch.utils.data.DataLoader(
+            dataset_ev,
+            sampler=sampler,
+            batch_size=size_batch,
+            shuffle=False,
+            num_workers=1,
+            pin_memory=True)
+
+        dl_ev = torch.utils.data.DataLoader(
+            dataset_ev,
+            sampler=sampler_backbone,
             batch_size=64,
             shuffle=False,
             num_workers=1,
