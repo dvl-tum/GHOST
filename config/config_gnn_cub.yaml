@@ -1,12 +1,14 @@
-mode: "gnn" #train/test/hyper_search/pretraining
+mode: "pseudo" #train/test/hyper_search/pretraining
 application: "DML"
 
 models:
   encoder_params:
-    pretrained_path: "no" #"pretrained_resnet_Market.pth" #"0.6173059768064229resnet50_Market.pth"  # "pretrained_resenet_Market_with_Student_then_GNN.pth" #"pretrained_resnet_Market_with_student.pth" #"pretrained_resnet_Market.pth" # path to pretrained model
+    pretrained_path: "0.5183997299122215neck_resnet50_cub.pth" #"0.5146860229574611neck_resnet50_cub.pth" #"0.5183997299122215neck_resnet50_cub.pth" 
     net_type: "resnet50"
     neck: 1
     last_stride: 0
+    final_drop: 0 #0.5
+    stoch_depth: 1 #0.8
     weight_norm: 0
     bn_inception:
       embed: 0
@@ -17,8 +19,9 @@ models:
     use_edge_encoder: 0
     use_edge_model: 0
     use_node_encoder: 0
+    red: 16
     gnn:
-      num_layers: 9
+      num_layers: 7
       aggregator: "add"
       num_heads: 4
       attention: "dot" #"dot_pygeo"
@@ -54,21 +57,23 @@ graph_params:
   set_negative: "hard"
 
 dataset:
-  dataset_path: "'../../datasets/CUB_200_2011'"
+  dataset_path: "../../datasets/CUB_200_2011"
   dataset_short: "cub"
   num_classes: 100
+  number_aug: 2
+  magnitude: 27
   trans: "bot"
   sampling: "no"
   val: 0
   nb_workers: 4
 
 train_params:
-  num_classes_iter: 6
-  num_elements_class: 9
-  lr: 0.0001563663718906821
-  weight_decay: 6.059722614369727e-06
+  num_classes_iter: 4 #5 #6
+  num_elements_class: 10 #4 #9
+  lr: 4.556233790187342e-06 #1.5555986096652693e-05 #0.0001563663718906821
+  weight_decay: 2.4790123787229617e-08 #3.558002740229624e-07 #6.059722614369727e-06
   num_epochs: 20
-  is_apex: 1
+  is_apex: 0
   temperatur: 24
   output_train: "norm"
   loss_fn:

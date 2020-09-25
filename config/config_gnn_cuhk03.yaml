@@ -1,4 +1,5 @@
 mode: "pseudo" #train/test/hyper_search/pretraining
+application: "reid"
 
 models:
   encoder_params:
@@ -18,8 +19,9 @@ models:
     use_edge_encoder: 0
     use_edge_model: 0
     use_node_encoder: 0
+    red: 4
     gnn:
-      num_layers: 9
+      num_layers: 7
       aggregator: "add"
       num_heads: 4
       attention: "dot" #"dot_pygeo"
@@ -66,10 +68,10 @@ dataset:
   nb_workers: 4
 
 train_params:
-  num_classes_iter: 4 #13 #5
-  num_elements_class: 4 #7 #2
-  lr: 1.677917830279509e-05 #6.675128594588672e-05 #4.4819286767613e-05
-  weight_decay: 1.0191276954316531e-15 #4.1985936929920846e-12 #1.5288509425482333e-13
+  num_classes_iter: 12 #4 #4 #13 #5
+  num_elements_class: 10 #5 #4 #7 #2
+  lr: 1.3946574465280285e-05 #1.6176572774746115e-06 #1.677917830279509e-05 #6.675128594588672e-05 #4.4819286767613e-05
+  weight_decay: 7.0881548682352635e-15 #1.0489199466864358e-09 #1.0191276954316531e-15 #4.1985936929920846e-12 #1.5288509425482333e-13
   num_epochs: 20
   is_apex: 0
   temperatur: 70

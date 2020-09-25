@@ -1,8 +1,9 @@
-mode: "train" #train/test/hyper_search/pretraining
+mode: "pseudo" #train/test/hyper_search/pretraining
+application: "reid"
 
 models:
   encoder_params:
-    pretrained_path: "no" # path to pretrained model
+    pretrained_path: "0.8225983197370023neck_resnet50_dukemtmc.pth" #"no" # path to pretrained model
     net_type: "resnet50"
     neck: 1
     last_stride: 0
@@ -70,12 +71,12 @@ train_params:
   num_elements_class: 7
   lr: 6.675128594588672e-05  #6.675128594588672e-05
   weight_decay: 4.1985936929920846e-12
-  num_epochs: 100
+  num_epochs: 20
   is_apex: 0
   temperatur: 70
   output_train: "norm"
   loss_fn:
-    fns: "lsce" #ce/focalce can be used instead of lsce and lsgnn/focalgnn instead of gnn, rest can be added by ce_gnn_center...
+    fns: "gnn" #ce/focalce can be used instead of lsce and lsgnn/focalgnn instead of gnn, rest can be added by ce_gnn_center...
     scaling_ce: 1
     scaling_gnn: 1
     scaling_center: 0.5
