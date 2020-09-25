@@ -87,11 +87,22 @@ class Trainer():
 
             for param in self.gnn.parameters():
                 param.requires_gras=False'''
+            
+            old_params = list()
+            new_params = list()
 
-            params = list(self.gnn.parameters()) + list(self.encoder.parameters())
+            for name, param in list(self.encoder.named_parameters()):
+                if name.split('.')[0] == 'layer5' or name.split('.')[0] == 'layer6':
+                    new_params.append(param)
+                else:
+                    old_params.append(param)
+            
+            params = list(self.gnn.parameters()) + old_params
             # list(set(self.encoder.parameters())) + list(set(self.gnn.parameters()))
             param_groups = [{'params': params,
-                             'lr': self.config['train_params']['lr']}]
+                             'lr': self.config['train_params']['lr']}, 
+                             {'params': new_params,
+                                 'lr': self.config['train_params']['lr'] * 10}]
 
             self.opt = RAdam(param_groups,
                              weight_decay=self.config['train_params'][
@@ -611,17 +622,22 @@ class Trainer():
     def sample_hypers(self):
         config = {'lr': 10 ** random.uniform(-8, -3),
                   'weight_decay': 10 ** random.uniform(-15, -6),
-                  'num_classes_iter': random.randint(4, 15), #100
-                  'num_elements_class': random.randint(4, 7),
-                  'temperatur': random.randint(10, 80),
+                  'num_classes_iter': random.randint(4, 13), #100
+                  'num_elements_class': random.randint(4, 10),
+                  'temperatur': random.randint(0, 20),
                   'num_epochs': 20}
         self.config['train_params'].update(config)
-
+        
+        '''self.config['train_params']['loss_fn']['soft_temp'] = config['temperatur']
+        self.config['train_params']['loss_fn']['scaling_of_pre'] = random.random()*5
+        self.config['train_params']['loss_fn']['scaling_distill'] = random.random()*5'''
+        
         '''config = {'num_layers': random.randint(1, 12),
                   'num_heads': random.choice([1, 2, 4, 8, 16])}
         self.config['models']['gnn_params']['gnn'].update(config)'''
         
-        '''config = {'final_drop': random.random(),
+        '''logger.info("Additional augmentation hyper search")
+        config = {'final_drop': random.random(),
                   'stoch_depth': random.random()}
         self.config['models']['encoder_params'].update(config)
         
