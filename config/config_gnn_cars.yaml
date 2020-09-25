@@ -1,12 +1,14 @@
-mode: "gnn" #train/test/hyper_search/pretraining
+mode: "gnn_hyper_search" #train/test/hyper_search/pretraining
 application: "DML"
 
 models:
   encoder_params:
-    pretrained_path: "no" #"pretrained_resnet_Market.pth" #"0.6173059768064229resnet50_Market.pth"  # "pretrained_resenet_Market_with_Student_then_GNN.pth" #"pretrained_resnet_Market_with_student.pth" #"pretrained_resnet_Market.pth" # path to pretrained model
+    pretrained_path: "0.8101094576312876neck_resnet50_cars.pth" #"0.7673102939367852neck_resnet50_cars.pth"
     net_type: "resnet50"
     neck: 1
     last_stride: 0
+    final_drop: 0 #0.5
+    stoch_depth: 1 #0.8
     weight_norm: 0
     bn_inception:
       embed: 0
@@ -17,8 +19,9 @@ models:
     use_edge_encoder: 0
     use_edge_model: 0
     use_node_encoder: 0
+    red: 8
     gnn:
-      num_layers: 9
+      num_layers: 7
       aggregator: "add"
       num_heads: 4
       attention: "dot" #"dot_pygeo"
@@ -54,21 +57,23 @@ graph_params:
   set_negative: "hard"
 
 dataset:
-  dataset_path: "'../../datasets/CARS'"
+  dataset_path: "../../datasets/CARS"
   dataset_short: "cars"
   num_classes: 98
-  trans: "bot"
+  trans: "norm"
+  number_aug: 2
+  magnitude: 27
   sampling: "no"
   val: 0
   nb_workers: 4
 
 train_params:
-  num_classes_iter: 5
-  num_elements_class: 7
-  lr: 0.0002
-  weight_decay: 4.863656728256105e-07
+  num_classes_iter: 4 #6 #4 #5 #6 #5
+  num_elements_class: 8 #10 #7 #4 #7
+  lr: 4.5222376053155144e-07 #1.350099421230439e-07 #9.448566599801139e-05 #5.002815035521046e-05 #0.0002
+  weight_decay: 8.400668756748539e-14 #6.60890902155426e-11 #2.3714181045620526e-15 #3.109630777839333e-14 #4.863656728256105e-07
   num_epochs: 20
-  is_apex: 1
+  is_apex: 0
   temperatur: 79
   output_train: "norm"
   loss_fn:

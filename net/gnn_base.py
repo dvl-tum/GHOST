@@ -68,6 +68,12 @@ class GNNReID(nn.Module):
         self.edge_params = params['edge']
         self.gnn_params = params['gnn']
 
+        red = 4
+        self.dim_red = nn.Linear(embed_dim, int(embed_dim/params['red']))
+        logger.info("Embed dim old {}, new".format(embed_dim, embed_dim/params['red'])) 
+        embed_dim = int(embed_dim/params['red'])
+        logger.info("Embed dim {}".format(embed_dim))
+
         if self.params['use_edge_encoder']:
             self.edge_encoder = MLP(2 * embed_dim + 1,
                                     **self.edge_encoder_params)
@@ -130,6 +136,8 @@ class GNNReID(nn.Module):
 
     def forward(self, feats, edge_index, edge_attr=None, output_option='norm'):
         r, c = edge_index[:, 0], edge_index[:, 1]
+        
+        feats = self.dim_red(feats)
 
         if self.params['use_edge_encoder']:
             edge_attr = torch.cat(
