@@ -228,7 +228,7 @@ def create_loaders(data_root, num_workers, size_batch, num_classes_iter=None,
 
         dl_ev_gnn = None
 
-    elif mode == 'pseudo' or mode == 'pseudo_test':
+    elif mode == 'pseudo' or mode == 'pseudo_test' or mode == 'pseudo_hyper_search':
         ddict = defaultdict(list)
         for idx, label in enumerate(dataset_ev.ys):
             ddict[label].append(idx)

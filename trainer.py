@@ -43,7 +43,7 @@ class Trainer():
 
         self.best_recall = 0
         self.best_hypers = None
-        self.num_iter = 30 if config['mode'] == 'hyper_search' or config['mode'] == 'gnn_hyper_search' else 1
+        self.num_iter = 30 if config['mode'] == 'hyper_search' or config['mode'] == 'gnn_hyper_search' or self.config['mode'] == 'pseudo_hyper_search'else 1
 
     def train(self):
         best_recall = 0
@@ -608,7 +608,7 @@ class Trainer():
         return mode
 
     def update_params(self):
-        self.sample_hypers() if self.config['mode'] == 'hyper_search' or self.config['mode'] == 'gnn_hyper_search' else None
+        self.sample_hypers() if self.config['mode'] == 'hyper_search' or self.config['mode'] == 'gnn_hyper_search' or self.config['mode'] == 'pseudo_hyper_search' else None
 
         if self.config['dataset']['val']:
             self.config['dataset']['num_classes'] -= 100
