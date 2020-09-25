@@ -10,4 +10,5 @@ def cluster_by_kmeans(X, nb_clusters):
     return sklearn.cluster.KMeans(nb_clusters).fit(X).labels_
 
 def calc_normalized_mutual_information(ys, xs_clustered):
+    print([[ys[i], xs_clustered[i]]for i in range(len(ys))])
     return sklearn.metrics.cluster.normalized_mutual_info_score(xs_clustered, ys)

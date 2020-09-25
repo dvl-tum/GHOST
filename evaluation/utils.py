@@ -127,6 +127,7 @@ class Evaluator_DML():
 
                 fc7s.append(fc7.cpu())
                 L.append(torch.tensor([labels[p] for p in P]))
+                print([labels[p] for p in P], Y)
         fc7, Y = torch.cat(fc7s), torch.cat(L)
 
         return torch.squeeze(fc7), torch.squeeze(Y)
