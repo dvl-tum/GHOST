@@ -13,7 +13,10 @@ def dist_traintest(features, query=None, gallery=None):
             #dist[i, j] = features[qu][gal][qu] @ features[qu][gal][qu] + \
             #                features[qu][gal][gal] @ features[qu][gal][gal] - \
             #                2 * (features[qu][gal][gal] @ features[qu][gal][qu])
-            dist[i, j] = features[qu][gal]
+            if gal in features[qu].keys():
+                dist[i, j] = features[qu][gal]
+            else:
+                dist[i, j] = -1000
 
     return dist
 
@@ -62,6 +65,8 @@ def cmc(distmat, query_ids=None, gallery_ids=None,
         # Filter out the same id and same camera
         pos = ((gallery_ids[indices[i]] != query_ids[i]) |
                (gallery_cams[indices[i]] != query_cams[i]))
+        pos2 = (distmat[i][indices[i]] != -1000) # because of train test
+        pos &= pos2
         # filter out samples of class -1 (distractors)
         junk = gallery_ids[indices[i]] != -1
         pos &= junk
@@ -117,8 +122,10 @@ def mean_ap(dist, ql, qc, gl, gc):
     for k in range(dist.shape[0]):
         # Filter out the same id and same camera
         pos = (gl[indices[k]] != ql[k]) | (gc[indices[k]] != qc[k])
+        pos2 = (dist[k][indices[k]] != -1000) # because of train test
+        pos &= pos2
         # filter out samples of class -1 (distractors)
-        junk = gl[indices[i]] != -1
+        junk = gl[indices[k]] != -1
         pos &= junk
 
         y_true = matches[k, pos]
@@ -272,7 +279,7 @@ def re_ranking(features, query, gallery, k1=20, k2=6, lambda_value=0.3,
 def calc_mean_average_precision(features, query, gallery, re_rank=False, lamb=0.3, k1=20, k2=6):
     if type(features[list(features.keys())[0]]) == dict:
         query = list(features.keys())
-        gallery = list(features[list(features.keys())[0]].keys())
+        gallery = set([k2 for k1 in features.keys() for k2 in features[k1].keys()])
         distmat = dist_traintest(features, query, gallery)
     elif re_rank:
         distmat = re_ranking(features, query, gallery, k1=k1, k2=k2, lambda_value=lamb)
