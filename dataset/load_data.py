@@ -38,9 +38,9 @@ def load_data(root: str = None, mode: str='single', val=0, seed=0):
     image_dir = os.path.join(root, 'images')
 
     # check if json file already exists --> if not: generate image folders
-    if not os.path.isfile(os.path.join(root, 'info.json')) or \
+    if (not os.path.isfile(os.path.join(root, 'info.json')) or \
             not os.path.isfile(os.path.join(root, 'labels.json')) or \
-            not os.path.isdir(os.path.join(root, 'images')):
+            not os.path.isdir(os.path.join(root, 'images'))) and not os.path.basename(root) == 'CUB_200_2011' and not os.path.basename(root) == 'CARS':
 
         # names of zip files
         if os.path.basename(os.path.dirname(root)) == 'cuhk03':
@@ -66,6 +66,7 @@ def load_data(root: str = None, mode: str='single', val=0, seed=0):
                 path = 'https://drive.google.com/file/d/0B8-rUzbwVRk0c054eEozWG9COHM/view'
             elif os.path.basename(root) == 'dukemtmc':
                 path = 'https://drive.google.com/uc?id=1qJ-7-o7OhDYj1T071z9a8uwFMiPhXEQc&export=download'
+
             print('Please download dataset from ' + path)
             quit()
 
@@ -77,7 +78,7 @@ def load_data(root: str = None, mode: str='single', val=0, seed=0):
             duke(root=root, image_dir=image_dir, check_zip=check_zip)
         else:
             marketlike(root=root, image_dir=image_dir, check_zip=check_zip)
-
+    
     # if both take detected and labeled for training
     if mode == 'both':
         root_lab = os.path.join(os.path.dirname(root), 'labeled')

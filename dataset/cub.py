@@ -221,7 +221,7 @@ import tarfile
 
 
 class Birds_DML(torch.utils.data.Dataset):
-    def __init__(self, root, labels, is_extracted=False, transform=None,
+    def __init__(self, root, labels, transform=None,
                  eval_reid=False, labels_train=None):
         # e.g., labels = range(0, 50) for using first 50 classes only
         self.labels = labels

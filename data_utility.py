@@ -16,9 +16,11 @@ def create_loaders(data_root, num_workers, size_batch, num_classes_iter=None,
                    input_size=[384, 128], mode='single', trans= 'norm',
                    distance_sampler='only', val=0, m=100, seed=0, magnitude=15,
                    number_aug=0, num_classes=None):
-    labels, paths = dataset.load_data(root=data_root, mode=mode, val=val, seed=seed)
-    labels = labels[0]
-    paths = paths[0]
+    query, gallery = None, None
+    if os.path.basename(data_root) != 'CARS' and os.path.basename(data_root) != 'CUB_200_2011':
+        labels, paths = dataset.load_data(root=data_root, mode=mode, val=val, seed=seed)
+        labels = labels[0]
+        paths = paths[0]
 
     if mode == 'both':
         data_root = os.path.dirname(data_root)
@@ -74,7 +76,7 @@ def create_loaders(data_root, num_workers, size_batch, num_classes_iter=None,
                       for g in
                       paths['bounding_box_test']['market']]
 
-    elif data_root != 'CUB_200_2011' and data_root != 'CARS':
+    elif os.path.basename(data_root) != 'CUB_200_2011' and os.path.basename(data_root) != 'CARS':
         labels_ev = labels['bounding_box_test'] + labels['query']
         paths_ev = paths['bounding_box_test'] + paths['query']
         query = [os.path.join(data_root, 'images', '{:05d}'.format(int(q.split('_')[0])), q) for
@@ -82,18 +84,17 @@ def create_loaders(data_root, num_workers, size_batch, num_classes_iter=None,
         gallery = [os.path.join(data_root, 'images', '{:05d}'.format(int(g.split('_')[0])), g)
                    for g in paths['bounding_box_test']]
 
-    if mode != 'all':
+    if mode != 'all' and os.path.basename(data_root) != 'CUB_200_2011' and os.path.basename(data_root) != 'CARS':
         Dataset = dataset.Birds(root=data_root,
                                 labels=labels['bounding_box_train'],
                                 paths=paths['bounding_box_train'],
                                 trans=trans,
                                 magnitude=magnitude,
                                 number_aug=number_aug)
-    elif data_root == 'CUB_200_2011' or data_root == 'CARS':
+    elif os.path.basename(data_root) == 'CUB_200_2011' or os.path.basename(data_root) == 'CARS':
         Dataset = dataset.Birds_DML(
             root=data_root,
             labels=list(range(0, num_classes)),
-            is_extracted=is_extracted,
             transform=trans)
     else:
         Dataset = dataset.All(root=data_root,
@@ -140,14 +141,14 @@ def create_loaders(data_root, num_workers, size_batch, num_classes_iter=None,
     if pretraining:
         return dl_tr
     if mode != 'all' and mode != 'traintest' and mode != 'traintest_test' and \
-            data_root != 'CUB_200_2011' and data_root != 'CARS':
+            os.path.basename(data_root) != 'CUB_200_2011' and os.path.basename(data_root) != 'CARS':
         dataset_ev = dataset.Birds(
                 root=data_root,
                 labels=labels_ev,
                 paths=paths_ev,
                 trans=trans,
                 eval_reid=True)
-    elif (mode == 'traintest' or mode == 'traintest_test') and data_root != 'CUB_200_2011' and data_root != 'CARS':
+    elif (mode == 'traintest' or mode == 'traintest_test') and os.path.basename(data_root) != 'CUB_200_2011' and os.path.basename(data_root) != 'CARS':
         dataset_ev = dataset.Birds(
             root=data_root,
             labels=labels['query'],
@@ -158,20 +159,28 @@ def create_loaders(data_root, num_workers, size_batch, num_classes_iter=None,
             paths_train=paths['bounding_box_train'],
             labels_gallery=labels['bounding_box_test'],
             paths_gallery=paths['bounding_box_test'])
-    elif (data_root == 'CUB_200_2011' or data_root == 'CARS') and  (mode == 'traintest' or mode == 'traintest_test'):
+    elif (os.path.basename(data_root) == 'CUB_200_2011' or os.path.basename(data_root) == 'CARS') and  (mode == 'traintest' or mode == 'traintest_test'):
+        if data_root == 'Stanford':
+            class_end = 2 * num_classes - 2
+        else:
+            class_end = 2 * num_classes
         dataset_ev = dataset.Birds_DML(
             root=data_root,
             labels=list(range(num_classes, class_end)),
             labels_train=list(range(0, num_classes)),
-            is_extracted=is_extracted,
-            transform=trans
+            transform=trans,
+            eval_reid=True
         )
-    elif data_root == 'CUB_200_2011' or data_root == 'CARS':
+    elif os.path.basename(data_root) == 'CUB_200_2011' or os.path.basename(data_root) == 'CARS':
+        if data_root == 'Stanford':
+            class_end = 2 * num_classes - 2
+        else:
+            class_end = 2 * num_classes
         dataset_ev = dataset.Birds_DML(
             root=data_root,
             labels=list(range(num_classes, class_end)),
-            is_extracted=is_extracted,
-            transform=trans
+            transform=trans,
+            eval_reid=True
         )
     else:
         dataset_ev = dataset.All(
@@ -249,8 +258,8 @@ def create_loaders(data_root, num_workers, size_batch, num_classes_iter=None,
             pin_memory=True
         )
 
-    elif mode == 'traintest' or mode == 'traintest_test' and \
-            data_root != 'CUB_200_2011' and data_root != 'CARS' :
+    elif (mode == 'traintest' or mode == 'traintest_test') and \
+            os.path.basename(data_root) != 'CUB_200_2011' and os.path.basename(data_root) != 'CARS' :
         ddict_query = defaultdict(list)
         for idx, label in enumerate(dataset_ev.ys_query):
             ddict_query[label].append(idx)
@@ -305,8 +314,8 @@ def create_loaders(data_root, num_workers, size_batch, num_classes_iter=None,
             num_workers=1,
             pin_memory=True)
 
-    elif mode == 'traintest' or mode == 'traintest_test' and \
-            data_root != 'CUB_200_2011' and data_root != 'CARS':
+    elif (mode == 'traintest' or mode == 'traintest_test') and \
+            (os.path.basename(data_root) == 'CUB_200_2011' or os.path.basename(data_root) != 'CARS'):
 
         ddict_test = defaultdict(list)
         for idx, label in enumerate(dataset_ev.ys_test):

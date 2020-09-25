@@ -353,37 +353,47 @@ class Trainer():
             with torch.no_grad():
                 logger.info('EVALUATION')
                 if self.config['mode'] != 'gnn' and self.config['mode'] != 'gnn_test' and self.config['mode'] != 'gnn_hyper_search' and self.config['mode'] != 'pseudo' and self.config['mode'] != 'pseudo_test' and self.config['mode'] != 'traintest' and self.config['mode'] != 'traintest_test':
-                    mAP, top = self.evaluator.evaluate_reid(self.encoder, self.dl_ev,
-                            self.query, gallery=self.gallery)
+                    mAP, top = self.evaluator.evaluate(self.encoder, self.dl_ev,
+                            self.query, gallery=self.gallery, net_type=self.net_type,
+                            dataroot=self.config['dataset']['dataset_short'], 
+                            nb_classes=self.config['dataset']['num_classes'])
                 else:
-                    mAP, top = self.evaluator.evaluate_reid(self.encoder, self.dl_ev,
+                    mAP, top = self.evaluator.evaluate(self.encoder, self.dl_ev,
                             self.query, self.gallery, self.gnn, self.graph_generator, 
-                            dl_ev_gnn=self.dl_ev_gnn)
+                            dl_ev_gnn=self.dl_ev_gnn, net_type=self.net_type,
+                            dataroot=self.config['dataset']['dataset_short'],
+                            nb_classes=self.config['dataset']['num_classes'])
 
-                logger.info('Mean AP: {:4.1%}'.format(mAP))
+                if self.config['application'] == 'reid':
+                    logger.info('Mean AP: {:4.1%}'.format(mAP))
 
-                logger.info('CMC Scores{:>12}{:>12}{:>12}'
-                            .format('allshots', 'cuhk03', 'Market'))
-
-                for k in (1, 5, 10):
-                    logger.info('  top-{:<4}{:12.1%}{:12.1%}{:12.1%}'
-                                .format(k, top['allshots'][k - 1],
-                                        top['cuhk03'][k - 1],
-                                        top['Market'][k - 1]))
+                    logger.info('CMC Scores{:>12}{:>12}{:>12}'
+                                .format('allshots', 'cuhk03', 'Market'))
+    
+                    for k in (1, 5, 10):
+                        logger.info('  top-{:<4}{:12.1%}{:12.1%}{:12.1%}'
+                                    .format(k, top['allshots'][k - 1],
+                                            top['cuhk03'][k - 1],
+                                            top['Market'][k - 1]))
                 
-                if self.dataset_short == 'cuhk03-np':
-                    eval_method = 'Market'
-                elif self.dataset_short == 'dukemtmc':
-                    eval_method = 'Market'
+                    if self.dataset_short == 'cuhk03-np':
+                        eval_method = 'Market'
+                    elif self.dataset_short == 'dukemtmc':
+                        eval_method = 'Market'
+                    else:
+                        eval_method = self.dataset_short
+                    scores.append((mAP,
+                                   [top[eval_method][k - 1] for k
+                                    in
+                                    [1, 5, 10]]))
+                    eval_met = top[eval_method][0]                 
                 else:
-                    eval_method = self.dataset_short
-                scores.append((mAP,
-                               [top[eval_method][k - 1] for k
-                                in
-                                [1, 5, 10]]))
+                    scores.append((mAP, top))
+                    eval_met = top[0]
+
                 self.encoder.current_epoch = e
-                if top[eval_method][0] > best_accuracy:
-                    best_accuracy = top[eval_method][0]
+                if eval_met > best_accuracy:
+                    best_accuracy = eval_met
                     self.best_preds = self.preds
                     self.best_labs = self.labs
                     self.best_feats = self.feats

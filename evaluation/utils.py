@@ -16,9 +16,9 @@ class Evaluator_DML():
         self.output_test = output_test
         self.re_rank = re_rank
 
-    def evaluate(self, model, dataloader, nb_classes, gnn=None,
-                 graph_generator=None, dl_ev_gnn=None, net_type='bn_inception',
-                 dataroot='CARS'):
+    def evaluate(self, model, dataloader, query=None, gallery=None,
+            gnn=None, graph_generator=None, dl_ev_gnn=None, net_type='bn_inception',
+            dataroot='CARS', nb_classes=None):
         model_is_training = model.training
         model.eval()
 
@@ -50,7 +50,7 @@ class Evaluator_DML():
         if dataroot != 'Stanford':
             # calculate NMI with kmeans clustering
             nmi = calc_normalized_mutual_information(T, cluster_by_kmeans(X, nb_classes))
-            logging.info("NMI: {:.3f}".format(nmi * 100))
+            logger.info("NMI: {:.3f}".format(nmi * 100))
         else:
             nmi = -1
 
@@ -65,7 +65,7 @@ class Evaluator_DML():
         for k in which_nearest_neighbors:
             r_at_k = calc_recall_at_k(T, Y, k)
             recall.append(r_at_k)
-            logging.info("R@{} : {:.3f}".format(k, 100 * r_at_k))
+            logger.info("R@{} : {:.3f}".format(k, 100 * r_at_k))
 
         model.train(model_is_training)  # revert to previous training state
         return nmi, recall
@@ -167,8 +167,9 @@ class Evaluator():
         self.output_test = output_test
         self.re_rank = re_rank
 
-    def evaluate_reid(self, model, dataloader, query=None, gallery=None, 
-            gnn=None, graph_generator=None, dl_ev_gnn=None):
+    def evaluate(self, model, dataloader, query=None, gallery=None, 
+            gnn=None, graph_generator=None, dl_ev_gnn=None, net_type='bn_inception',
+            dataroot='CARS', nb_classes=None):
         model_is_training = model.training
         model.eval()
 
