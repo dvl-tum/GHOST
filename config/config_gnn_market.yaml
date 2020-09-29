@@ -3,8 +3,8 @@ application: "reid"
 
 models:
   encoder_params:
-    pretrained_path: "pretrained_resnet_Market.pth" #"0.9863135971437073neck_resnet50_Market.pth" #"pretrained_resnet_Market.pth" #"0.6173059768064229resnet50_Market.pth"  # "pretrained_resenet_Market_with_Student_then_GNN.pth" #"pretrained_resnet_Market_with_student.pth" #"pretrained_resnet_Market.pth" # path to pretrained model
-    net_type: "resnet50"
+    pretrained_path: "pretrained_resnet_Market.pth" #"0.6173059768064229resnet50_Market.pth"  # "pretrained_resenet_Market_with_Student_then_GNN.pth" #"pretrained_resnet_Market_with_student.pth" #"pretrained_resnet_Market.pth" # path to pretrained model
+    net_type: "resnet101"
     neck: 1
     last_stride: 0
     weight_norm: 0
@@ -72,7 +72,7 @@ train_params:
   num_elements_class: 7
   lr: 6.675128594588672e-05  #6.675128594588672e-05
   weight_decay: 4.1985936929920846e-12
-  num_epochs: 20
+  num_epochs: 100
   is_apex: 0
   temperatur: 70
   output_train: "norm"
@@ -83,9 +83,11 @@ train_params:
     scaling_center: 0.5
     scaling_triplet: 1
     scaling_of: 5
-    scaling_of_pre: 5
+    scaling_of_pre: 1
     scaling_distill: 1
     soft_temp: 1
+    preds: 'preds.json'
+    feats: 'feats.json'
 eval_params:
   re_rank: 0
   lamb: 0.3

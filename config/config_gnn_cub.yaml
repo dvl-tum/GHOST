@@ -3,7 +3,7 @@ application: "DML"
 
 models:
   encoder_params:
-    pretrained_path: "0.5183997299122215neck_resnet50_cub.pth" #"0.5146860229574611neck_resnet50_cub.pth" #"0.5183997299122215neck_resnet50_cub.pth" 
+    pretrained_path: "pretrained/0.5183997299122215neck_resnet50_cub.pth" #"0.8532544378698225neck_resnet50_cub.pth" #"0.5183997299122215neck_resnet50_cub.pth" #"0.5146860229574611neck_resnet50_cub.pth" #"0.5183997299122215neck_resnet50_cub.pth" 
     net_type: "resnet50"
     neck: 1
     last_stride: 0
@@ -19,7 +19,7 @@ models:
     use_edge_encoder: 0
     use_edge_model: 0
     use_node_encoder: 0
-    red: 16
+    red: 1
     gnn:
       num_layers: 7
       aggregator: "add"
@@ -47,7 +47,7 @@ models:
       use_batchnorm: 0
     classifier:
       neck: 1
-      num_classes: 751
+      num_classes: 100
       dropout_p: 0.4
       use_batchnorm: 0
 
@@ -68,10 +68,10 @@ dataset:
   nb_workers: 4
 
 train_params:
-  num_classes_iter: 4 #5 #6
-  num_elements_class: 10 #4 #9
-  lr: 4.556233790187342e-06 #1.5555986096652693e-05 #0.0001563663718906821
-  weight_decay: 2.4790123787229617e-08 #3.558002740229624e-07 #6.059722614369727e-06
+  num_classes_iter: 4 #6 #4 #5 #6
+  num_elements_class: 10 #9 #10 #4 #9
+  lr: 4.556233790187342e-06 #0.0001563663718906821 #4.556233790187342e-06 #1.5555986096652693e-05 #0.0001563663718906821
+  weight_decay: 2.4790123787229617e-08 #6.059722614369727e-06 #2.4790123787229617e-08 #3.558002740229624e-07 #6.059722614369727e-06
   num_epochs: 20
   is_apex: 0
   temperatur: 24
@@ -83,7 +83,11 @@ train_params:
     scaling_center: 0.5
     scaling_triplet: 1
     scaling_of: 5
+    scaling_of_pre: 1
     scaling_distill: 1
+    soft_temp: 1
+    feats: "results/0.8532544378698225_cub_1601148947.5862918/feats.json"
+    preds: "results/0.8532544378698225_cub_1601148947.5862918/preds.json"
 
 eval_params:
   re_rank: 0

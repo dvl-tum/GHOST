@@ -310,7 +310,8 @@ class Trainer():
  
                 #pred, feats = self.gnn(fc7, train_params['output_train'])
                 if self.gnn_loss:
-                    loss1 = self.gnn_loss(pred, Y)
+                    #print(torch.max(torch.nn.functional.softmax(pred, dim=1), dim=1), torch.argmax(torch.nn.functional.softmax(pred, dim=1), dim=1), Y)
+                    loss1 = self.gnn_loss(pred/self.config['train_params']['temperatur'], Y)
 
                     loss += train_params['loss_fn']['scaling_gnn'] * loss1
                     self.losses['GNN'].append(loss1.item())
@@ -578,12 +579,12 @@ class Trainer():
 
         if 'distillSh' in params['fns'].split('_'):
             self.distill = losses.CrossEntropyDistill().to(self.device)
-            with open('preds.json', 'r') as f:
+            with open(params['preds'], 'r') as f:
                 self.soft_targets = json.load(f)
             self.soft_targets = {k: F.softmax(torch.tensor(v)/params['soft_temp']) for k, v in self.soft_targets.items()}
         elif 'distillKL' in params['fns'].split('_'):
             self.distill = losses.KLDivWithLogSM().to(self.device)
-            with open('preds.json', 'r') as f:
+            with open(params['preds'], 'r') as f:
                 self.soft_targets = json.load(f)
             self.soft_targets = {k: F.softmax(torch.tensor(v)/params['soft_temp']) for k, v in self.soft_targets.items()}
         else:
@@ -592,7 +593,7 @@ class Trainer():
         if 'ofpre' in params['fns'].split('_'):
             #self.of_pre = nn.MSELoss().to(self.device)
             self.of_pre = nn.L1Loss().to(self.device)
-            with open('feats.json', 'r') as f:
+            with open(params['feats'], 'r') as f:
                 self.feat_targets = json.load(f)
         else:
             self.of_pre = None
@@ -624,14 +625,14 @@ class Trainer():
                   'weight_decay': 10 ** random.uniform(-15, -6),
                   'num_classes_iter': random.randint(4, 13), #100
                   'num_elements_class': random.randint(4, 10),
-                  'temperatur': random.randint(0, 20),
+                  'temperatur': random.randint(0, 70),
                   'num_epochs': 20}
         self.config['train_params'].update(config)
-        
-        '''self.config['train_params']['loss_fn']['soft_temp'] = config['temperatur']
+        """
+        self.config['train_params']['loss_fn']['soft_temp'] = config['temperatur']
         self.config['train_params']['loss_fn']['scaling_of_pre'] = random.random()*5
-        self.config['train_params']['loss_fn']['scaling_distill'] = random.random()*5'''
-        
+        self.config['train_params']['loss_fn']['scaling_distill'] = random.random()*5
+        """
         '''config = {'num_layers': random.randint(1, 12),
                   'num_heads': random.choice([1, 2, 4, 8, 16])}
         self.config['models']['gnn_params']['gnn'].update(config)'''
