@@ -98,6 +98,22 @@ class Evaluator_DML():
 
         return torch.squeeze(fc7), torch.squeeze(Y)
 
+    def predict_batchwise_pseudo_rand(self, model, gnn, graph_generator, dataloader, dl_ev_gnn):
+        fc7s, L = [], []
+        with torch.no_grad():
+            for X, Y, _ in dataloader:
+                if torch.cuda.is_available(): X = X.cuda()
+                _, _, fc7 = model(X, output_option=self.output_test,
+                                  val=True)  ##### Actually _, fc7, _ CHECK THIS
+                edge_attr, edge_index, fc7 = graph_generator.get_graph(fc7)
+                _, fc7 = gnn(fc7, edge_index, edge_attr,
+                             output_option=self.output_test)
+                fc7s.append(fc7.cpu())
+                L.append(Y)
+        fc7, Y = torch.cat(fc7s), torch.cat(L)
+
+        return torch.squeeze(fc7), torch.squeeze(Y)
+    
     def predict_batchwise_pseudo(self, model, gnn, graph_generator, dataloader,
                                  dl_ev_gnn):
         fc7s, L = [], []
@@ -117,6 +133,16 @@ class Evaluator_DML():
         for k, v in preds.items():
             ind = dl_ev_gnn.dataset.im_paths.index(k)
             dl_ev_gnn.dataset.ys[ind] = v.item()
+        
+        ddict = defaultdict(list)
+        for idx, label in enumerate(dl_ev_gnn.dataset.ys):
+            ddict[label].append(idx)
+
+        list_of_indices_for_each_class = []
+        for key in ddict:
+            list_of_indices_for_each_class.append(ddict[key])
+
+        dl_ev_gnn.sampler.l_inds = list_of_indices_for_each_class
 
         with torch.no_grad():
             for X, Y, P in dl_ev_gnn:
@@ -127,7 +153,7 @@ class Evaluator_DML():
 
                 fc7s.append(fc7.cpu())
                 L.append(torch.tensor([labels[p] for p in P]))
-                print([labels[p] for p in P], Y)
+                print(torch.stack([labels[p] for p in P]), Y)
         fc7, Y = torch.cat(fc7s), torch.cat(L)
 
         return torch.squeeze(fc7), torch.squeeze(Y)
@@ -243,6 +269,26 @@ class Evaluator():
 
         return torch.squeeze(fc7), torch.squeeze(Y), features, labels
 
+    def predict_batchwise_pseudo_rand(self, model, gnn, graph_generator, dataloader, dl_ev_gnn):
+        fc7s, L = [], []
+        features = dict()
+        with torch.no_grad():
+            for X, Y, P in dataloader:
+                if torch.cuda.is_available(): X = X.cuda()
+                _, _, fc7 = model(X, output_option=self.output_test,
+                                  val=True)  ##### Actually _, fc7, _ CHECK THIS
+                edge_attr, edge_index, fc7 = graph_generator.get_graph(fc7)
+                _, fc7 = gnn(fc7, edge_index, edge_attr,
+                             output_option=self.output_test)
+                for path, out in zip(P, fc7):
+                    features[path] = out
+
+                fc7s.append(fc7.cpu())
+                L.append(Y)
+        fc7, Y = torch.cat(fc7s), torch.cat(L)
+
+        return _, _, features, _
+        
     def predict_batchwise_pseudo(self, model, gnn, graph_generator, dataloader, dl_ev_gnn):
         fc7s, L = [], []
         preds = dict()
@@ -260,7 +306,17 @@ class Evaluator():
         for k, v in preds.items():
             ind = dl_ev_gnn.dataset.im_paths.index(k)
             dl_ev_gnn.dataset.ys[ind] = v.item()
-            
+        
+        ddict = defaultdict(list)
+        for idx, label in enumerate(dl_ev_gnn.dataset.ys):
+            ddict[label].append(idx)
+
+        list_of_indices_for_each_class = []
+        for key in ddict:
+            list_of_indices_for_each_class.append(ddict[key])
+
+        dl_ev_gnn.sampler.l_inds = list_of_indices_for_each_class
+
         features_new = dict()
         labels_new = dict()
         with torch.no_grad():
