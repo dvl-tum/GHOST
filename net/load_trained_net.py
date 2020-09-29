@@ -92,16 +92,117 @@ def load_net(dataset, nb_classes, mode, net_type, bn_inception={'embed': 0, 'sz_
     elif net_type == 'resnet101':
         sz_embed = 2048
         model = net.resnet101(pretrained=True)
-        model.fc = nn.Linear(2048, nb_classes)
-        if not mode  == 'pretraining':
-            model.load_state_dict(torch.load('net/finetuned_' + dataset + '_' + net_type + '.pth'))
+        #model.fc = nn.Linear(2048, nb_classes)
+        #if not mode  == 'pretraining':
+        #    model.load_state_dict(torch.load('net/finetuned_' + dataset + '_' + net_type + '.pth'))
+
+        if neck:
+            model.bottleneck = nn.BatchNorm1d(2048)
+            model.bottleneck.bias.requires_grad_(False)  # no shift
+            if weight_norm:
+                model.fc = weightNorm(nn.Linear(2048, nb_classes, bias=False), name = "weight")
+            else:
+                model.fc = nn.Linear(2048, nb_classes, bias=False)
+
+            model.bottleneck.apply(weights_init_kaiming)
+            model.fc.apply(weights_init_classifier)
+        else:
+            if weight_norm:
+                model.fc = weightNorm(nn.Linear(2048, nb_classes), name = "weight")
+            else:
+                model.fc = nn.Linear(2048, nb_classes)
+
+        if not mode  == 'pretraining' and pretrained_path != 'no':
+            no_load = ["linear1.weight", "linear1.bias", "linear2.weight", "linear2.bias",
+                        "bottleneck.weight", "bottleneck.bias", "bottleneck.running_mean",
+                        "bottleneck.running_var", "bottleneck.num_batches_tracked", "fc.weight"]
+            #no_load = ['fc.bias']
+            no_load = []
+            load_dict = {k: v for k, v in torch.load(pretrained_path).items() if k not in no_load}
+            
+            '''load_dict_new = dict()
+            for k, v in load_dict.items():
+                if k.split('.')[0] == 'conv1':
+                    load_dict_new[k] = v
+                elif k.split('.')[0][:-1] != 'layer':
+                    load_dict_new['features.' + k] = v
+                else:
+                    load_dict_new['features.' + 'Bottleneck_' + k.split('.')[0][-1] + '_' + k.split('.')[1] + '.' +('.').join(k.split('.')[2:])] = v
+            load_dict = load_dict_new
+            del load_dict_new
+            '''
+            '''
+            # new new
+            load_dict_new = dict()
+            for k, v in load_dict.items():
+                if k.split('.')[0][:-1] != 'layer':
+                    load_dict_new[k] = v
+                else:
+                    load_dict_new[k.split('.')[0] +  '.module.' + ('.').join(k.split('.')[1:])] = v
+            load_dict = load_dict_new
+            del load_dict_new
+            '''
+            model_dict = model.state_dict()
+            model_dict.update(load_dict)
+            model.load_state_dict(model_dict)
+            #model.load_state_dict(torch.load(pretrained_path))
 
     elif net_type == 'resnet152':
         sz_embed = 2048
         model = net.resnet152(pretrained=True)
-        model.fc = nn.Linear(2048, nb_classes)
-        if not mode  == 'pretraining':
-            model.load_state_dict(torch.load('net/finetuned_' + dataset + '_' + net_type + '.pth'))
+        #model.fc = nn.Linear(2048, nb_classes)
+        #if not mode  == 'pretraining':
+        #    model.load_state_dict(torch.load('net/finetuned_' + dataset + '_' + net_type + '.pth'))
+        if neck:
+            model.bottleneck = nn.BatchNorm1d(2048)
+            model.bottleneck.bias.requires_grad_(False)  # no shift
+            if weight_norm:
+                model.fc = weightNorm(nn.Linear(2048, nb_classes, bias=False), name = "weight")
+            else:
+                model.fc = nn.Linear(2048, nb_classes, bias=False)
+
+            model.bottleneck.apply(weights_init_kaiming)
+            model.fc.apply(weights_init_classifier)
+        else:
+            if weight_norm:
+                model.fc = weightNorm(nn.Linear(2048, nb_classes), name = "weight")
+            else:
+                model.fc = nn.Linear(2048, nb_classes)
+
+        if not mode  == 'pretraining' and pretrained_path != 'no':
+            no_load = ["linear1.weight", "linear1.bias", "linear2.weight", "linear2.bias",
+                        "bottleneck.weight", "bottleneck.bias", "bottleneck.running_mean",
+                        "bottleneck.running_var", "bottleneck.num_batches_tracked", "fc.weight"]
+            #no_load = ['fc.bias']
+            no_load = []
+            load_dict = {k: v for k, v in torch.load(pretrained_path).items() if k not in no_load}
+            
+            '''load_dict_new = dict()
+            for k, v in load_dict.items():
+                if k.split('.')[0] == 'conv1':
+                    load_dict_new[k] = v
+                elif k.split('.')[0][:-1] != 'layer':
+                    load_dict_new['features.' + k] = v
+                else:
+                    load_dict_new['features.' + 'Bottleneck_' + k.split('.')[0][-1] + '_' + k.split('.')[1] + '.' +('.').join(k.split('.')[2:])] = v
+            load_dict = load_dict_new
+            del load_dict_new
+            '''
+            '''
+            # new new
+            load_dict_new = dict()
+            for k, v in load_dict.items():
+                if k.split('.')[0][:-1] != 'layer':
+                    load_dict_new[k] = v
+                else:
+                    load_dict_new[k.split('.')[0] +  '.module.' + ('.').join(k.split('.')[1:])] = v
+            load_dict = load_dict_new
+            del load_dict_new
+            '''
+            model_dict = model.state_dict()
+            model_dict.update(load_dict)
+            model.load_state_dict(model_dict)
+            #model.load_state_dict(torch.load(pretrained_path))
 
     elif net_type == 'densenet121':
         sz_embed = 1024
