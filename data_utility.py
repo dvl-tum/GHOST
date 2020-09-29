@@ -8,6 +8,7 @@ import numpy as np
 import os
 import matplotlib.pyplot as plt
 import logging
+import copy
 
 logger = logging.getLogger('GNNReID.DataUtility')
 
@@ -249,14 +250,13 @@ def create_loaders(data_root, num_workers, size_batch, num_classes_iter=None,
             num_workers=1,
             drop_last=drop_last,
             pin_memory=True)
-
+        
         dl_ev = torch.utils.data.DataLoader(
-            dataset_ev,
-            batch_size=50,
-            shuffle=False,
+            copy.deepcopy(dataset_ev),
+            batch_size=64,
+            shuffle=True,
             num_workers=1,
-            pin_memory=True
-        )
+            pin_memory=True )
 
     elif (mode == 'traintest' or mode == 'traintest_test') and \
             os.path.basename(data_root) != 'CUB_200_2011' and os.path.basename(data_root) != 'CARS' :
