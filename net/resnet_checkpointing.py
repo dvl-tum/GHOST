@@ -245,6 +245,8 @@ class ResNet(nn.Module):
         #self.linear2 = nn.Linear(d_hid, d_hid)
         self.linear2 = nn.Linear(d_hid, d_embed)
         self.activation = F.relu'''
+        #red = 8 
+        #self.red = nn.Linear(512 * block.expansion, int((512 * block.expansion)/red))
 
         for m in self.modules():
             if isinstance(m, nn.Conv2d):
@@ -324,7 +326,7 @@ class ResNet(nn.Module):
 
         x = self.avgpool(x)
         fc7 = torch.flatten(x, 1)
-
+ 
         # student
         # feats = self.linear2(self.dropout(self.activation(self.linear1(fc7))))
         feats = fc7
@@ -333,9 +335,10 @@ class ResNet(nn.Module):
         else:
             feats_after = feats
 
-        x = self.final_drop(x)
+        feats_after = self.final_drop(feats_after)
         x = self.fc(feats_after)
-
+        #feats = self.red(fc7)
+        
         if output_option == 'norm':
             return x, fc7, feats
         elif output_option == 'plain':
