@@ -148,6 +148,78 @@ class TrainTestCombi(Sampler):
         return len(self.flat_list)
 
 
+class PseudoSampler(Sampler):
+    def __init__(self, num_classes, num_samples):
+        self.feature_dict = None
+        self.bs = num_classes * num_samples
+
+    def __iter__(self):
+        # generate distance mat for all classes as in Hierachrical Triplet Loss
+        x = torch.cat([f.unsqueeze(0) for f in self.feature_dict.values], 0)
+        y = torch.cat([f.unsqueeze(0) for f in self.feature_dict.values], 0)
+        m, n = x.size(0), y.size(0)
+        x = x.view(m, -1)
+        y = y.view(n, -1)
+        dist = torch.pow(x, 2).sum(dim=1, keepdim=True).expand(m, n) + \
+               torch.pow(y, 2).sum(dim=1, keepdim=True).expand(n, m).t()
+
+        dist.addmm_(1, -2, x, y.t())
+        sorted_dist = np.argsort(dist, axis=1)
+        indices = list(self.feature_dict.keys())
+        batches = list()
+        for samp in sorted_dist:
+            batch = [indices[i] for i in samp]
+            batches.append(batch)
+
+        self.flat_list = [s for batch in batches for s in batch]
+        return (iter(self.flat_list))
+
+
+class PseudoSamplerII(Sampler):
+    def __init__(self, num_classes, num_samples):
+        self.feature_dict = None
+        self.bs = num_classes * num_samples
+        self.num_classes = num_classes
+        self.num_samples = num_samples
+
+    def __iter__(self):
+        # generate distance mat for all classes as in Hierachrical Triplet Loss
+        x = torch.cat([f.unsqueeze(0) for f in self.feature_dict.values], 0)
+        y = torch.cat([f.unsqueeze(0) for f in self.feature_dict.values], 0)
+        m, n = x.size(0), y.size(0)
+        x = x.view(m, -1)
+        y = y.view(n, -1)
+        dist = torch.pow(x, 2).sum(dim=1, keepdim=True).expand(m, n) + \
+               torch.pow(y, 2).sum(dim=1, keepdim=True).expand(n, m).t()
+
+        dist.addmm_(1, -2, x, y.t())
+        sorted_dist = np.argsort(dist, axis=1)
+        indices = list(self.feature_dict.keys())
+        indices_orig = copy.deepcopy(indices)
+        batches = list()
+        while indices:
+            batch = list()
+            i = 1
+            while len(batch) < self.bs:
+                if indices:
+                    c = random.choice(indices)
+                else:
+                    c = random.choice(indices_orig)
+                if c in batch:
+                    continue
+                j = 0
+                while len(batch) < i * self.num_samples:
+                    if sorted_dist[c][j] not in batch:
+                        batch.append(sorted_dist[c][j])
+                    j += 1
+                indices.remove(c)
+                i += 1
+            batches.append(batch)
+
+        self.flat_list = [s for batch in batches for s in batch]
+        return (iter(self.flat_list))
+
+
 class DistanceSamplerOrig(Sampler):
     def __init__(self, num_classes, num_samples, samples, strategy):
         print("USING DIST")
