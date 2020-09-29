@@ -275,7 +275,8 @@ class Trainer():
             self.opt_center.zero_grad()
         probs, fc7, student_feats = self.encoder(x.to(self.device),
                                   output_option=train_params['output_train'])
-
+        #print(torch.max(torch.nn.functional.softmax(probs, dim=1), dim=1), torch.argmax(torch.nn.functional.softmax(probs, dim=1), dim=1), Y)
+        #quit()
         # Add feature vectors to dict if distance sampling
         if self.distance_sampling != 'no':
             for y, f, i in zip(Y, fc7, I):
