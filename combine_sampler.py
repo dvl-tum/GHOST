@@ -210,13 +210,17 @@ class PseudoSamplerII(Sampler):
                     c = random.choice(indices)
                 else:
                     c = random.choice(indices_orig)
+                ind = indices_orig.index(c)
+                #logger.info("class")
+                #logger.info('{}, {}'.format(c, ind))
                 j = 0
                 while len(batch) < i * self.num_samples:
                     if not indices:
-                        batch.append(sorted_dist[c][j])
-                    elif sorted_dist[c][j] in indices:
-                        batch.append(sorted_dist[c][j])
-                        indices.remove(sorted_dist[c][j])
+                        batch.append(indices_orig[sorted_dist[ind][j]])
+                    elif indices_orig[sorted_dist[ind][j]] in indices:
+                        #logger.info('{}, {}'.format(sorted_dist[ind][j], indices_orig[sorted_dist[ind][j]]))
+                        batch.append(indices_orig[sorted_dist[ind][j]])
+                        indices.remove(indices_orig[sorted_dist[ind][j]])
                     j += 1
                 #indices.remove(c)
                 i += 1
