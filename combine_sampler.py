@@ -234,6 +234,58 @@ class PseudoSamplerII(Sampler):
         return len(self.flat_list)
 
 
+class PseudoSamplerIII(Sampler):
+    def __init__(self, num_classes, num_samples):
+        logger.info("Pseudo sampler II")
+        self.feature_dict = None
+        self.bs = num_classes * num_samples
+        self.num_classes = num_classes
+        self.num_samples = num_samples
+
+    def __iter__(self):
+        # generate distance mat for all classes as in Hierachrical Triplet Loss
+        x = torch.cat([f.unsqueeze(0) for f in self.feature_dict.values()], 0)
+        y = torch.cat([f.unsqueeze(0) for f in self.feature_dict.values()], 0)
+        m, n = x.size(0), y.size(0)
+        x = x.view(m, -1)
+        y = y.view(n, -1)
+        dist = torch.pow(x, 2).sum(dim=1, keepdim=True).expand(m, n) + \
+               torch.pow(y, 2).sum(dim=1, keepdim=True).expand(n, m).t()
+
+        dist.addmm_(1, -2, x, y.t())
+        sorted_dist = np.argsort(dist.cpu().numpy(), axis=1)
+        indices = list(self.feature_dict.keys())
+        indices_orig = np.array(copy.deepcopy(indices))
+        batches = list()
+        while indices:
+            batch = list()
+            while len(batch) < self.bs:
+                if indices:
+                    c = random.choice(indices)
+                else:
+                    c = random.choice(indices_orig)
+                ind = indices_orig.index(c)
+                #logger.info("class")
+                #logger.info('{}, {}'.format(c, ind))
+                pos = [indices_orig[k] in indices for k in sorted_dist[ind]]
+                poss_samps = indices_orig[sorted_dist[ind]][pos].tolist()
+                if len(poss_samps) < self.num_samples:
+                    [poss_samps.append(l) for l in
+                     random.choices(indices_orig_orig.tolist(),
+                                    k=self.num_samples - len(poss_samps))]
+                else:
+                    poss_samps = poss_samps[:self.num_samples]
+                [batch.append(s) for s in poss_samps]
+                [indices.remove(s) for s in poss_samps]
+            batches.append(batch)
+        logger.info("Number batches {}".format(len(batches)))
+        self.flat_list = [s for batch in batches for s in batch]
+        logger.info(len(self.flat_list))
+        return (iter(self.flat_list))
+
+    def __len__(self):
+        return len(self.flat_list)
+
 
 class DistanceSamplerOrig(Sampler):
     def __init__(self, num_classes, num_samples, samples, strategy):
