@@ -155,8 +155,8 @@ class PseudoSampler(Sampler):
 
     def __iter__(self):
         # generate distance mat for all classes as in Hierachrical Triplet Loss
-        x = torch.cat([f.unsqueeze(0) for f in self.feature_dict.values], 0)
-        y = torch.cat([f.unsqueeze(0) for f in self.feature_dict.values], 0)
+        x = torch.cat([f.unsqueeze(0) for f in self.feature_dict.values()], 0)
+        y = torch.cat([f.unsqueeze(0) for f in self.feature_dict.values()], 0)
         m, n = x.size(0), y.size(0)
         x = x.view(m, -1)
         y = y.view(n, -1)
@@ -164,19 +164,24 @@ class PseudoSampler(Sampler):
                torch.pow(y, 2).sum(dim=1, keepdim=True).expand(n, m).t()
 
         dist.addmm_(1, -2, x, y.t())
-        sorted_dist = np.argsort(dist, axis=1)
+        sorted_dist = np.argsort(dist.cpu().numpy(), axis=1)
         indices = list(self.feature_dict.keys())
         batches = list()
         for samp in sorted_dist:
-            batch = [indices[i] for i in samp]
+            batch = [indices[i] for i in samp[:self.bs]]
             batches.append(batch)
-
+        logger.info("Number batches {}".format(len(batches)))
         self.flat_list = [s for batch in batches for s in batch]
+        logger.info(len(self.flat_list))
         return (iter(self.flat_list))
+
+    def __len__(self):
+        return len(self.flat_list)
 
 
 class PseudoSamplerII(Sampler):
     def __init__(self, num_classes, num_samples):
+        logger.info("Pseudo sampler II")
         self.feature_dict = None
         self.bs = num_classes * num_samples
         self.num_classes = num_classes
@@ -184,8 +189,8 @@ class PseudoSamplerII(Sampler):
 
     def __iter__(self):
         # generate distance mat for all classes as in Hierachrical Triplet Loss
-        x = torch.cat([f.unsqueeze(0) for f in self.feature_dict.values], 0)
-        y = torch.cat([f.unsqueeze(0) for f in self.feature_dict.values], 0)
+        x = torch.cat([f.unsqueeze(0) for f in self.feature_dict.values()], 0)
+        y = torch.cat([f.unsqueeze(0) for f in self.feature_dict.values()], 0)
         m, n = x.size(0), y.size(0)
         x = x.view(m, -1)
         y = y.view(n, -1)
@@ -193,7 +198,7 @@ class PseudoSamplerII(Sampler):
                torch.pow(y, 2).sum(dim=1, keepdim=True).expand(n, m).t()
 
         dist.addmm_(1, -2, x, y.t())
-        sorted_dist = np.argsort(dist, axis=1)
+        sorted_dist = np.argsort(dist.cpu().numpy(), axis=1)
         indices = list(self.feature_dict.keys())
         indices_orig = copy.deepcopy(indices)
         batches = list()
@@ -205,19 +210,25 @@ class PseudoSamplerII(Sampler):
                     c = random.choice(indices)
                 else:
                     c = random.choice(indices_orig)
-                if c in batch:
-                    continue
                 j = 0
                 while len(batch) < i * self.num_samples:
-                    if sorted_dist[c][j] not in batch:
+                    if not indices:
                         batch.append(sorted_dist[c][j])
+                    elif sorted_dist[c][j] in indices:
+                        batch.append(sorted_dist[c][j])
+                        indices.remove(sorted_dist[c][j])
                     j += 1
-                indices.remove(c)
+                #indices.remove(c)
                 i += 1
             batches.append(batch)
-
+        logger.info("Number batches {}".format(len(batches)))
         self.flat_list = [s for batch in batches for s in batch]
+        logger.info(len(self.flat_list))
         return (iter(self.flat_list))
+
+    def __len__(self):
+        return len(self.flat_list)
+
 
 
 class DistanceSamplerOrig(Sampler):
