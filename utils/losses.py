@@ -161,7 +161,7 @@ class CenterLoss(torch.nn.Module):
 
 
 class TripletLoss(nn.Module):
-    def __init__(self, margin=0):
+    def __init__(self, margin=0.1):
         super(TripletLoss, self).__init__()
         self.margin = margin
         self.ranking_loss = nn.MarginRankingLoss(margin=margin)
