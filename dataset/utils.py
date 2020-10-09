@@ -58,6 +58,66 @@ def make_transform(sz_resize=[384, 128], sz_crop=[384, 128],
     ])
 
 
+def make_transform_GL_orig(sz_resize = 256, sz_crop = 227, mean = [128, 117, 104], 
+        std = [1, 1, 1], rgb_to_bgr = True, is_train = True, 
+        intensity_scale = [[0, 1], [0, 255]]):
+    if is_train:
+        sz_crop = 256
+    else:
+        sz_resize = 288
+        sz_crop = 256
+    
+    # RandomErasing(probability=0.5,
+    #                       mean=(0.4914, 0.4822, 0.4465)) if is_train else Identity(),
+    return transforms.Compose([
+        transforms.Compose([ # train: horizontal flip and random resized crop
+            transforms.RandomResizedCrop(sz_crop),
+            transforms.RandomHorizontalFlip(),
+        ]) if is_train else transforms.Compose([ # test: else center crop
+            transforms.Resize(sz_resize),
+            transforms.CenterCrop(sz_crop),
+        ]),
+        transforms.ToTensor(),
+        ScaleIntensities(
+            *intensity_scale) if intensity_scale is not None else Identity(),
+        transforms.Normalize(
+            mean=mean,
+            std=std,
+        ),
+        transforms.Lambda(
+            lambda x: x[[2, 1, 0], ...]
+        ) if rgb_to_bgr else Identity()
+    ])
+
+def GL_orig_RE(sz_crop=[384, 128], mean=[0.485, 0.456, 0.406],
+                       std=[0.299, 0.224, 0.225], is_train=True):
+    if is_train:
+        sz_crop = 256
+    else:
+        sz_resize = 288
+        sz_crop = 256
+
+    normalize_transform = transforms.Normalize(mean=mean, std=std)
+    if is_train:
+        transform = transforms.Compose([
+            transforms.RandomResizedCrop(sz_crop),
+            transforms.RandomHorizontalFlip(),
+            transforms.ToTensor(),
+            normalize_transform,
+            RandomErasing(probability=0.5,
+                          mean=(0.4914, 0.4822, 0.4465))
+        ])
+    else:
+        transform = transforms.Compose([
+            transforms.Resize(sz_resize),
+            transforms.CenterCrop(sz_crop),
+            transforms.ToTensor(),
+            normalize_transform
+        ])
+
+    return transform
+
+
 class RandomErasing(object):
     """ Randomly selects a rectangle region in an image and erases its pixels.
         'Random Erasing Data Augmentation' by Zhong et al.
@@ -109,6 +169,7 @@ class RandomErasing(object):
 # transformations for paper Bag of Tricks
 def make_transform_bot(sz_crop=[384, 128], mean=[0.485, 0.456, 0.406],
                        std=[0.299, 0.224, 0.225], is_train=True):
+    sz_crop = [256, 256]
     normalize_transform = transforms.Normalize(mean=mean, std=std)
     if is_train:
         transform = transforms.Compose([
