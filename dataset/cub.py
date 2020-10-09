@@ -95,6 +95,7 @@ class Birds(torch.utils.data.Dataset):
         self.transform = self.get_transform()
 
     def get_transform(self):
+        print(self.trans)
         if self.trans == 'norm':
             trans = utils.make_transform(is_train=not self.eval_reid)
         elif self.trans == 'bot':
@@ -103,6 +104,8 @@ class Birds(torch.utils.data.Dataset):
             trans = utils.make_transform_imaug(is_train=not self.eval_reid)
         elif self.trans == 'randaug':
             trans = utils.make_rand_aug(is_train=not self.eval_reid, M=self.magnitude, N=self.number_aug)
+        elif self.trans == 'GLorig':
+            trans = utils.make_transform_GL_orig(is_train=not self.eval_reid)
         elif self.trans == 'appearance':
             ddict = defaultdict(list)
             for idx, label in enumerate(self.ys):
@@ -133,9 +136,9 @@ class Birds(torch.utils.data.Dataset):
             im = self.transform(im)
         #show_dataset(im, self.ys[index])
         if self.labels_train is not None:
-            return im, self.ys[index], self.im_paths[index]
+            return im, self.ys[index], index, self.im_paths[index]
         if self.eval_reid:
-            return im, self.ys[index], self.im_paths[index]
+            return im, self.ys[index], index, self.im_paths[index]
         return im, self.ys[index], index, self.im_paths[index]
 
 
@@ -264,6 +267,10 @@ class Birds_DML(torch.utils.data.Dataset):
             trans = utils.make_transform_bot(is_train=not self.eval_reid)
         elif self.trans == 'imgaug':
             trans = utils.make_transform_imaug(is_train=not self.eval_reid)
+        elif self.trans == 'GLorig':
+            trans = utils.make_transform_GL_orig(is_train=not self.eval_reid)
+        elif self.trans == 'GL_orig_RE':
+            trans = utils.GL_orig_RE(is_train=not self.eval_reid)
         elif self.trans == 'appearance':
             ddict = defaultdict(list)
             for idx, label in enumerate(self.ys):
@@ -295,7 +302,7 @@ class Birds_DML(torch.utils.data.Dataset):
             im = self.transform(im)
         #show_dataset(im, self.ys[index])
         if self.labels_train is not None:
-            return im, self.ys[index], self.im_paths[index]
+            return im, self.ys[index], index, self.im_paths[index]
         if self.eval_reid:
-            return im, self.ys[index], self.im_paths[index]
+            return im, self.ys[index], index, self.im_paths[index]
         return im, self.ys[index], index, self.im_paths[index]
