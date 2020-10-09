@@ -23,7 +23,7 @@ class CombineSampler(Sampler):
         self.n_cl = n_cl
         self.batch_size = cl_b * n_cl
         self.flat_list = []
-
+        self.feature_dict = None
         for inds in l_inds:
             if len(inds) > self.max:
                 self.max = len(inds)
@@ -239,49 +239,65 @@ class PseudoSamplerIII(Sampler):
         logger.info("Pseudo sampler II")
         self.feature_dict = None
         self.bs = num_classes * num_samples
-        self.num_classes = num_classes
-        self.num_samples = num_samples
-
+        self.cl_b = num_classes
+        self.n_cl = num_samples
+        logger.info("Using number of classes as number of clusters")
+        self.nb_clusters = num_classes
+        logger.info("{} Clusters for Pseudo sampling".format(self.nb_clusters))
     def __iter__(self):
         # generate distance mat for all classes as in Hierachrical Triplet Loss
-        x = torch.cat([f.unsqueeze(0) for f in self.feature_dict.values()], 0)
-        y = torch.cat([f.unsqueeze(0) for f in self.feature_dict.values()], 0)
-        m, n = x.size(0), y.size(0)
-        x = x.view(m, -1)
-        y = y.view(n, -1)
-        dist = torch.pow(x, 2).sum(dim=1, keepdim=True).expand(m, n) + \
-               torch.pow(y, 2).sum(dim=1, keepdim=True).expand(n, m).t()
+        x = torch.cat([f.unsqueeze(0).cpu() for f in self.feature_dict.values()], 0)
+        cluster = sklearn.cluster.KMeans(self.nb_clusters).fit(x).labels_        
+        indices = [k.item() for k in self.feature_dict.keys()]
+        
+        ddict = defaultdict(list)
+        for idx, label in zip(indices, cluster):
+            ddict[label].append(idx)
 
-        dist.addmm_(1, -2, x, y.t())
-        sorted_dist = np.argsort(dist.cpu().numpy(), axis=1)
-        indices = list(self.feature_dict.keys())
-        indices_orig = np.array(copy.deepcopy(indices))
-        batches = list()
-        while indices:
-            batch = list()
-            while len(batch) < self.bs:
-                if indices:
-                    c = random.choice(indices)
-                else:
-                    c = random.choice(indices_orig)
-                ind = indices_orig.index(c)
-                #logger.info("class")
-                #logger.info('{}, {}'.format(c, ind))
-                pos = [indices_orig[k] in indices for k in sorted_dist[ind]]
-                poss_samps = indices_orig[sorted_dist[ind]][pos].tolist()
-                if len(poss_samps) < self.num_samples:
-                    [poss_samps.append(l) for l in
-                     random.choices(indices_orig_orig.tolist(),
-                                    k=self.num_samples - len(poss_samps))]
-                else:
-                    poss_samps = poss_samps[:self.num_samples]
-                [batch.append(s) for s in poss_samps]
-                [indices.remove(s) for s in poss_samps]
-            batches.append(batch)
-        logger.info("Number batches {}".format(len(batches)))
-        self.flat_list = [s for batch in batches for s in batch]
-        logger.info(len(self.flat_list))
-        return (iter(self.flat_list))
+        l_inds = []
+        for key in ddict:
+            l_inds.append(ddict[key]) 
+        
+        l_inds = list(map(lambda a: random.sample(a, len(a)), l_inds))
+        
+        # add elements till every class has the same num of obs
+        # np.random.choice(idxs, size=self.num_instances, replace=True)
+        #for inds in l_inds:
+        #    choose = copy.deepcopy(inds)
+        #    while len(inds) < self.max:
+        #        inds += [random.choice(choose)]
+        #print("NEW MAX")
+
+        #for inds in l_inds:
+        #    n_els = self.max - len(inds) + 1  # take out 1?
+        #    inds.extend(inds[:n_els])  # max + 1
+        #print("OLD MAX")
+
+        for inds in l_inds:
+            choose = copy.deepcopy(inds)
+            while len(inds) < self.n_cl:
+                inds += [random.choice(choose)]
+        print("Num samples")
+
+        # split lists of a class every n_cl elements
+        split_list_of_indices = []
+        for inds in l_inds:
+            inds = inds + np.random.choice(inds, size=(len(inds) // self.n_cl + 1)*self.n_cl - len(inds), replace=False).tolist()
+            # drop the last < n_cl elements
+            while len(inds) >= self.n_cl:
+                split_list_of_indices.append(inds[:self.n_cl])
+                inds = inds[self.n_cl:] 
+            assert len(inds) == 0
+        # shuffle the order of classes --> Could it be that same class appears twice in one batch?
+        random.shuffle(split_list_of_indices)
+        if len(split_list_of_indices) % self.cl_b != 0:
+            b = np.random.choice(np.arange(len(split_list_of_indices)), size=self.cl_b - len(split_list_of_indices) % self.cl_b, replace=False).tolist()
+            [split_list_of_indices.append(split_list_of_indices[m]) for m in b]
+        #print(len(split_list_of_indices), self.cl_b) 
+        #print(split_list_of_indices)
+        self.flat_list = [item for sublist in split_list_of_indices for item in sublist]
+        print(len(set(self.flat_list))) 
+        return iter(self.flat_list)
 
     def __len__(self):
         return len(self.flat_list)
@@ -420,8 +436,6 @@ class DistanceSampler(Sampler):
             self.indicator.append([k] * len(self.index_sorted[k]))
             feats.append(self.feats_sorted[k])
 
-        del self.feature_dict
-
         self.indicator = [i for l in self.indicator for i in l]
         feats = [f for c in feats for f in c]
         # self.feature_dict = {k: self.feature_dict[k] for k in sorted(self.feature_dict.keys())}
@@ -465,14 +479,12 @@ class DistanceSampler(Sampler):
         self.inter_class_dist = dist_mat
 
     def __iter__(self):
-
         if (self.strategy == 'alternating' and self.epoch % 5 == 2) or (
                 self.strategy == 'only' and self.epoch % 5 == 2) or (
                 self.strategy == 'pre' and self.epoch % 5 == 2) or (
                 self.strategy == 'pre_soft' and self.epoch % 5 == 2):
-            print('recompute dist at epoch {}'.format(self.epoch))
+            logger.info('recompute dist at epoch {}'.format(self.epoch))
             self.get_inter_class_distances()
-
         # sort class distances
         indices = np.argsort(self.inter_class_dist, axis=1)
         batches = list()
