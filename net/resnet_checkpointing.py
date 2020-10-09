@@ -222,7 +222,8 @@ class ResNet(nn.Module):
         #                               dilate=replace_stride_with_dilation[2])
 
 
-        self.avgpool = nn.AdaptiveAvgPool2d((1, 1))
+        #self.avgpool = nn.AdaptiveAvgPool2d((1, 1))
+        self.avgpool = nn.AdaptiveMaxPool2d((1, 1))
         self.final_drop = nn.Dropout(final_drop)
 
         if self.neck:
@@ -328,14 +329,14 @@ class ResNet(nn.Module):
         fc7 = torch.flatten(x, 1)
  
         # student
-        # feats = self.linear2(self.dropout(self.activation(self.linear1(fc7))))
+        #feats = self.linear2(self.dropout(self.activation(self.linear1(fc7))))
         feats = fc7
         if self.neck:
             feats_after = self.bottleneck(feats)
         else:
             feats_after = feats
 
-        feats_after = self.final_drop(feats_after)
+        #feats_after = self.final_drop(feats_after)
         x = self.fc(feats_after)
         #feats = self.red(fc7)
         
