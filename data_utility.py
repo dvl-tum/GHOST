@@ -3,7 +3,8 @@ import torch
 from collections import defaultdict
 from combine_sampler import CombineSampler, CombineSamplerAdvanced, \
     CombineSamplerSuperclass, CombineSamplerSuperclass2, PretraingSampler, \
-    DistanceSampler, DistanceSamplerMean, DistanceSamplerOrig, TrainTestCombi
+    DistanceSampler, DistanceSamplerMean, DistanceSamplerOrig, TrainTestCombi, \
+    PseudoSampler, PseudoSamplerII, PseudoSamplerIII
 import numpy as np
 import os
 import matplotlib.pyplot as plt
@@ -127,6 +128,9 @@ def create_loaders(data_root, num_workers, size_batch, num_classes_iter=None,
     else:
         sampler = CombineSampler(list_of_indices_for_each_class,
                                  num_classes_iter, num_elements_class)
+        #logger.info("Pseudo for training")
+        #sampler = PseudoSamplerIII(num_classes_iter, num_elements_class)
+
         drop_last = True
 
     dl_tr = torch.utils.data.DataLoader(
@@ -138,6 +142,17 @@ def create_loaders(data_root, num_workers, size_batch, num_classes_iter=None,
         drop_last=drop_last,
         pin_memory=True
     )
+    '''
+    logger.info("Random Training //////////")
+    dl_tr = torch.utils.data.DataLoader(
+        Dataset,
+        batch_size=size_batch,
+        shuffle=True,
+        num_workers=num_workers,
+        drop_last=drop_last,
+        pin_memory=True
+    )
+    '''
 
     if pretraining:
         return dl_tr
@@ -202,7 +217,7 @@ def create_loaders(data_root, num_workers, size_batch, num_classes_iter=None,
         for key in ddict:
             list_of_indices_for_each_class.append(ddict[key])
 
-        if distance_sampler == 'orig_pre' or distance_sampler == 'orig_pre_soft' or distance_sampler == 'orig_only' or distance_sampler == 'orig_alternating':
+        '''if distance_sampler == 'orig_pre' or distance_sampler == 'orig_pre_soft' or distance_sampler == 'orig_only' or distance_sampler == 'orig_alternating':
             print(distance_sampler)
             sampler = DistanceSamplerOrig(num_classes_iter, num_elements_class,
                                           ddict, distance_sampler, m)
@@ -212,10 +227,10 @@ def create_loaders(data_root, num_workers, size_batch, num_classes_iter=None,
             sampler = DistanceSampler(num_classes_iter, num_elements_class,
                                       ddict, distance_sampler, m)
             drop_last = True
-        else:
-            sampler = CombineSampler(list_of_indices_for_each_class,
-                                     num_classes_iter, num_elements_class)
-            drop_last = True
+        else:'''
+        sampler = CombineSampler(list_of_indices_for_each_class,
+                                 num_classes_iter, num_elements_class)
+        drop_last = True
 
         dl_ev = torch.utils.data.DataLoader(
             dataset_ev,
@@ -238,10 +253,12 @@ def create_loaders(data_root, num_workers, size_batch, num_classes_iter=None,
         for key in ddict:
             list_of_indices_for_each_class.append(ddict[key])
         
-        sampler = CombineSampler(list_of_indices_for_each_class,
-                                 num_classes_iter, num_elements_class)
-        drop_last = True
+        #sampler = CombineSampler(list_of_indices_for_each_class,
+        #                        num_classes_iter, num_elements_class)
+        sampler = PseudoSamplerIII(num_classes_iter, num_elements_class)
 
+        drop_last = True
+        print("batch size {}".format(size_batch))
         dl_ev_gnn = torch.utils.data.DataLoader(
             dataset_ev,
             batch_size=size_batch,
@@ -250,7 +267,15 @@ def create_loaders(data_root, num_workers, size_batch, num_classes_iter=None,
             num_workers=1,
             drop_last=drop_last,
             pin_memory=True)
-        
+        '''
+        print("Random Pseudo")
+        dl_ev_gnn = torch.utils.data.DataLoader(
+            copy.deepcopy(dataset_ev),
+            batch_size=128,
+            shuffle=True,
+            num_workers=1,
+            pin_memory=True )
+        '''
         dl_ev = torch.utils.data.DataLoader(
             copy.deepcopy(dataset_ev),
             batch_size=64,
