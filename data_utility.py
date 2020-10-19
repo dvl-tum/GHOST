@@ -17,7 +17,7 @@ def create_loaders(data_root, num_workers, size_batch, num_classes_iter=None,
                    num_elements_class=None, pretraining=False,
                    input_size=[384, 128], mode='single', trans= 'norm',
                    distance_sampler='only', val=0, m=100, seed=0, magnitude=15,
-                   number_aug=0, num_classes=None):
+                   number_aug=0, num_classes=None, net_type='resnet50'):
     query, gallery = None, None
     if os.path.basename(data_root) != 'CARS' and os.path.basename(data_root) != 'CUB_200_2011' and os.path.basename(data_root) != 'Stanford_Online_Products':
         labels, paths = dataset.load_data(root=data_root, mode=mode, val=val, seed=seed)
@@ -97,7 +97,8 @@ def create_loaders(data_root, num_workers, size_batch, num_classes_iter=None,
         Dataset = dataset.Birds_DML(
             root=data_root,
             labels=list(range(0, num_classes)),
-            transform=trans)
+            transform=trans,
+            net_type=net_type)
     else:
         Dataset = dataset.All(root=data_root,
                                 labels=labels['bounding_box_train'],
@@ -185,7 +186,8 @@ def create_loaders(data_root, num_workers, size_batch, num_classes_iter=None,
             labels=list(range(num_classes, class_end)),
             labels_train=list(range(0, num_classes)),
             transform=trans,
-            eval_reid=True
+            eval_reid=True,
+            net_type=net_type
         )
     elif os.path.basename(data_root) == 'CUB_200_2011' or os.path.basename(data_root) == 'CARS' or os.path.basename(data_root) == 'Stanford_Online_Products':
         if data_root == 'Stanford':
@@ -196,7 +198,8 @@ def create_loaders(data_root, num_workers, size_batch, num_classes_iter=None,
             root=data_root,
             labels=list(range(num_classes, class_end)),
             transform=trans,
-            eval_reid=True
+            eval_reid=True,
+            net_type=net_type
         )
     else:
         dataset_ev = dataset.All(

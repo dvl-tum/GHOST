@@ -787,7 +787,8 @@ class Trainer():
                     distance_sampler=config['sampling'],
                     val=config['val'],
                     seed=seed,
-                    num_classes=self.config['dataset']['num_classes'])
+                    num_classes=self.config['dataset']['num_classes'],
+                    net_type=self.net_type)
                 self.dl_tr1, self.dl_ev1, self.query1, self.gallery1, self.dl_ev_gnn1 = data_utility.create_loaders(
                     data_root=config['dataset_path'],
                     num_workers=config['nb_workers'],
@@ -802,7 +803,8 @@ class Trainer():
                     distance_sampler='no',
                     val=config['val'],
                     seed=seed,
-                    num_classes=self.config['dataset']['num_classes'])
+                    num_classes=self.config['dataset']['num_classes'],
+                    net_type=self.net_type)
             # If testing or normal training
             else:
                 self.dl_tr, self.dl_ev, self.query, self.gallery, self.dl_ev_gnn = data_utility.create_loaders(
@@ -818,7 +820,8 @@ class Trainer():
                     magnitude=config['magnitude'],
                     distance_sampler=config['sampling'],
                     val=config['val'],
-                    num_classes=self.config['dataset']['num_classes'])
+                    num_classes=self.config['dataset']['num_classes'], 
+                    net_type=self.net_type)
 
         # Pretraining dataloader
         else:

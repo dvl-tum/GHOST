@@ -58,46 +58,66 @@ def make_transform(sz_resize=[384, 128], sz_crop=[384, 128],
     ])
 
 
-def make_transform_GL_orig(sz_resize = 256, sz_crop = 227, mean = [128, 117, 104], 
+def make_transform_GL_orig(sz_resize = 256, sz_crop = 227, mean = [104, 117, 128], 
         std = [1, 1, 1], rgb_to_bgr = True, is_train = True, 
-        intensity_scale = [[0, 1], [0, 255]]):
+        intensity_scale = [[0, 1], [0, 255]], net_type='resnet50'):
     '''if is_train:
         sz_crop = 256
     else:
         sz_resize = 288
         sz_crop = 256
     '''
-    # RandomErasing(probability=0.5,
-    #                       mean=(0.4914, 0.4822, 0.4465)) if is_train else Identity(),
-    return transforms.Compose([
-        transforms.Compose([ # train: horizontal flip and random resized crop
-            transforms.RandomResizedCrop(sz_crop),
-            transforms.RandomHorizontalFlip(),
-        ]) if is_train else transforms.Compose([ # test: else center crop
-            transforms.Resize(sz_resize),
-            transforms.CenterCrop(sz_crop),
-        ]),
+
+    resnet_sz_resize = 256
+    resnet_sz_crop = 227
+    resnet_mean = [0.485, 0.456, 0.406]
+    resnet_std = [0.229, 0.224, 0.225]
+    resnet_transform = transforms.Compose([
+        transforms.RandomResizedCrop(resnet_sz_crop) if is_train else Identity(),
+        transforms.RandomHorizontalFlip() if is_train else Identity(),
+        transforms.Resize(resnet_sz_resize) if not is_train else Identity(),
+        transforms.CenterCrop(resnet_sz_crop) if not is_train else Identity(),
         transforms.ToTensor(),
-        ScaleIntensities(
-            *intensity_scale) if intensity_scale is not None else Identity(),
-        transforms.Normalize(
-            mean=mean,
-            std=std,
-        ),
-        transforms.Lambda(
-            lambda x: x[[2, 1, 0], ...]
-        ) if rgb_to_bgr else Identity()
+        transforms.Normalize(mean=resnet_mean, std=resnet_std)
     ])
+    
+    inception_sz_resize = 256
+    inception_sz_crop = 227
+    inception_mean = [104, 117, 128]
+    inception_std = [1, 1, 1]
+    inception_transform = transforms.Compose(
+       [
+        RGBToBGR(),
+        transforms.RandomResizedCrop(inception_sz_crop) if is_train else Identity(),
+        transforms.RandomHorizontalFlip() if is_train else Identity(),
+        transforms.Resize(inception_sz_resize) if not is_train else Identity(),
+        transforms.CenterCrop(inception_sz_crop) if not is_train else Identity(),
+        transforms.ToTensor(),
+        ScaleIntensities([0, 1], [0, 255]),
+        transforms.Normalize(mean=inception_mean, std=inception_std)
+       ])
+
+    return inception_transform if net_type == 'bn_inception' else resnet_transform
+
+
+class RGBToBGR():
+    def __call__(self, im):
+        assert im.mode == 'RGB'
+        r, g, b = [im.getchannel(i) for i in range(3)]
+        # RGB mode also for BGR, `3x8-bit pixels, true color`, see PIL doc
+        im = PIL.Image.merge('RGB', [b, g, r])
+        return im
+
 
 def GL_orig_RE(sz_crop=[384, 128], mean=[0.485, 0.456, 0.406],
-                       std=[0.299, 0.224, 0.225], is_train=True):
+                       std=[0.299, 0.224, 0.225], is_train=True, net_type='resnet50'):
     if is_train:
         sz_crop = 256
     else:
         sz_resize = 288
         sz_crop = 256
-    sz_resize = 256
-    sz_crop = 227
+    #sz_resize = 256
+    #sz_crop = 227
     
     normalize_transform = transforms.Normalize(mean=mean, std=std)
     if is_train:

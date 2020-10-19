@@ -225,12 +225,13 @@ import tarfile
 
 class Birds_DML(torch.utils.data.Dataset):
     def __init__(self, root, labels, transform=None,
-                 eval_reid=False, labels_train=None):
+                 eval_reid=False, net_type='resnet50', labels_train=None):
         # e.g., labels = range(0, 50) for using first 50 classes only
         self.labels = labels
         self.eval_reid = eval_reid
         self.trans = transform
         self.labels_train = labels_train
+        self.net_type = net_type
         self.ys, self.im_paths = [], []
         for i in torchvision.datasets.ImageFolder(
                 root=os.path.join(root, 'images')
@@ -262,15 +263,15 @@ class Birds_DML(torch.utils.data.Dataset):
 
     def get_transform(self):
         if self.trans == 'norm':
-            trans = utils.make_transform(is_train=not self.eval_reid)
+            trans = utils.make_transform(is_train=not self.eval_reid, net_type=self.net_type)
         elif self.trans == 'bot':
-            trans = utils.make_transform_bot(is_train=not self.eval_reid)
+            trans = utils.make_transform_bot(is_train=not self.eval_reid, net_type=self.net_type)
         elif self.trans == 'imgaug':
-            trans = utils.make_transform_imaug(is_train=not self.eval_reid)
+            trans = utils.make_transform_imaug(is_train=not self.eval_reid, net_type=self.net_type)
         elif self.trans == 'GLorig':
-            trans = utils.make_transform_GL_orig(is_train=not self.eval_reid)
+            trans = utils.make_transform_GL_orig(is_train=not self.eval_reid, net_type=self.net_type)
         elif self.trans == 'GL_orig_RE':
-            trans = utils.GL_orig_RE(is_train=not self.eval_reid)
+            trans = utils.GL_orig_RE(is_train=not self.eval_reid, net_type=self.net_type)
         elif self.trans == 'appearance':
             ddict = defaultdict(list)
             for idx, label in enumerate(self.ys):
