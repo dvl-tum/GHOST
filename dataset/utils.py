@@ -61,12 +61,12 @@ def make_transform(sz_resize=[384, 128], sz_crop=[384, 128],
 def make_transform_GL_orig(sz_resize = 256, sz_crop = 227, mean = [128, 117, 104], 
         std = [1, 1, 1], rgb_to_bgr = True, is_train = True, 
         intensity_scale = [[0, 1], [0, 255]]):
-    if is_train:
+    '''if is_train:
         sz_crop = 256
     else:
         sz_resize = 288
         sz_crop = 256
-    
+    '''
     # RandomErasing(probability=0.5,
     #                       mean=(0.4914, 0.4822, 0.4465)) if is_train else Identity(),
     return transforms.Compose([
@@ -96,7 +96,9 @@ def GL_orig_RE(sz_crop=[384, 128], mean=[0.485, 0.456, 0.406],
     else:
         sz_resize = 288
         sz_crop = 256
-
+    sz_resize = 256
+    sz_crop = 227
+    
     normalize_transform = transforms.Normalize(mean=mean, std=std)
     if is_train:
         transform = transforms.Compose([
