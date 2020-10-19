@@ -12,8 +12,8 @@ https://github.com/dichotomies/proxy-nca.
 
 def bn_inception(pretrained=False, **kwargs):
     model = BNInception(**kwargs)
-    if pretrained:
-        model.load_state_dict(torch.load('net/bn_inception_weights_pt04.pt'))
+    #if pretrained:
+    #    model.load_state_dict(torch.load('net/bn_inception_weights_pt04.pt'))
     return model
 
 class BNInception(nn.Module):
@@ -1296,11 +1296,16 @@ class BNInception(nn.Module):
         x = self.last_linear(fc7)
         return x, fc7
 
-    def forward(self, input):
+    def forward(self, input, output_option='norm', val=False):
         x_h = self.features(input)
         x_h, fc7_h = self.logits(x_h)
 
-        return x_h, fc7_h
+        if output_option == 'norm':
+            return x_h, fc7_h, None
+        elif output_option == 'plain':
+            return x_h, F.normalize(fc7_h, p=2, dim=1), None
+
+        return x_h, fc7_h, None
 
 
 # class Inception_embed(nn.Module):

@@ -6,13 +6,13 @@ import torch.nn.utils.weight_norm as weightNorm
 
 
 def load_net(dataset, nb_classes, mode, net_type, bn_inception={'embed': 0, 'sz_embedding': 512},
-             last_stride=0, neck=0, pretrained_path=None, weight_norm=0, final_drop=0.5, stoch_depth=0.8):
+             last_stride=0, neck=0, pretrained_path=None, weight_norm=0, final_drop=0.5, stoch_depth=0.8, red=1):
     if net_type == 'bn_inception':
         sz_embed = 1024
         model = net.bn_inception(pretrained=True)
         model.last_linear = nn.Linear(1024, nb_classes)
-        if not mode  == 'pretraining':
-            model.load_state_dict(torch.load('net/finetuned_' + dataset + '_' + net_type + '.pth'))
+        #if not mode  == 'pretraining':
+        #    model.load_state_dict(torch.load('net/finetuned_' + dataset + '_' + net_type + '.pth'))
 
         if bn_inception['embed']:
             model = net.Inception_embed(model, 1024, bn_inception['sz_embedding'], num_classes=nb_classes)

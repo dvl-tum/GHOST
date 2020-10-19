@@ -1,0 +1,103 @@
+mode: "pseudo_hyper_search" #train/test/hyper_search/pretraining
+application: "DML"
+
+models:
+  encoder_params:
+    pretrained_path: "no"  
+    net_type: "bn_inception"
+    neck: 1
+    red: 4
+    last_stride: 0
+    final_drop: 0 #0.5
+    stoch_depth: 1 #0.8
+    weight_norm: 0
+    bn_inception:
+      embed: 0
+      sz_embedding: 512
+
+  gnn_params:
+    pretrained_path: "no" 
+    use_edge_encoder: 0
+    use_edge_model: 0
+    use_node_encoder: 0
+    red: 1
+    cat: 0
+    every: 0
+    gnn:
+      num_layers: 2 
+      aggregator: "add"
+      num_heads: 4 
+      attention: "dot" #"dot_pygeo"
+      mlp: 0
+      dropout_mlp: 0.1
+      norm1: 1
+      norm2: 0
+      res1: 1
+      res2: 0
+      dropout_1: 0.1
+      dropout_2: 0.1
+    edge:
+      fc_dims: [2048]
+      dropout_p: 0.4
+      use_batchnorm: 0
+    node_encoder:
+      fc_dims: [2048]
+      dropout_p: 0.4
+      use_batchnorm: 0
+    edge_encoder:
+      fc_dims: [2048]
+      dropout_p: 0.4
+      use_batchnorm: 0
+    classifier:
+      neck: 1
+      num_classes: 98
+      dropout_p: 0.4
+      use_batchnorm: 0
+
+graph_params:
+  sim_type: "correlation"
+  thresh: 0
+  set_negative: "hard"
+
+dataset:
+  dataset_path: "../../datasets/CARS"
+  dataset_short: "cars"
+  num_classes: 98
+  trans: "GLorig"
+  number_aug: 2
+  magnitude: 27
+  sampling: "no"
+  val: 0
+  nb_workers: 4
+
+train_params:
+  num_classes_iter: 12 
+  num_elements_class: 7 
+  lr: 0.001 #9.448566599801139e-05 
+  weight_decay: 0 #2.3714181045620526e-15 
+  num_epochs: 10 #70
+  is_apex: 0
+  temperatur: 0.2
+  output_train_gnn: "norm"
+  output_train_enc: "norm"
+  loss_fn:
+    fns: "lsce" #"lsce_lsgnn" #ce/focalce can be used instead of lsce and lsgnn/focalgnn instead of gnn, rest can be added by ce_gnn_center...
+    scaling_ce: 1
+    scaling_gnn: 1
+    scaling_center: 0.5
+    scaling_triplet: 1
+    scaling_of: 1
+    scaling_of_pre: 1
+    scaling_distill: 1
+    soft_temp: 10
+    preds: "results/0.9390158582089553_cars_1601197472.0445573/preds.json" #"results/0.949393656716418_cars_1601195553.3563294/preds.json" #"results/0.9390158582089553_cars_1601197472.0445573/preds.json"
+    feats: "results/0.9390158582089553_cars_1601197472.0445573/feats.json" #"results/0.949393656716418_cars_1601195553.3563294/feats.json" #"results/0.9390158582089553_cars_1601197472.0445573/feats.json"
+
+eval_params:
+  re_rank: 0
+  lamb: 0.3
+  k1: 20
+  k2: 6
+  output_test_enc: "norm"
+  output_test_gnn: "norm"
+  cat: 0
