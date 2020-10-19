@@ -20,6 +20,7 @@ class MultiHeadDotProduct(nn.Module):
         self.aggr = aggr
 
         # FC Layers for input
+        #print("no lineat layers")
         self.q_linear = nn.Linear(embed_dim + edge_dim, embed_dim)
         self.v_linear = nn.Linear(embed_dim + edge_dim, embed_dim)
         self.k_linear = nn.Linear(embed_dim + edge_dim, embed_dim)
@@ -27,6 +28,7 @@ class MultiHeadDotProduct(nn.Module):
         self.dropout = nn.Dropout(dropout)
 
         # fc layer for concatenated output
+        #print("no out")
         self.out = nn.Linear(embed_dim, embed_dim)
 
         self.reset_parameters()
@@ -40,6 +42,9 @@ class MultiHeadDotProduct(nn.Module):
         k = self.k_linear(k).view(bs, self.nhead, self.hdim).transpose(0, 1)
         q = self.q_linear(q).view(bs, self.nhead, self.hdim).transpose(0, 1)
         v = self.v_linear(v).view(bs, self.nhead, self.hdim).transpose(0, 1)
+        #k = k.view(bs, self.nhead, self.hdim).transpose(0, 1)
+        #q = q.view(bs, self.nhead, self.hdim).transpose(0, 1)
+        #v = v.view(bs, self.nhead, self.hdim).transpose(0, 1)
 
         # perform multi-head attention
         feats = self._attention(q, k, v, edge_index, edge_attr, bs)
@@ -62,7 +67,8 @@ class MultiHeadDotProduct(nn.Module):
 
         out = scores * v.index_select(1, r)  # H x e x hdim
         out = self.aggr(out, c, 1, bs)  # H x bs x hdim
-
+        if type(out) == tuple:
+            out = out[0]
         return out
 
     def reset_parameters(self):
@@ -74,10 +80,9 @@ class MultiHeadDotProduct(nn.Module):
 
         nn.init.xavier_uniform_(self.k_linear.weight)
         nn.init.constant_(self.k_linear.bias, 0.)
-
-        #nn.init.xavier_uniform_(self.out.weight)
+        
+        nn.init.xavier_uniform_(self.out.weight)
         nn.init.constant_(self.out.bias, 0.)
-
 
 class MultiHeadMLP(nn.Module):
     """
@@ -99,7 +104,7 @@ class MultiHeadMLP(nn.Module):
         self.fc = LinearFun(embed_dim, embed_dim)
 
         if edge_dim != 0:
-            self.edge_hdim = edge_dim // nhead
+            self.edge_hdim = int(edge_dim // nhead)
             self.fc_edge = LinearFun(edge_dim, edge_dim, bias=False)
         else:
             self.edge_hdim = 0
@@ -150,8 +155,8 @@ class MultiHeadMLP(nn.Module):
             out += self.bias
 
         out = self.out(out)
-
-        return out, edge_index, edge_attr
+        
+        return out
 
     def _attention(self, feats, edge_index, bs, edge_attr=None):
         r, c = edge_index[:, 0], edge_index[:, 1]
