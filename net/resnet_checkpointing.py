@@ -175,7 +175,7 @@ class ResNet(nn.Module):
     def __init__(self, block, layers, last_stride, neck, num_classes=1000,
                  zero_init_residual=False, groups=1, width_per_group=64,
                  replace_stride_with_dilation=None, norm_layer=None, final_drop=0.5,
-                 stoch_depth=0.8):
+                 stoch_depth=0.8, red=1):
         super(ResNet, self).__init__()
         self.neck = neck
         self.stoch_depth = stoch_depth
@@ -225,17 +225,22 @@ class ResNet(nn.Module):
         #self.avgpool = nn.AdaptiveAvgPool2d((1, 1))
         self.avgpool = nn.AdaptiveMaxPool2d((1, 1))
         self.final_drop = nn.Dropout(final_drop)
-
+        
+        if red == 1:
+            self.red = None
+        else:
+            self.red = nn.Linear(512 * block.expansion, int((512 * block.expansion)/red))
+            print("reduce output dimension resnet by {}".format(red))
         if self.neck:
-            self.bottleneck = nn.BatchNorm1d(512 * block.expansion)
+            self.bottleneck = nn.BatchNorm1d(int((512 * block.expansion)/red))
             self.bottleneck.bias.requires_grad_(False)  # no shift
-            self.fc = nn.Linear(512 * block.expansion, num_classes,
+            self.fc = nn.Linear(int((512 * block.expansion)/red), num_classes,
                                 bias=False)
 
             self.bottleneck.apply(weights_init_kaiming)
             self.fc.apply(weights_init_classifier)
         else:
-            self.fc = nn.Linear(512 * block.expansion, num_classes)
+            self.fc = nn.Linear(int((512 * block.expansion)/red), num_classes)
 
         # student blocks
         '''d_embed = 512 * block.expansion
@@ -246,8 +251,6 @@ class ResNet(nn.Module):
         #self.linear2 = nn.Linear(d_hid, d_hid)
         self.linear2 = nn.Linear(d_hid, d_embed)
         self.activation = F.relu'''
-        #red = 8 
-        #self.red = nn.Linear(512 * block.expansion, int((512 * block.expansion)/red))
 
         for m in self.modules():
             if isinstance(m, nn.Conv2d):
@@ -327,18 +330,21 @@ class ResNet(nn.Module):
 
         x = self.avgpool(x)
         fc7 = torch.flatten(x, 1)
- 
+
+        if self.red:
+            fc7 = self.red(fc7)
+
         # student
         #feats = self.linear2(self.dropout(self.activation(self.linear1(fc7))))
+        #feats_after = self.final_drop(feats_after)
         feats = fc7
+
         if self.neck:
             feats_after = self.bottleneck(feats)
         else:
             feats_after = feats
-
-        #feats_after = self.final_drop(feats_after)
+ 
         x = self.fc(feats_after)
-        #feats = self.red(fc7)
         
         if output_option == 'norm':
             return x, fc7, feats
@@ -357,14 +363,17 @@ class ResNet(nn.Module):
 
 
 def _resnet(arch, block, layers, pretrained, progress, last_stride=0, neck=0,
-            final_drop=0.5, stoch_depth=0.8, **kwargs):
+            final_drop=0.5, stoch_depth=0.8, red=1, **kwargs):
     model = ResNet(block, layers, last_stride=last_stride, neck=neck, 
-            final_drop=final_drop, stoch_depth=stoch_depth, **kwargs)
+            final_drop=final_drop, stoch_depth=stoch_depth, red=red, **kwargs)
     if pretrained:
         if not neck:
             state_dict = load_state_dict_from_url(model_urls[arch],
                                                   progress=progress)
-            model.load_state_dict(state_dict)
+            for i in state_dict:
+                if 'fc' in i:
+                    continue
+                model.state_dict()[i].copy_(state_dict[i])
         else:
             state_dict = load_state_dict_from_url(model_urls[arch],
                                                   progress=progress)
@@ -407,7 +416,7 @@ def resnet34(pretrained=False, progress=True, **kwargs):
                    **kwargs)
 
 
-def resnet50(pretrained=False, progress=True, last_stride=0, neck=0, final_drop=0.5, stoch_depth=0.8, **kwargs):
+def resnet50(pretrained=False, progress=True, last_stride=0, neck=0, final_drop=0.5, stoch_depth=0.8, red=1, **kwargs):
     r"""ResNet-50 model from
     `"Deep Residual Learning for Image Recognition" <https://arxiv.org/pdf/1512.03385.pdf>`_
     Args:
@@ -415,7 +424,7 @@ def resnet50(pretrained=False, progress=True, last_stride=0, neck=0, final_drop=
         progress (bool): If True, displays a progress bar of the download to stderr
     """
     return _resnet('resnet50', Bottleneck, [3, 4, 6, 3], pretrained, progress,
-                   last_stride, neck, final_drop, stoch_depth, **kwargs)
+                   last_stride, neck, final_drop, stoch_depth, red=red, **kwargs)
 
 
 def resnet101(pretrained=False, progress=True, **kwargs):

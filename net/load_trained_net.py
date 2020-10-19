@@ -34,25 +34,27 @@ def load_net(dataset, nb_classes, mode, net_type, bn_inception={'embed': 0, 'sz_
             model.load_state_dict(torch.load('net/finetuned_' + dataset + '_' + net_type + '.pth'))
 
     elif net_type == 'resnet50':
-        sz_embed = 2048
-        model = net.resnet50(pretrained=True, last_stride=last_stride, neck=neck, final_drop=final_drop, stoch_depth=stoch_depth)
+        sz_embed = int(2048/red)
+        model = net.resnet50(pretrained=True, last_stride=last_stride, neck=neck, final_drop=final_drop, stoch_depth=stoch_depth, red=red)
         #model.fc = nn.Linear(2048, nb_classes)
         #if neck: model.bottleneck = nn.BatchNorm1d(2048)
+        
+        dim = int(2048/red)
         if neck:
-            model.bottleneck = nn.BatchNorm1d(2048)
+            model.bottleneck = nn.BatchNorm1d(dim)
             model.bottleneck.bias.requires_grad_(False)  # no shift
             if weight_norm:
-                model.fc = weightNorm(nn.Linear(2048, nb_classes, bias=False), name = "weight")
+                model.fc = weightNorm(nn.Linear(dim, nb_classes, bias=False), name = "weight")
             else:
-                model.fc = nn.Linear(2048, nb_classes, bias=False)
+                model.fc = nn.Linear(dim, nb_classes, bias=False)
 
             model.bottleneck.apply(weights_init_kaiming)
             model.fc.apply(weights_init_classifier)
         else: 
             if weight_norm:
-                model.fc = weightNorm(nn.Linear(2048, nb_classes), name = "weight")
+                model.fc = weightNorm(nn.Linear(dim, nb_classes), name = "weight")
             else:
-                model.fc = nn.Linear(2048, nb_classes)
+                model.fc = nn.Linear(dim, nb_classes)
 
         if not mode  == 'pretraining' and pretrained_path != 'no':
             no_load = ["linear1.weight", "linear1.bias", "linear2.weight", "linear2.bias",
@@ -61,8 +63,8 @@ def load_net(dataset, nb_classes, mode, net_type, bn_inception={'embed': 0, 'sz_
             #no_load = ['fc.bias']
             no_load = []
             load_dict = {k: v for k, v in torch.load(pretrained_path).items() if k not in no_load}
-
-            '''load_dict_new = dict()
+            '''
+            load_dict_new = dict()
             for k, v in load_dict.items():
                 if k.split('.')[0] == 'conv1':
                     load_dict_new[k] = v
@@ -84,6 +86,7 @@ def load_net(dataset, nb_classes, mode, net_type, bn_inception={'embed': 0, 'sz_
             load_dict = load_dict_new
             del load_dict_new
             '''
+
             model_dict = model.state_dict()
             model_dict.update(load_dict)
             model.load_state_dict(model_dict)
