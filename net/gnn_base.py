@@ -69,7 +69,7 @@ class GNNReID(nn.Module):
         self.gnn_params = params['gnn']
 
         red = 4
-        self.dim_red = nn.Linear(embed_dim, int(embed_dim/params['red']))
+        self.dim_red = nn.Linear(embed_dim, int(embed_dim/params['red'])) if red != 1 else None
         logger.info("Embed dim old {}, new".format(embed_dim, embed_dim/params['red'])) 
         embed_dim = int(embed_dim/params['red'])
         logger.info("Embed dim {}".format(embed_dim))
@@ -85,15 +85,22 @@ class GNNReID(nn.Module):
 
         # classifier
         self.neck = params['classifier']['neck']
+        dim = self.gnn_params['num_layers'] * embed_dim if self.params['cat'] else embed_dim
+        every = self.params['every']
         if self.neck:
-            self.bottleneck = nn.BatchNorm1d(embed_dim)
-            self.bottleneck.bias.requires_grad_(False)  # no shift
-            self.fc = nn.Linear(embed_dim, num_classes, bias=False)
-
-            self.bottleneck.apply(weights_init_kaiming)
-            self.fc.apply(weights_init_classifier)
+            layers = [nn.BatchNorm1d(dim) for _ in range(self.gnn_params['num_layers'])] if every else [nn.BatchNorm1d(dim)]
+            self.bottleneck = Sequential(*layers)
+            for layer in self.bottleneck:
+                layer.bias.requires_grad_(False)
+                layer.apply(weights_init_kaiming)
+            
+            layers = [nn.Linear(dim, num_classes, bias=False) for _ in range(self.gnn_params['num_layers'])] if every else [nn.Linear(dim, num_classes, bias=False)]
+            self.fc = Sequential(*layers)
+            for layer in self.fc:
+                layer.apply(weights_init_classifier)
         else:
-            self.fc = nn.Linear(embed_dim, num_classes)
+            layers = [nn.Linear(dim, num_classes) for _ in range(self.gnn_params['num_layers'])] if every else [nn.Linear(dim, num_classes)]
+            self.fc = Sequential(*layers)
 
     def _build_GNN_Net(self, embed_dim: int = 2048):
 
@@ -125,19 +132,26 @@ class GNNReID(nn.Module):
             self.aggr = lambda out, row, dim, x_size: scatter_max(out, row,
                                                                   dim=dim,
                                                                   dim_size=x_size)
+        #print("Repeat same layer")
+        #gnn = DotAttentionLayer(embed_dim, self.aggr, self.dev,
+        #                            edge_dim, self.gnn_params)
+        
+        #layers = [DotAttentionLayer(embed_dim, self.aggr, self.dev,
+        #                            edge_dim, self.gnn_params) for _
+        #          in range(self.gnn_params['num_layers'])]
 
-        layers = [DotAttentionLayer(embed_dim, self.aggr, self.dev,
-                                    edge_dim, self.gnn_params) for _
-                  in range(self.gnn_params['num_layers'])]
-
-        gnn = Sequential(*layers)
+        #gnn = Sequential(*layers)
+        
+        gnn = GNNNetwork(embed_dim, self.aggr, self.dev,
+                                    edge_dim, self.gnn_params, self.gnn_params['num_layers'] )
 
         return MetaLayer(edge_model=edge_model, node_model=gnn)
 
     def forward(self, feats, edge_index, edge_attr=None, output_option='norm'):
         r, c = edge_index[:, 0], edge_index[:, 1]
         
-        feats = self.dim_red(feats)
+        if self.dim_red is not None:
+            feats = self.dim_red(feats)
 
         if self.params['use_edge_encoder']:
             edge_attr = torch.cat(
@@ -148,18 +162,36 @@ class GNNReID(nn.Module):
             feats = self.node_encoder(feats)
 
         feats, _, _ = self.gnn_model(feats, edge_index, edge_attr)
-
-        if self.neck:
-            features = self.bottleneck(feats)
+        
+        #print(feats)
+        if self.params['cat']:
+            feats = [torch.cat(feats, dim=1).to(self.dev)]
+        elif self.params['every']:
+            feats = feats
         else:
-            features = feats
+            feats = [feats[-1]]
+        
+        #print(feats, feats[0].requires_grad)
+        
+        if self.neck:
+            features = list()
+            for i, layer in enumerate(self.bottleneck):
+                f = layer(feats[i])
+                features.append(f)
+        else:
+            features = feats 
 
-        x = self.fc(features)
+        #x = self.fc(features) 
+
+        x = list()
+        for i, layer in enumerate(self.fc):
+            f = layer(features[i])
+            x.append(f)
 
         if output_option == 'norm':
             return x, feats
         elif output_option == 'plain':
-            return x, F.normalize(feats, p=2, dim=1)
+            return x, [F.normalize(f, p=2, dim=1) for f in feats]
         elif output_option == 'neck' and self.neck:
             return x, features
         elif output_option == 'neck' and not self.neck:
@@ -169,6 +201,26 @@ class GNNReID(nn.Module):
 
         return x, feats
 
+
+class GNNNetwork(nn.Module):
+    def __init__(self, embed_dim, aggr, dev, edge_dim, gnn_params, num_layers):
+        super(GNNNetwork, self).__init__()
+        #print("Repeat same layer")
+        #gnn = DotAttentionLayer(embed_dim, aggr, dev,
+        #                            edge_dim, gnn_params)
+
+        layers = [DotAttentionLayer(embed_dim, aggr, dev,
+                                    edge_dim, gnn_params) for _
+                  in range(num_layers)]
+
+        self.layers = Sequential(*layers)
+
+    def forward(self, feats, edge_index, edge_attr):
+        out = list()
+        for layer in self.layers:
+            feats, egde_index, edge_attr = layer(feats, edge_index, edge_attr)
+            out.append(feats)
+        return out, edge_index, edge_attr
 
 class DotAttentionLayer(nn.Module):
     def __init__(self, embed_dim, aggr, dev, edge_dim, params, d_hid=None):
@@ -180,12 +232,12 @@ class DotAttentionLayer(nn.Module):
         # try AttentionLayerDot
         if params['attention'] == "dot":
             self.att = MultiHeadDotProduct(embed_dim, num_heads, aggr,
-                                           edge_dim)
+                                           edge_dim).to(dev)
         elif params['attention'] == "dot_pygeo":
-            self.att = AttentionLayerDot(embed_dim, num_heads)
+            self.att = AttentionLayerDot(embed_dim, num_heads).to(dev)
 
         elif params['attention'] == "mlp":
-            self.att = MultiHeadMLP(embed_dim, num_heads, aggr, dev, edge_dim)
+            self.att = MultiHeadMLP(embed_dim, num_heads, aggr, edge_dim).to(dev)
 
         else:
             print(
@@ -222,6 +274,7 @@ class DotAttentionLayer(nn.Module):
 
         feats2 = self.dropout1(feats2)
         feats = feats + feats2 if self.res1 else feats2
+        #feats = torch.cat([feats, feats2], dim=1) if self.res1 else feats2
         feats = self.norm1(feats) if self.norm1 is not None else feats
 
         if self.mlp:
@@ -231,6 +284,7 @@ class DotAttentionLayer(nn.Module):
 
         feats2 = self.dropout2(feats2)
         feats = feats + feats2 if self.res2 else feats2
+        #feats = torch.cat([feats, feats2], dim=1) if self.res2 else feats2
         feats = self.norm2(feats) if self.norm2 is not None else feats
 
         return feats, egde_index, edge_attr
