@@ -158,7 +158,7 @@ class Trainer():
             logger.info('Used Parameters: ' + hypers)
 
             logger.info('Best Recall: {}'.format(best_accuracy))
-            if best_accuracy > best_recall and not self.config['mode'] == 'test' and not self.config['mode'] == 'gnn_test' and not self.config['mode'] == 'traintest_test' and not self.config['mode'] == 'pseudo_test':
+            if best_accuracy > best_recall and not self.config['mode'] == 'test' and not self.config['mode'] == 'gnn_test' and not self.config['mode'] == 'traintest_test' and not self.config['mode'] == 'pseudo_test' and not self.config['mode'] == 'knn_test':
                 os.rename(osp.join(self.save_folder_nets, self.fn + '.pth'),
                           str(best_accuracy) + mode + self.net_type + '_' +
                           self.dataset_short + '.pth')
@@ -168,7 +168,7 @@ class Trainer():
                 best_recall = best_accuracy
                 best_hypers = ', '.join(
                         [str(k) + ': ' + str(v) for k, v in self.config.items()])
-            elif self.config['mode'] == 'test' or self.config['mode'] == 'gnn_test' or self.config['mode'] == 'traintest_test' or self.config['mode'] == 'pseudo_test':
+            elif self.config['mode'] == 'test' or self.config['mode'] == 'gnn_test' or self.config['mode'] == 'traintest_test' or self.config['mode'] == 'pseudo_test' or self.config['mode'] == 'knn_test':
                 best_recall = best_accuracy
                 best_hypers = ', '.join(
                         [str(k) + ': ' + str(v) for k, v in self.config.items()])
@@ -181,6 +181,7 @@ class Trainer():
     def execute(self, train_params, eval_params):
         since = time.time()
         best_accuracy = 0
+        best_loss = 100
         scores = list()
         self.preds, self.feats, self.labs, self.preds_before, self.feats_before = dict(), dict(), dict(), dict(), dict()
         self.best_preds, self.best_labs, self.best_feats, self.best_preds_before, self.best_feats_before = dict(), dict(), dict(), dict(), dict()
@@ -190,20 +191,21 @@ class Trainer():
             self.feature_dict = dict()
 
         for e in range(1, train_params['num_epochs'] + 1):
-            if self.config['mode'] == 'test' or self.config['mode'] == 'gnn_test' or self.config['mode'] == 'traintest_test' or self.config['mode'] == 'pseudo_test':
-                best_accuracy = self.evaluate(eval_params, scores, 0, 0, 0)
+            if self.config['mode'] == 'test' or self.config['mode'] == 'gnn_test' or self.config['mode'] == 'traintest_test' or self.config['mode'] == 'pseudo_test' or self.config['mode'] == 'knn_test':
+                best_accuracy, best_loss = self.evaluate(eval_params, scores, 0, 0, 0, 10000)
             # If not testing
             else:
                 logger.info(
                     'Epoch {}/{}'.format(e, train_params['num_epochs']))
-                if e == 31:
+                logger.info("No reduction of learning rate")
+                if e == 131:
                     print("reduces Learning rate")
                     self.encoder.load_state_dict(torch.load(
                         osp.join(self.save_folder_nets, self.fn + '.pth')))
                     for g in self.opt.param_groups:
                         g['lr'] = train_params['lr'] / 10.
 
-                if e == 61:
+                if e == 161:
                     print("reduces Learning rate")
                     self.encoder.load_state_dict(torch.load(
                         osp.join(self.save_folder_nets, self.fn + '.pth')))
@@ -217,23 +219,31 @@ class Trainer():
                         or (self.distance_sampling == 'pre' and e == 1) \
                         or (self.distance_sampling == 'pre_soft' and e == 1):
                     model_is_training = self.encoder.training
+                    gnn_is_training = self.gnn.training
                     self.encoder.eval()
+                    self.gnn.eval()
                     loss = 0
                     with torch.no_grad():
-                        for x, Y, I in self.dl_tr:
+                        for x, Y, I, P in self.dl_tr:
                             Y = Y.to(self.device)
-                            probs, fc7 = self.encoder(x.to(self.device))
-                            for y, f, i in zip(Y, fc7, I):
+                            probs, fc7, student_feats = self.encoder(x.to(self.device))
+                            if self.gnn_loss or self.of:
+                                edge_attr, edge_index, fc7 = self.graph_generator.get_graph(fc7)
+                                pred, feats = self.gnn(fc7, edge_index, edge_attr, train_params['output_train'])
+                                features = feats[0]
+                            else: 
+                                features = fc7
+                            
+                            for y, f, i in zip(Y, features, I):
                                 if y.data.item() in self.feature_dict.keys():
                                     self.feature_dict[y.data.item()][i.item()] = f
                                 else:
                                     self.feature_dict[y.data.item()] = {i.item(): f}
-
+                    
                 # Normal training with backpropagation
                 else:
                     for x, Y, I, P in self.dl_tr:
                         loss = self.forward_pass(x, Y, I, P, train_params)
-
                         if self.gnn_loss:
                             for param in self.gnn.parameters():
                                 if torch.isnan(param).any():
@@ -249,15 +259,27 @@ class Trainer():
                             logger.error("We have NaN numbers, closing\n\n\n")
                             #sys.exit(0)
                             return 0.0, self.encoder
-
+                        #print("New batch")
+                        #for param in self.gnn.parameters():
+                        #    print(param)
+                        #    print(param.grad)
+                        #    break
                         # Backpropagation
                         if train_params['is_apex']:
                             with amp.scale_loss(loss, self.opt) as scaled_loss:
                                 scaled_loss.backward()
                         else:
                             loss.backward()
+                        #for param in self.gnn.parameters():
+                        #    print(param)
+                        #    print(param.grad)
+                        #    break
+
                         self.opt.step()
-                        
+                        #for param in self.gnn.parameters():
+                        #    print(param)
+                        #    break
+
                         if self.gnn_loss:
                             for param in self.gnn.parameters():
                                 if torch.isnan(param).any():
@@ -277,12 +299,12 @@ class Trainer():
                         or (self.distance_sampling == 'pre' and e == 1) \
                         or (self.distance_sampling == 'pre_soft' and e == 1):
                     self.encoder.train(model_is_training)
-                
-                best_accuracy = self.evaluate(eval_params, scores, e, loss,
-                                          best_accuracy)
+                    self.gnn.train(gnn_is_training)
+                best_accuracy, best_loss = self.evaluate(eval_params, scores, e, sum(self.losses['Total Loss'])/len(self.losses['Total Loss']) if len(self.losses['Total Loss'])>0 else 10,
+                                          best_accuracy, best_loss)
 
             [self.losses_mean[k].append(sum(v) / len(v)) for k, v in
-             self.losses.items()]
+             self.losses.items() if len(v)>10]
             losses = defaultdict(list)
             logger.info('Loss Values: ')
             logger.info(', '.join([str(k) + ': ' + str(v[-1]) for k, v in self.losses_mean.items()]))
@@ -300,21 +322,26 @@ class Trainer():
         if self.center:
             self.opt_center.zero_grad()
         probs, fc7, student_feats = self.encoder(x.to(self.device),
-                                  output_option=train_params['output_train'])
+                                  output_option=train_params['output_train_enc'])
+
         #print(torch.max(torch.nn.functional.softmax(probs, dim=1), dim=1), torch.argmax(torch.nn.functional.softmax(probs, dim=1), dim=1), Y)
         #quit()
         # Add feature vectors to dict if distance sampling
         if self.distance_sampling != 'no':
             for y, f, i in zip(Y, fc7, I):
+                i_new = y.data.item() - self.config['dataset']['num_classes']
                 if y.data.item() in self.feature_dict.keys():
                     self.feature_dict[y.data.item()][i.item()] = f
                 else:
                     self.feature_dict[y.data.item()] = {i.item(): f}
-        
+         
         # Compute CE Loss
         loss = 0
         if self.ce:
-            loss0 = self.ce(probs, Y)
+            probs = probs.cuda(0)
+            Y = Y.cuda(0)
+            #print(Y)
+            loss0 = self.ce(probs/self.config['train_params']['temperatur'], Y)
             loss+= train_params['loss_fn']['scaling_ce'] * loss0
             self.losses['Cross Entropy'].append(loss.item())
 
@@ -326,9 +353,13 @@ class Trainer():
                 #print(torch.argmax(probs, dim=1), Y)
                 #print(fc7)
                 edge_attr, edge_index, fc7 = self.graph_generator.get_graph(fc7)
-                #print(fc7)
-                pred, feats = self.gnn(fc7, edge_index, edge_attr, train_params['output_train'])
-                for path,  pre, f, pre_b, f_b, lab in zip(P, pred, feats, fc7, probs, Y):
+                fc7 = fc7.cuda(0)
+                edge_attr = edge_attr.cuda(0)
+                edge_index = edge_index.cuda(0)
+                loss = loss.cuda(0)
+                pred, feats = self.gnn(fc7, edge_index, edge_attr, train_params['output_train_gnn'])
+
+                for path,  pre, f, pre_b, f_b, lab in zip(P, pred[-1], feats[-1], fc7, probs, Y):
                     self.preds[path] = pre.detach()
                     self.feats[path] = f.detach()
                     self.preds_before[path] = pre_b.detach()
@@ -337,11 +368,25 @@ class Trainer():
  
                 #pred, feats = self.gnn(fc7, train_params['output_train'])
                 if self.gnn_loss:
-                    #print(torch.max(torch.nn.functional.softmax(pred, dim=1), dim=1), torch.argmax(torch.nn.functional.softmax(pred, dim=1), dim=1), Y)
-                    loss1 = self.gnn_loss(pred/self.config['train_params']['temperatur'], Y)
+                    if self.every:
+                        loss1 = [gnn_loss(pr/self.config['train_params']['temperatur'], Y.cuda(0)) for gnn_loss, pr in zip(self.gnn_loss, pred)]
+                    else:
+                        loss1 = [self.gnn_loss(pred[0]/self.config['train_params']['temperatur'], Y.cuda(0))]
+                    lo = [train_params['loss_fn']['scaling_gnn'] * l for l in loss1]
+                    loss += sum(lo)
+                    [self.losses['GNN'+ str(i)].append(l.item()) for i, l in enumerate(loss1)]
+            
+            if self.distance_sampling != 'no':
+                if self.gnn_loss or self.of:
+                    features = feats[0]
+                else:
+                    features = fc7
+                for y, f, i in zip(Y, features, I):
+                    if y.data.item() in self.feature_dict.keys():
+                        self.feature_dict[y.data.item()][i.item()] = f
+                    else:
+                        self.feature_dict[y.data.item()] = {i.item(): f}
 
-                    loss += train_params['loss_fn']['scaling_gnn'] * loss1
-                    self.losses['GNN'].append(loss1.item())
 
             # Compute center loss
             if self.center:
@@ -357,8 +402,8 @@ class Trainer():
 
             # Compute MSE regularization
             if self.of:
-                p = feats.detach()
-                of_reg = self.of(student_feats, p)
+                p = feats[0].detach()
+                of_reg = self.of(fc7, p)
                 loss += train_params['loss_fn']['scaling_of'] * of_reg
                 self.losses['OF'].append(of_reg.item())
 
@@ -387,16 +432,32 @@ class Trainer():
 
         return loss
 
-    def evaluate(self, eval_params, scores, e, loss, best_accuracy):
+    def evaluate(self, eval_params, scores, e, loss, best_accuracy, best_loss):
         if not self.config['mode'] == 'pretraining':
             with torch.no_grad():
                 logger.info('EVALUATION')
-                if self.config['mode'] != 'gnn' and self.config['mode'] != 'gnn_test' and self.config['mode'] != 'gnn_hyper_search' and self.config['mode'] != 'pseudo' and self.config['mode'] != 'pseudo_test' and self.config['mode'] != 'traintest' and self.config['mode'] != 'traintest_test':
+                if self.config['mode'] != 'gnn' and self.config['mode'] != 'gnn_test' and self.config['mode'] != 'gnn_hyper_search' and self.config['mode'] != 'pseudo' and self.config['mode'] != 'pseudo_test' and self.config['mode'] != 'pseudo_hyper_search' and self.config['mode'] != 'traintest' and self.config['mode'] != 'traintest_test' and self.config['mode'] != 'knn_test' and self.config['mode'] != 'knn' and self.config['mode'] != 'knn_hyper_search':
+                    if self.dataset_short != 'sop': 
+                        logger.info('Train Dataset')
+                        mAP_train, top_train = self.evaluator.evaluate(self.encoder, self.dl_tr,
+                                    self.query, gallery=self.gallery, net_type=self.net_type,
+                                    dataroot=self.config['dataset']['dataset_short'],
+                                    nb_classes=self.config['dataset']['num_classes'])
+                    logger.info('Test Dataset')
                     mAP, top = self.evaluator.evaluate(self.encoder, self.dl_ev,
                             self.query, gallery=self.gallery, net_type=self.net_type,
                             dataroot=self.config['dataset']['dataset_short'], 
                             nb_classes=self.config['dataset']['num_classes'])
                 else:
+                    if self.dataset_short != 'sop':
+                        logger.info('Train Dataset')
+                        mAP_train, top_train = self.evaluator.evaluate(self.encoder, self.dl_tr,
+                                    self.query, self.gallery, self.gnn, self.graph_generator, 
+                                    dl_ev_gnn=None, net_type=self.net_type,
+                                    dataroot=self.config['dataset']['dataset_short'],
+                                    nb_classes=self.config['dataset']['num_classes'])
+                    
+                    logger.info('Test Dataset')
                     mAP, top = self.evaluator.evaluate(self.encoder, self.dl_ev,
                             self.query, self.gallery, self.gnn, self.graph_generator, 
                             dl_ev_gnn=self.dl_ev_gnn, net_type=self.net_type,
@@ -404,6 +465,17 @@ class Trainer():
                             nb_classes=self.config['dataset']['num_classes'])
 
                 if self.config['application'] == 'reid':
+                    logger.info('Mean AP Train: {:4.1%}'.format(mAP_train))
+
+                    logger.info('Train CMC Scores{:>12}{:>12}{:>12}'
+                                .format('allshots', 'cuhk03', 'Market'))
+    
+                    for k in (1, 5, 10):
+                        logger.info('  top-{:<4}{:12.1%}{:12.1%}{:12.1%}'
+                                    .format(k, top_train['allshots'][k - 1],
+                                            top_train['cuhk03'][k - 1],
+                                            top_train['Market'][k - 1]))
+
                     logger.info('Mean AP: {:4.1%}'.format(mAP))
 
                     logger.info('CMC Scores{:>12}{:>12}{:>12}'
@@ -433,6 +505,9 @@ class Trainer():
                 self.encoder.current_epoch = e
                 if eval_met > best_accuracy:
                     best_accuracy = eval_met
+                    #if loss < best_loss:
+                    #logger.info("Loss {}, best Loss {}, Epoch {}".format(loss, best_loss, e))
+                    best_loss = loss
                     self.best_preds = self.preds
                     self.best_labs = self.labs
                     self.best_feats = self.feats
@@ -459,7 +534,7 @@ class Trainer():
                            osp.join(self.save_folder_nets,
                                     self.fn + '.pth'))
 
-        return best_accuracy
+        return best_accuracy, best_loss
 
     def check_sampling_strategy(self, e):
         # Different Distance Sampling Strategies
@@ -472,6 +547,7 @@ class Trainer():
             self.dl_ev = self.dl_ev2
             self.gallery = self.gallery2
             self.query = self.query2
+            self.dl_ev_gnn = self.dl_ev_gnn2
         elif (self.distance_sampling == 'only' and e == 1) \
                 or (self.distance_sampling == 'alternating'
                     and e % 2 != 0) or (self.distance_sampling
@@ -481,6 +557,7 @@ class Trainer():
             self.dl_ev = self.dl_ev1
             self.gallery = self.gallery1
             self.query = self.query1
+            self.dl_ev_gnn = self.dl_ev_gnn1
         if self.distance_sampling != 'no':
             # set feature dict of sampler = feat dict of previous epoch
             self.dl_tr.sampler.feature_dict = self.feature_dict
@@ -495,7 +572,7 @@ class Trainer():
 
         file_name = str(
             best_accuracy) + '_' + self.dataset_short + '_' + str(self.timer)
-        if self.config['mode'] == 'test' or self.config['mode'] == 'gnn_test' or self.config['mode'] == 'traintest_test' or self.config['mode'] == 'pseudo_test':
+        if self.config['mode'] == 'test' or self.config['mode'] == 'gnn_test' or self.config['mode'] == 'traintest_test' or self.config['mode'] == 'pseudo_test' or self.config['mode'] == 'knn_test':
             file_name = 'test_' + file_name
         if not self.config['mode'] == 'pretraining':
             with open(
@@ -511,7 +588,7 @@ class Trainer():
         utils.make_dir(results_dir)
 
         # plot losses
-        if not self.config['mode'] == 'test' and not self.config['mode'] == 'gnn_test' and not self.config['mode'] == 'traintest_test' and not self.config['mode'] == 'pseudo_test':
+        if not self.config['mode'] == 'test' and not self.config['mode'] == 'gnn_test' and not self.config['mode'] == 'traintest_test' and not self.config['mode'] == 'pseudo_test' and not self.config['mode'] == 'knn_test':
             for k, v in self.losses_mean.items():
                 eps = list(range(len(v)))
                 plt.plot(eps, v)
@@ -563,21 +640,31 @@ class Trainer():
         self.losses = defaultdict(list)
         self.losses_mean = defaultdict(list)
         # Loss for GroupLoss
-
+        self.every = None
         if 'gnn' in params['fns'].split('_'):
             self.gnn_loss = nn.CrossEntropyLoss().to(self.device)
         elif 'lsgnn' in params['fns'].split('_'):
             self.gnn_loss = losses.CrossEntropyLabelSmooth(
-                num_classes=num_classes)
+                num_classes=num_classes).cuda(0)
         elif 'focalgnn' in params['fns'].split('_'):
             self.gnn_loss = losses.FocalLoss().to(self.device)
         else:
             self.gnn_loss = None
 
+        if 'gnnL' in params['fns'].split('_'):
+            self.every = 1
+            self.gnn_loss = [nn.CrossEntropyLoss().to(self.device) for 
+                    _ in range(self.config['models']['gnn_params']['gnn']['num_layers'])] 
+        elif 'lsgnnL' in params['fns'].split('_'):
+            self.every = 1
+            self.gnn_loss = [losses.CrossEntropyLabelSmooth(
+                num_classes=num_classes).cuda(0) for 
+                    _ in range(self.config['models']['gnn_params']['gnn']['num_layers'])]
+
         # Label smoothing for CrossEntropy Loss
         if 'lsce' in params['fns'].split('_'):
             self.ce = losses.CrossEntropyLabelSmooth(
-                num_classes=num_classes)
+                num_classes=num_classes).cuda(0)
         elif 'focalce' in params['fns'].split('_'):
             self.ce = losses.FocalLoss().to(self.device)
         elif 'ce' in params['fns'].split('_'):
@@ -636,12 +723,12 @@ class Trainer():
         return mode
 
     def update_params(self):
-        self.sample_hypers() if self.config['mode'] == 'hyper_search' or self.config['mode'] == 'gnn_hyper_search' or self.config['mode'] == 'pseudo_hyper_search' else None
+        self.sample_hypers() if self.config['mode'] == 'hyper_search' or self.config['mode'] == 'gnn_hyper_search' or self.config['mode'] == 'pseudo_hyper_search' or self.config['mode'] == 'knn_hyper_search' else None
 
         if self.config['dataset']['val']:
             self.config['dataset']['num_classes'] -= 100
 
-        if self.config['mode'] == 'test' or self.config['mode'] == 'gnn_test' or self.config['mode'] == 'traintest_test' or self.config['mode'] == 'pseudo_test':
+        if self.config['mode'] == 'test' or self.config['mode'] == 'gnn_test' or self.config['mode'] == 'traintest_test' or self.config['mode'] == 'pseudo_test' or self.config['mode'] == 'knn_test':
             self.config['train_params']['num_epochs'] = 1
 
         if self.config['dataset']['sampling'] != 'no':
@@ -650,19 +737,21 @@ class Trainer():
     def sample_hypers(self):
         config = {'lr': 10 ** random.uniform(-8, -3),
                   'weight_decay': 10 ** random.uniform(-15, -6),
-                  'num_classes_iter': random.randint(4, 13), #100
-                  'num_elements_class': random.randint(4, 10),
-                  'temperatur': random.randint(0, 70),
-                  'num_epochs': 20}
+                  'num_classes_iter': random.randint(6, 13), #100
+                  'num_elements_class': random.randint(3, 7),
+                  'temperatur': random.random(),
+                  'num_epochs': 10}
+        #config['temperatur'] = 1
         self.config['train_params'].update(config)
+        
         """
         self.config['train_params']['loss_fn']['soft_temp'] = config['temperatur']
         self.config['train_params']['loss_fn']['scaling_of_pre'] = random.random()*5
         self.config['train_params']['loss_fn']['scaling_distill'] = random.random()*5
         """
-        '''config = {'num_layers': random.randint(1, 12),
-                  'num_heads': random.choice([1, 2, 4, 8, 16])}
-        self.config['models']['gnn_params']['gnn'].update(config)'''
+        #config = {'num_layers': random.randint(1, 8),
+        #          'num_heads': random.choice([1, 2, 4, 8, 16])}
+        #self.config['models']['gnn_params']['gnn'].update(config)
         
         '''logger.info("Additional augmentation hyper search")
         config = {'final_drop': random.random(),
@@ -684,7 +773,7 @@ class Trainer():
             if config['sampling'] != 'no':
                 seed = random.randint(0, 100)
                 # seed = 19
-                self.dl_tr2, self.dl_ev2, self.query2, self.gallery2 = data_utility.create_loaders(
+                self.dl_tr2, self.dl_ev2, self.query2, self.gallery2, self.dl_ev_gnn2 = data_utility.create_loaders(
                     data_root=config['dataset_path'],
                     num_workers=config['nb_workers'],
                     num_classes_iter=train_params['num_classes_iter'],
@@ -699,7 +788,7 @@ class Trainer():
                     val=config['val'],
                     seed=seed,
                     num_classes=self.config['dataset']['num_classes'])
-                self.dl_tr1, self.dl_ev1, self.query1, self.gallery1 = data_utility.create_loaders(
+                self.dl_tr1, self.dl_ev1, self.query1, self.gallery1, self.dl_ev_gnn1 = data_utility.create_loaders(
                     data_root=config['dataset_path'],
                     num_workers=config['nb_workers'],
                     num_classes_iter=train_params['num_classes_iter'],
