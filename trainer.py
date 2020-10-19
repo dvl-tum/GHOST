@@ -70,16 +70,34 @@ class Trainer():
                 self.config['dataset']['num_classes'],
                 self.config['mode'],
                 **self.config['models']['encoder_params'])
-            self.encoder = encoder.to(self.device) 
+            if torch.cuda.device_count() > 1:
+                self.encoder = encoder.cuda(1) #to(self.device) 
+            else:
+                self.encoder = encoder.cuda(0)
 
-            self.gnn = net.GNNReID(self.device, self.config['models']['gnn_params'], sz_embed).to(self.device)
+            self.gnn = net.GNNReID(self.device, self.config['models']['gnn_params'], sz_embed).cuda(0) #to(self.device)
             if self.config['models']['gnn_params']['pretrained_path'] != "no":
-                self.gnn.load_state_dict(torch.load(self.config['models']['gnn_params']['pretrained_path']))
+                
+                load_dict = torch.load(self.config['models']['gnn_params']['pretrained_path'], map_location='cpu')
+                '''
+                load_dict_new = dict()
+                for k, v in load_dict.items():
+                    if k.split('.')[0] == 'bottleneck' or k.split('.')[0] == 'fc':
+                        k = '.'.join(k.split('.')[:1] + ['0'] + k.split('.')[1:])
+                        load_dict_new[k] = v
+                    elif k.split('.')[0] != 'gnn_model':
+                        load_dict_new[k] = v
+                    else:
+                        k = '.'.join(k.split('.')[:2] + ['layers'] + k.split('.')[2:])
+                        load_dict_new[k] = v
+                load_dict = load_dict_new
+                '''
+                self.gnn.load_state_dict(load_dict)
 
             self.graph_generator = net.GraphGenerator(self.device, **self.config['graph_params'])
              
             if self.config['application'] == 'DML':
-                self.evaluator = Evaluator_DML(**self.config['eval_params'])
+                self.evaluator = Evaluator_DML(nb_clusters=nb_clusters, **self.config['eval_params'])
             else:
                 self.evaluator = Evaluator(**self.config['eval_params'])
             
@@ -123,8 +141,9 @@ class Trainer():
                                                         opt_level="O1")
             #print(torch.cuda.device_count())
             #quit()
-            if torch.cuda.device_count() > 1:
-                self.encoder = nn.DataParallel(self.encoder)
+            if torch.cuda.device_count() > 2:
+                self.encoder = nn.DataParallel(self.encoder, device_ids=[1])
+                #self.encoder = nn.DataParallel(self.encoder)
                 #self.gnn = nn.DataParallel(self.gnn)
             
             self.get_data(self.config['dataset'], self.config['train_params'],
