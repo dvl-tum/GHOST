@@ -1,10 +1,10 @@
-mode: "pseudo" #"gnn_test" #"traintest_test" #"traintest" #"pseudo" #train/test/hyper_search/pretraining
+mode: "gnn" #"gnn_test" #"traintest_test" #"traintest" #"pseudo" #train/test/hyper_search/pretraining
 application: "reid"
 
 models:
   encoder_params:
-    pretrained_path: "pretrained_resnet_Market.pth" #"0.6173059768064229resnet50_Market.pth"  # "pretrained_resenet_Market_with_Student_then_GNN.pth" #"pretrained_resnet_Market_with_student.pth" #"pretrained_resnet_Market.pth" # path to pretrained model
-    net_type: "resnet101"
+    pretrained_path: "pretrained_resnet_Market.pth" #"0.9863135971437073neck_resnet50_Market.pth" #"0.6173059768064229resnet50_Market.pth"  # "pretrained_resenet_Market_with_Student_then_GNN.pth" #"pretrained_resnet_Market_with_student.pth" #"pretrained_resnet_Market.pth" # path to pretrained model
+    net_type: "resnet50"
     neck: 1
     last_stride: 0
     weight_norm: 0
@@ -19,7 +19,7 @@ models:
     use_edge_encoder: 0
     use_edge_model: 0
     use_node_encoder: 0
-    red: 4
+    red: 1
     gnn:
       num_layers: 7
       aggregator: "add"
@@ -68,13 +68,13 @@ dataset:
   nb_workers: 4
 
 train_params:
-  num_classes_iter: 13
-  num_elements_class: 7
-  lr: 6.675128594588672e-05  #6.675128594588672e-05
-  weight_decay: 4.1985936929920846e-12
-  num_epochs: 100
+  num_classes_iter: 13 #8 #10 #13
+  num_elements_class: 7 #5 #8 #7
+  lr: 6.675128594588672e-05 #7.802152006048009e-05 #5.487270479941478e-05 #6.675128594588672e-05  #6.675128594588672e-05
+  weight_decay: 4.1985936929920846e-12 #1.1030031113005081e-10 #3.9272714298554365e-14 #4.1985936929920846e-12
+  num_epochs: 20
   is_apex: 0
-  temperatur: 70
+  temperatur: 1
   output_train: "norm"
   loss_fn:
     fns: "gnn" #ce/focalce can be used instead of lsce and lsgnn/focalgnn instead of gnn, rest can be added by ce_gnn_center...

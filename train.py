@@ -33,7 +33,8 @@ def init_args():
     #config/config_gnn_market.yaml
     #config/config_mlpatt_market.yaml
     #config/config_hypergnn.yaml
-    parser.add_argument('--config_path', type=str, default='config/config_gnn_market.yaml', help='Path to config file')
+    parser.add_argument('--config_path', type=str, default='config/config_gnn_cars.yaml', help='Path to config file')
+
     return parser.parse_args()
 
 

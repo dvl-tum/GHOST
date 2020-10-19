@@ -5,7 +5,7 @@
 #SBATCH --cpus-per-gpu=3
 #SBATCH --exclude=node11,node12,node9,node7,node1
 #SBATCH --mem=128G
-#SBATCH --time=70:00:00
+#SBATCH --time=120:00:00
 
 source activate gnn_reid
 python train.py

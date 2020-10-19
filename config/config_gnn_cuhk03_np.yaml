@@ -1,9 +1,9 @@
-mode: "pseudo" #train/test/hyper_search/pretraining
+mode: "gnn" #train/test/hyper_search/pretraining
 application: "reid"
 
 models:
   encoder_params:
-    pretrained_path: "0.5564285714285714neck_resnet50_cuhk03-np.pth" #"no" #"0.5514285714285714neck_resnet50_cuhk03-np.pth" #"no" # path to pretrained model
+    pretrained_path: "pretrained/0.5564285714285714neck_resnet50_cuhk03-np.pth" #"no" #"0.5514285714285714neck_resnet50_cuhk03-np.pth" #"no" # path to pretrained model
     net_type: "resnet50"
     neck: 1
     last_stride: 0
@@ -68,10 +68,10 @@ dataset:
   nb_workers: 4
 
 train_params:
-  num_classes_iter: 11 #12 #13
-  num_elements_class: 10 #7
-  lr: 7.834682350421044e-06 #8.636803564073289e-05 #6.675128594588672e-05  #6.675128594588672e-05
-  weight_decay: 1.0393377663891817e-10 #2.791224636510333e-10 #4.1985936929920846e-12
+  num_classes_iter: 11 #11 #12 #13
+  num_elements_class: 7 #10 #7
+  lr: 6.519211148008295e-05 #7.834682350421044e-06 #8.636803564073289e-05 #6.675128594588672e-05  #6.675128594588672e-05
+  weight_decay: 2.4772091199780935e-09 #1.0393377663891817e-10 #2.791224636510333e-10 #4.1985936929920846e-12
   num_epochs: 20
   is_apex: 0
   temperatur: 70

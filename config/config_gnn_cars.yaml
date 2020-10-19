@@ -1,11 +1,12 @@
-mode: "train" #train/test/hyper_search/pretraining
+mode: "pseudo" #train/test/hyper_search/pretraining
 application: "DML"
 
 models:
   encoder_params:
-    pretrained_path: "pretrained/0.8101094576312876neck_resnet50_cars.pth" #"pretrained_gnn/0.9390158582089553neck_resnet50_cars.pth" #"0.8101094576312876neck_resnet50_cars.pth" #"0.7673102939367852neck_resnet50_cars.pth"
+    pretrained_path: "no" #"0.8937908496732027neck_resnet50_cars.pth" #"pretrained/0.835444594760792neck_resnet50_cars.pth" #"pretrained/0.8101094576312876neck_resnet50_cars.pth" #"pretrained_gnn/0.9390158582089553neck_resnet50_cars.pth" 
     net_type: "resnet50"
-    neck: 1
+    neck: 0
+    red: 4
     last_stride: 0
     final_drop: 0 #0.5
     stoch_depth: 1 #0.8
@@ -15,24 +16,26 @@ models:
       sz_embedding: 512
 
   gnn_params:
-    pretrained_path: "no" #"pretrained_gnn/0.9390158582089553gnn_neck_resnet50_cars.pth" #"0.9857227840571089gnn_neck_resnet50_Market.pth"
+    pretrained_path: "no" #"0.8937908496732027gnn_neck_resnet50_cars.pth" #"pretrained_gnn/0.9390158582089553gnn_neck_resnet50_cars.pth" 
     use_edge_encoder: 0
     use_edge_model: 0
     use_node_encoder: 0
-    red: 8
+    red: 1
+    cat: 1
+    every: 0
     gnn:
-      num_layers: 7
+      num_layers: 2 #2 #2 #1 #2
       aggregator: "add"
-      num_heads: 4
+      num_heads: 4 #2 #2 #2 #2
       attention: "dot" #"dot_pygeo"
-      mlp: 0
+      mlp: 1
       dropout_mlp: 0.1
       norm1: 1
-      norm2: 0
+      norm2: 1
       res1: 1
-      res2: 0
+      res2: 1
       dropout_1: 0.1
-      dropout_2: 0
+      dropout_2: 0.1
     edge:
       fc_dims: [2048]
       dropout_p: 0.4
@@ -60,7 +63,7 @@ dataset:
   dataset_path: "../../datasets/CARS"
   dataset_short: "cars"
   num_classes: 98
-  trans: "norm"
+  trans: "GL_orig_RE"
   number_aug: 2
   magnitude: 27
   sampling: "no"
@@ -68,16 +71,17 @@ dataset:
   nb_workers: 4
 
 train_params:
-  num_classes_iter: 4 #6 #4 #5 #6 #5
-  num_elements_class: 8 #10 #7 #4 #7
-  lr: 0.1 #4.5222376053155144e-07 #1.350099421230439e-07 #9.448566599801139e-05 #5.002815035521046e-05 #0.0002
-  weight_decay: 8.400668756748539e-14 #6.60890902155426e-11 #2.3714181045620526e-15 #3.109630777839333e-14 #4.863656728256105e-07
-  num_epochs: 20
+  num_classes_iter: 12 #70 #32 #70 #12 #4 #12 #9 #4 #6 #4 #5 #6 #5
+  num_elements_class: 7 #5 #5 #5 #7 #8 #8 #4 #5 #8 #10 #7 #4 #7
+  lr: 9.448566599801139e-05 #1.376644731109111e-05 #6.672588679081452e-05 #9.448566599801139e-05 #0.0004871615200618273 #4.5222376053155144e-07 #0.00022408468425015623 #0.0001366386597351265 #4.5222376053155144e-07 #1.350099421230439e-07 #9.448566599801139e-05 #5.002815035521046e-05 #0.0002
+  weight_decay: 2.3714181045620526e-15 #1.8239498271581914e-11 #4.034721886446752e-15 #2.3714181045620526e-15 #1.2186224600118486e-09 #8.400668756748539e-14 #5.6870794872598566e-08 #4.468275237300557e-12 #8.400668756748539e-14 #6.60890902155426e-11 #2.3714181045620526e-15 #3.109630777839333e-14 #4.863656728256105e-07
+  num_epochs: 70
   is_apex: 0
-  temperatur: 1
-  output_train: "norm"
+  temperatur: 0.2 #0.6968750970069256 #0.1605494911629317 #0.6968750970069256 #0.2
+  output_train_enc: "plain"
+  output_train_gnn: "plain"
   loss_fn:
-    fns: "lsce" #ce/focalce can be used instead of lsce and lsgnn/focalgnn instead of gnn, rest can be added by ce_gnn_center...
+    fns: "lsce_lsgnn" #ce/focalce can be used instead of lsce and lsgnn/focalgnn instead of gnn, rest can be added by ce_gnn_center...
     scaling_ce: 1
     scaling_gnn: 1
     scaling_center: 0.5
@@ -94,5 +98,6 @@ eval_params:
   lamb: 0.3
   k1: 20
   k2: 6
-  output_test: "plain"
-
+  output_test_enc: "plain"
+  output_test_gnn: "plain"
+  cat: 1

@@ -3,9 +3,10 @@ application: "DML"
 
 models:
   encoder_params:
-    pretrained_path: "pretrained/0.5183997299122215neck_resnet50_cub.pth" #"0.8532544378698225neck_resnet50_cub.pth" #"0.5183997299122215neck_resnet50_cub.pth" #"0.5146860229574611neck_resnet50_cub.pth" #"0.5183997299122215neck_resnet50_cub.pth" 
+    pretrained_path: "no" #"0.6044902093180283neck_resnet50_cub.pth" #"0.8342911877394636neck_resnet50_cub.pth" #"pretrained/0.6215395003376097neck_resnet50_cub.pth" #"pretrained/0.5403443619176233neck_resnet50_cub.pth" #"0.5383187035786631neck_resnet50_cub.pth" #"pretrained/0.5183997299122215neck_resnet50_cub.pth" #"0.8532544378698225neck_resnet50_cub.pth" #"0.5183997299122215neck_resnet50_cub.pth" #"0.5146860229574611neck_resnet50_cub.pth" #"0.5183997299122215neck_resnet50_cub.pth" 
     net_type: "resnet50"
-    neck: 1
+    neck: 0
+    red: 4
     last_stride: 0
     final_drop: 0 #0.5
     stoch_depth: 1 #0.8
@@ -15,24 +16,26 @@ models:
       sz_embedding: 512
 
   gnn_params:
-    pretrained_path: "no" #"0.9857227840571089gnn_neck_resnet50_Market.pth"
+    pretrained_path: "no" #"0.6044902093180283gnn_neck_resnet50_cub.pth" #"0.8342911877394636gnn_neck_resnet50_cub.pth" #"0.7921455938697318gnn_neck_resnet50_cub.pth" #"0.9857227840571089gnn_neck_resnet50_Market.pth"
     use_edge_encoder: 0
     use_edge_model: 0
     use_node_encoder: 0
     red: 1
+    cat: 1
+    every: 0
     gnn:
-      num_layers: 7
+      num_layers: 2 #2 #1 #4 #8 #1 #2
       aggregator: "add"
-      num_heads: 4
+      num_heads: 4 #2 #1 #16 #2 #1 #4
       attention: "dot" #"dot_pygeo"
-      mlp: 0
+      mlp: 1
       dropout_mlp: 0.1
       norm1: 1
-      norm2: 0
+      norm2: 1
       res1: 1
-      res2: 0
+      res2: 1
       dropout_1: 0.1
-      dropout_2: 0
+      dropout_2: 0.1
     edge:
       fc_dims: [2048]
       dropout_p: 0.4
@@ -62,27 +65,28 @@ dataset:
   num_classes: 100
   number_aug: 2
   magnitude: 27
-  trans: "bot"
+  trans: "GL_orig_RE"
   sampling: "no"
   val: 0
   nb_workers: 4
 
 train_params:
-  num_classes_iter: 4 #6 #4 #5 #6
-  num_elements_class: 10 #9 #10 #4 #9
-  lr: 4.556233790187342e-06 #0.0001563663718906821 #4.556233790187342e-06 #1.5555986096652693e-05 #0.0001563663718906821
-  weight_decay: 2.4790123787229617e-08 #6.059722614369727e-06 #2.4790123787229617e-08 #3.558002740229624e-07 #6.059722614369727e-06
-  num_epochs: 20
+  num_classes_iter: 6 #70 #93 #49 #16 #77 #6 #13 #4 #11 #7 #6 #4 #5 #6
+  num_elements_class: 9 #5 #6 #3 #6 #4 #9 #4 #10 #4 #4 #9 #10 #4 #9
+  lr: 0.0001563663718906821 #6.672588679081452e-05 #0.00020339694922318633 #0.0003748794338638487 #3.086144407593132e-05 #3.713929187265863e-06 #0.0001563663718906821 #0.0007233037750317697 #4.556233790187342e-06 #0.000125659279744098246 #2.3563343509425235e-05 #0.0001563663718906821 #4.556233790187342e-06 #1.5555986096652693e-05 #0.0001563663718906821
+  weight_decay: 6.059722614369727e-06 #4.034721886446752e-15 #1.540877591169665e-09 #3.6969091409165646e-09 #3.2589175436736478e-12 #6.639399829512107e-11 #6.059722614369727e-06 #3.282279592881143e-13 #2.4790123787229617e-08 #1.2388341865788295e-07 #4.877694174178942e-10 #6.059722614369727e-06 #2.4790123787229617e-08 #3.558002740229624e-07 #6.059722614369727e-0##6
+  num_epochs: 70
   is_apex: 0
-  temperatur: 24
-  output_train: "norm"
+  temperatur: 0.2 #0.2 #0.6968750970069256 #0.4377229208978527 #0.3394695255047063 #0.39180769763315104 #0.44216974710821155 #0.2 
+  output_train_enc: "plain"
+  output_train_gnn: "plain"
   loss_fn:
-    fns: "gnn" #ce/focalce can be used instead of lsce and lsgnn/focalgnn instead of gnn, rest can be added by ce_gnn_center...
+    fns: "lsgnn_lsce" #ce/focalce can be used instead of lsce and lsgnn/focalgnn instead of gnn, rest can be added by ce_gnn_center...
     scaling_ce: 1
     scaling_gnn: 1
     scaling_center: 0.5
     scaling_triplet: 1
-    scaling_of: 5
+    scaling_of: 1
     scaling_of_pre: 1
     scaling_distill: 1
     soft_temp: 1
@@ -90,15 +94,12 @@ train_params:
     preds: "results/0.8532544378698225_cub_1601148947.5862918/preds.json"
 
 eval_params:
+  cat: 1
   re_rank: 0
   lamb: 0.3
   k1: 20
   k2: 6
-  output_test: "norm"
-
-
-
-
-
-
+  output_test_enc: "plain" #plain
+  output_test_gnn: "plain"
+  
 
