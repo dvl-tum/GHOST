@@ -3,6 +3,7 @@ import torch
 from torch_scatter import scatter_max, scatter_add
 import numpy as np
 import logging
+import math
 
 logger = logging.getLogger('GNNReID.Util')
 
@@ -14,6 +15,21 @@ class Sequential(nn.Sequential):
                 inputs = module(*inputs)
             else:
                 inputs = module(inputs)
+        return inputs
+
+
+class SequentialInter(nn.Sequential):
+    def forward(self, *inputs):
+        out = list()
+        for module in self._modules.values():
+            if type(inputs) == tuple:
+                inputs = module(*inputs)
+                out.append(inputs[0])
+            else:
+                inputs = module(inputs)
+                out.append(inputs[0])
+        print(inputs)
+        quit()
         return inputs
 
 
@@ -151,18 +167,18 @@ def weights_init_classifier(m):
             nn.init.constant_(m.bias, 0.0)
 
 
-def softmax(src, index, dim, dim_size):
+'''def softmax(src, index, dim, dim_size):
     src = src - scatter_max(src.float(), index, dim=dim, dim_size=dim_size)[
         0].index_select(dim, index)
     denom = scatter_add(torch.exp(src), index, dim=dim, dim_size=dim_size)
     src = torch.exp(src) / denom.index_select(dim, index)
 
-    return src
+    return src'''
 
-'''def softmax(src, index, dim, dim_size, margin: float = 0.):
+def softmax(src, index, dim, dim_size, margin: float = 0.):
     src_max = torch.clamp(scatter_max(src.float(), index, dim=dim, dim_size=dim_size)[0], min=0.)
     src = (src - src_max.index_select(dim=dim, index=index)).exp()
     denom = scatter_add(src, index, dim=dim, dim_size=dim_size)
     out = src / (denom + (margin - src_max).exp()).index_select(dim, index)
 
-    return out'''
+    return out
