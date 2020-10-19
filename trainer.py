@@ -47,11 +47,18 @@ class Trainer():
 
     def train(self):
         best_recall = 0
-        #self.num_iter = 13
+        best_loss = 100
+        #self.num_iter = 26
+        #num_classes = [50, 100, 150, 200, 250, 300, 350, 400, 450, 500, 550, 600, 650, 700, 750, 800, 850, 900, 950, 1000] #[10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120, 130, 140, 150, 160, 170, 180, 190, 200]
+        #num_samples = [2, 4, 6, 8, 2, 4, 6, 8, 2, 4, 6, 8, 2, 4, 6, 8, 2, 4, 6, 8, 2, 4, 6, 8, 2, 4, 6, 8, 2, 4, 6, 8, 2, 4, 6, 8, 2, 4, 6, 8]
         #num_layers = list(range(1, 14))
         for i in range(self.num_iter):
             #print("Iter {}/{}".format(i+1, self.num_iter))
             #self.config['models']['gnn_params']['gnn']['num_layers'] = num_layers[i]
+            #nb_clusters = num_classes[i]
+            nb_clusters = self.config['train_params']['num_classes_iter']
+            #nb_clusters = 900
+            #self.config['train_params']['num_elements_class'] = num_samples[i]
             logger.info('Search iteration {}'.format(i + 1))
             mode = self.get_save_name()
             self.update_params()
