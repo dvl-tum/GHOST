@@ -27,7 +27,6 @@ class CombineSampler(Sampler):
         for inds in l_inds:
             if len(inds) > self.max:
                 self.max = len(inds)
-
     def __iter__(self):
         # shuffle elements inside each class
         l_inds = list(map(lambda a: random.sample(a, len(a)), self.l_inds))
@@ -90,6 +89,7 @@ class TrainTestCombi(Sampler):
         self.batch_size = cl_b * n_cl
         self.flat_list = []
         self.backbone = backbone
+        self.k = 50
 
         for inds in l_inds:
             if len(inds) > self.max:
@@ -121,22 +121,36 @@ class TrainTestCombi(Sampler):
         self.train_samples = [item for sublist in split_list_of_indices[:self.cl_b] for item in
                           sublist]
         [self.train_samples.pop(ind) for ind in random.sample(list(range(len(self.train_samples))), 2)]
-        
+     
     def __iter__(self):
         if self.backbone:
             self.flat_list = [samp for cl in self.l_inds for samp in cl]
             gallery_list = [samp for cl in self.l_inds_gallery for samp in cl]
             self.flat_list = self.flat_list + gallery_list + self.train_samples
         else:
+            # get knn
             self.flat_list = list()
-            for i in range(60):
+            x = torch.cat([f.unsqueeze(0) for f in self.feature_dict.values()], 0)
+            y = torch.cat([f.unsqueeze(0) for f in self.feature_dict.values()], 0)
+            m, n = x.size(0), y.size(0)
+            x = x.view(m, -1)
+            y = y.view(n, -1)
+            dist = torch.pow(x, 2).sum(dim=1, keepdim=True).expand(m, n) + \
+                   torch.pow(y, 2).sum(dim=1, keepdim=True).expand(n, m).t()
+
+            dist.addmm_(1, -2, x, y.t())
+            sorted_dist = np.argsort(dist.cpu().numpy(), axis=1)
+            indices = list(self.feature_dict.keys())
+            batches = list()
+            for samp in sorted_dist:
+                knn = [indices[i] for i in samp[:self.k]]
+
                 #for query_class in self.l_inds:
-                query_class = random.choice(self.l_inds)
-                query_idx = random.choice(query_class) 
-                for gallery_class in self.l_inds_gallery:
-                    for gallery_idx in random.choices(gallery_class, k=3): #gallery_class
-                        batch = self.train_samples + [gallery_idx, query_idx]
-                        self.flat_list.append(batch)
+                query_idx = indices[samp[0]]
+                for n in knn[1:]:
+                    gallery_idx = indices[n]
+                    batch = self.train_samples + [gallery_idx, query_idx]
+                    self.flat_list.append(batch)
 
             logger.info("{} batches".format(len(self.flat_list)))
             self.flat_list = [item for batch in self.flat_list for item in
@@ -150,6 +164,8 @@ class TrainTestCombi(Sampler):
 
 class PseudoSampler(Sampler):
     def __init__(self, num_classes, num_samples):
+        # kNN
+        logger.info("Pseudo sampler - kNN")
         self.feature_dict = None
         self.bs = num_classes * num_samples
 
@@ -181,7 +197,8 @@ class PseudoSampler(Sampler):
 
 class PseudoSamplerII(Sampler):
     def __init__(self, num_classes, num_samples):
-        logger.info("Pseudo sampler II")
+        # rows as classes
+        logger.info("Pseudo sampler II - rows as classes")
         self.feature_dict = None
         self.bs = num_classes * num_samples
         self.num_classes = num_classes
@@ -236,18 +253,34 @@ class PseudoSamplerII(Sampler):
 
 class PseudoSamplerIII(Sampler):
     def __init__(self, num_classes, num_samples):
-        logger.info("Pseudo sampler II")
+        # kmeans
+        logger.info("Pseudo sampler III - kmeans")
         self.feature_dict = None
         self.bs = num_classes * num_samples
-        self.cl_b = num_classes
-        self.n_cl = num_samples
-        logger.info("Using number of classes as number of clusters")
-        self.nb_clusters = num_classes
-        logger.info("{} Clusters for Pseudo sampling".format(self.nb_clusters))
+        self.cl_b = 6
+        self.n_cl = 9
+        self.nb_clusters = None 
     def __iter__(self):
+        logger.info(self.nb_clusters)
         # generate distance mat for all classes as in Hierachrical Triplet Loss
         x = torch.cat([f.unsqueeze(0).cpu() for f in self.feature_dict.values()], 0)
         cluster = sklearn.cluster.KMeans(self.nb_clusters).fit(x).labels_        
+        #print('spectral')
+        #cluster = sklearn.cluster.SpectralClustering(self.nb_clusters, assign_labels="discretize", random_state=0).fit(x).labels_
+        #print('ward')
+        #cluster = sklearn.cluster.AgglomerativeClustering(n_clusters=self.nb_clusters).fit(x).labels_
+        #print('DBSCAN')
+        #eps = 0.9
+        #min_samples = 6
+        #print("Eps {}, min samples {}".format(eps, min_samples))
+        #cluster = sklearn.cluster.DBSCAN(eps=eps, min_samples=min_samples).fit(x).labels_
+        #print("Optics")
+        #eps = 0.7
+        #min_samples = 5
+        #print("Eps {}, min samples {}".format(eps, min_samples))
+        #cluster = sklearn.cluster.OPTICS(min_samples=min_samples, eps=eps).fit(x).labels_
+        #print("Birch")
+        #cluster = sklearn.cluster.Birch(n_clusters=self.nb_clusters).fit(x).labels_
         indices = [k.item() for k in self.feature_dict.keys()]
         
         ddict = defaultdict(list)
@@ -301,6 +334,91 @@ class PseudoSamplerIII(Sampler):
 
     def __len__(self):
         return len(self.flat_list)
+
+
+class PseudoSamplerVI(Sampler):
+    def __init__(self, num_classes, num_samples):
+        # kNN
+        logger.info("Pseudo sampler VI - reciprocal kNN")
+        self.feature_dict = None
+        self.bs = num_classes * num_samples
+
+    def __iter__(self):
+        # generate distance mat for all classes as in Hierachrical Triplet Loss
+        x = torch.cat([f.unsqueeze(0) for f in self.feature_dict.values()], 0)
+        y = torch.cat([f.unsqueeze(0) for f in self.feature_dict.values()], 0)
+        m, n = x.size(0), y.size(0)
+        x = x.view(m, -1)
+        y = y.view(n, -1)
+        dist = torch.pow(x, 2).sum(dim=1, keepdim=True).expand(m, n) + \
+               torch.pow(y, 2).sum(dim=1, keepdim=True).expand(n, m).t()
+
+        dist.addmm_(1, -2, x, y.t())
+        sorted_dist = np.argsort(dist.cpu().numpy(), axis=1)
+        indices = list(self.feature_dict.keys())
+        batches = list()
+        for samp in sorted_dist:
+            q = indices[samp[0]]
+            rec_nn = list()
+            i = 0
+            while len(rec_nn) < self.bs and i <= len(samp):
+                if q in [indices[i] for i in sorted_dist[indices[samp[i]]]]:
+                    rec_nn.append(indices[samp[i]])
+                i += 1
+            if len(rec_nn) < self.bs:
+                [rec_nn.append(indices[k]) for k in random.choices(samp, k=self.bs-len(rec_nn))]
+            batches.append(rec_nn)
+        logger.info("Number batches {}".format(len(batches)))
+        self.flat_list = [s for batch in batches for s in batch]
+        logger.info(len(self.flat_list))
+        return (iter(self.flat_list))
+
+    def __len__(self):
+        return len(self.flat_list)
+
+
+class PseudoSamplerV(Sampler):
+    def __init__(self, num_classes, num_samples):
+        # kNN
+        logger.info("Pseudo sampler V - reciprocal kNN NN as classes")
+        self.feature_dict = None
+        self.bs = num_classes * num_samples
+        self.num_classes = num_classes
+        self.num_samples = num_samples
+
+    def __iter__(self):
+        # generate distance mat for all classes as in Hierachrical Triplet Loss
+        x = torch.cat([f.unsqueeze(0) for f in self.feature_dict.values()], 0)
+        y = torch.cat([f.unsqueeze(0) for f in self.feature_dict.values()], 0)
+        m, n = x.size(0), y.size(0)
+        x = x.view(m, -1)
+        y = y.view(n, -1)
+        dist = torch.pow(x, 2).sum(dim=1, keepdim=True).expand(m, n) + \
+               torch.pow(y, 2).sum(dim=1, keepdim=True).expand(n, m).t()
+
+        dist.addmm_(1, -2, x, y.t())
+        sorted_dist = np.argsort(dist.cpu().numpy(), axis=1)
+        indices = list(self.feature_dict.keys())
+        batches = list()
+        for samp in sorted_dist:
+            q = indices[samp[0]]
+            rec_nn = list()
+            i = 0
+            while len(rec_nn) < self.bs and i <= len(samp):
+                if q in [indices[i] for i in sorted_dist[indices[samp[i]]]]:
+                    rec_nn.append(indices[samp[i]])
+                i += 1
+            if len(rec_nn) < self.bs:
+                [rec_nn.append(indices[k]) for k in random.choices(samp, k=self.bs-len(rec_nn))]
+            batches.append(rec_nn)
+        logger.info("Number batches {}".format(len(batches)))
+        self.flat_list = [s for batch in batches for s in batch]
+        logger.info(len(self.flat_list))
+        return (iter(self.flat_list))
+
+    def __len__(self):
+        return len(self.flat_list)
+
 
 
 class DistanceSamplerOrig(Sampler):
@@ -405,7 +523,8 @@ class DistanceSampler(Sampler):
         self.feature_dict = dict()
         self.index_dict = dict()
         self.epoch = 0
-
+        print("In distance constructor")
+        print(len(samples))
         # add until num_samples
         for c, inds in self.samples.items():
             choose = copy.deepcopy(inds)
@@ -435,9 +554,9 @@ class DistanceSampler(Sampler):
             assert len(self.index_sorted[k]) == len(self.feats_sorted[k])
             self.indicator.append([k] * len(self.index_sorted[k]))
             feats.append(self.feats_sorted[k])
-
         self.indicator = [i for l in self.indicator for i in l]
         feats = [f for c in feats for f in c]
+
         # self.feature_dict = {k: self.feature_dict[k] for k in sorted(self.feature_dict.keys())}
         # self.index_dict = {k: self.index_dict[k] for k in sorted(self.feature_dict.keys())}
         # self.indicator = torch.tensor([k for k, v in self.feature_dict.items() for i in range(len(v))])
@@ -479,6 +598,7 @@ class DistanceSampler(Sampler):
         self.inter_class_dist = dist_mat
 
     def __iter__(self):
+        self.get_inter_class_distances()
         if (self.strategy == 'alternating' and self.epoch % 5 == 2) or (
                 self.strategy == 'only' and self.epoch % 5 == 2) or (
                 self.strategy == 'pre' and self.epoch % 5 == 2) or (
@@ -499,12 +619,11 @@ class DistanceSampler(Sampler):
                 sample_margin = max(
                     int(len(possible_classes) * (1 - (self.epoch / self.m))),
                     self.num_classes - 1)
-                classes = np.random.randint(sample_margin,
-                                            size=self.num_classes - 1).tolist()
+                classes = np.random.choice(sample_margin,
+                                            size=self.num_classes - 1, replace=False).tolist()
                 cls = [possible_classes[i] for i in classes]
             else:
                 cls = possible_classes[:self.num_classes - 1]
-
             # randomly sample anchor class samples
             ind_cl = [s for s in
                       random.sample(range(len(self.index_sorted[cl])),
@@ -532,7 +651,6 @@ class DistanceSampler(Sampler):
                     quit()
 
                 mat_clc = torch.stack(mat_clc)
-
                 # samples from sampled class only if distance > than thresh
                 possible_samples = torch.unique(
                     (mat_clc > thresh).nonzero()[:, 1])
@@ -550,7 +668,7 @@ class DistanceSampler(Sampler):
                                         possible_samples.shape[0])
                     [ind.append(possible_samples[i]) for i in
                      range(possible_samples.shape[0])]
-
+                
                 samps = [self.index_sorted[c][i] for i in ind]
                 batch.append(samps)
             batch = [s for c in batch for s in c]
@@ -561,7 +679,6 @@ class DistanceSampler(Sampler):
             [batches.append(batches[m]) for m in b]
 
         self.flat_list = [s for batch in batches for s in batch]
-
         return (iter(self.flat_list))
 
     def __len__(self):
