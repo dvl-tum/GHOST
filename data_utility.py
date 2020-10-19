@@ -4,7 +4,7 @@ from collections import defaultdict
 from combine_sampler import CombineSampler, CombineSamplerAdvanced, \
     CombineSamplerSuperclass, CombineSamplerSuperclass2, PretraingSampler, \
     DistanceSampler, DistanceSamplerMean, DistanceSamplerOrig, TrainTestCombi, \
-    PseudoSampler, PseudoSamplerII, PseudoSamplerIII
+    PseudoSampler, PseudoSamplerII, PseudoSamplerIII, PseudoSamplerVI
 import numpy as np
 import os
 import matplotlib.pyplot as plt
@@ -19,7 +19,7 @@ def create_loaders(data_root, num_workers, size_batch, num_classes_iter=None,
                    distance_sampler='only', val=0, m=100, seed=0, magnitude=15,
                    number_aug=0, num_classes=None):
     query, gallery = None, None
-    if os.path.basename(data_root) != 'CARS' and os.path.basename(data_root) != 'CUB_200_2011':
+    if os.path.basename(data_root) != 'CARS' and os.path.basename(data_root) != 'CUB_200_2011' and os.path.basename(data_root) != 'Stanford_Online_Products':
         labels, paths = dataset.load_data(root=data_root, mode=mode, val=val, seed=seed)
         labels = labels[0]
         paths = paths[0]
@@ -78,7 +78,7 @@ def create_loaders(data_root, num_workers, size_batch, num_classes_iter=None,
                       for g in
                       paths['bounding_box_test']['market']]
 
-    elif os.path.basename(data_root) != 'CUB_200_2011' and os.path.basename(data_root) != 'CARS':
+    elif os.path.basename(data_root) != 'CUB_200_2011' and os.path.basename(data_root) != 'CARS' and os.path.basename(data_root) != 'Stanford_Online_Products':
         labels_ev = labels['bounding_box_test'] + labels['query']
         paths_ev = paths['bounding_box_test'] + paths['query']
         query = [os.path.join(data_root, 'images', '{:05d}'.format(int(q.split('_')[0])), q) for
@@ -86,14 +86,14 @@ def create_loaders(data_root, num_workers, size_batch, num_classes_iter=None,
         gallery = [os.path.join(data_root, 'images', '{:05d}'.format(int(g.split('_')[0])), g)
                    for g in paths['bounding_box_test']]
 
-    if mode != 'all' and os.path.basename(data_root) != 'CUB_200_2011' and os.path.basename(data_root) != 'CARS':
+    if mode != 'all' and os.path.basename(data_root) != 'CUB_200_2011' and os.path.basename(data_root) != 'CARS' and os.path.basename(data_root) != 'Stanford_Online_Products':
         Dataset = dataset.Birds(root=data_root,
                                 labels=labels['bounding_box_train'],
                                 paths=paths['bounding_box_train'],
                                 trans=trans,
                                 magnitude=magnitude,
                                 number_aug=number_aug)
-    elif os.path.basename(data_root) == 'CUB_200_2011' or os.path.basename(data_root) == 'CARS':
+    elif os.path.basename(data_root) == 'CUB_200_2011' or os.path.basename(data_root) == 'CARS' or os.path.basename(data_root) == 'Stanford_Online_Products':
         Dataset = dataset.Birds_DML(
             root=data_root,
             labels=list(range(0, num_classes)),
@@ -157,14 +157,14 @@ def create_loaders(data_root, num_workers, size_batch, num_classes_iter=None,
     if pretraining:
         return dl_tr
     if mode != 'all' and mode != 'traintest' and mode != 'traintest_test' and \
-            os.path.basename(data_root) != 'CUB_200_2011' and os.path.basename(data_root) != 'CARS':
+            os.path.basename(data_root) != 'CUB_200_2011' and os.path.basename(data_root) != 'CARS' and os.path.basename(data_root) != 'Stanford_Online_Products':
         dataset_ev = dataset.Birds(
                 root=data_root,
                 labels=labels_ev,
                 paths=paths_ev,
                 trans=trans,
                 eval_reid=True)
-    elif (mode == 'traintest' or mode == 'traintest_test') and os.path.basename(data_root) != 'CUB_200_2011' and os.path.basename(data_root) != 'CARS':
+    elif (mode == 'traintest' or mode == 'traintest_test') and os.path.basename(data_root) != 'CUB_200_2011' and os.path.basename(data_root) != 'CARS' and os.path.basename(data_root) != 'Stanford_Online_Products':
         dataset_ev = dataset.Birds(
             root=data_root,
             labels=labels['query'],
@@ -175,7 +175,7 @@ def create_loaders(data_root, num_workers, size_batch, num_classes_iter=None,
             paths_train=paths['bounding_box_train'],
             labels_gallery=labels['bounding_box_test'],
             paths_gallery=paths['bounding_box_test'])
-    elif (os.path.basename(data_root) == 'CUB_200_2011' or os.path.basename(data_root) == 'CARS') and  (mode == 'traintest' or mode == 'traintest_test'):
+    elif (os.path.basename(data_root) == 'CUB_200_2011' or os.path.basename(data_root) == 'CARS' or os.path.basename(data_root) == 'Stanford_Online_Products') and  (mode == 'traintest' or mode == 'traintest_test'):
         if data_root == 'Stanford':
             class_end = 2 * num_classes - 2
         else:
@@ -187,7 +187,7 @@ def create_loaders(data_root, num_workers, size_batch, num_classes_iter=None,
             transform=trans,
             eval_reid=True
         )
-    elif os.path.basename(data_root) == 'CUB_200_2011' or os.path.basename(data_root) == 'CARS':
+    elif os.path.basename(data_root) == 'CUB_200_2011' or os.path.basename(data_root) == 'CARS' or os.path.basename(data_root) == 'Stanford_Online_Products':
         if data_root == 'Stanford':
             class_end = 2 * num_classes - 2
         else:
@@ -230,6 +230,7 @@ def create_loaders(data_root, num_workers, size_batch, num_classes_iter=None,
         else:'''
         sampler = CombineSampler(list_of_indices_for_each_class,
                                  num_classes_iter, num_elements_class)
+                                 
         drop_last = True
 
         dl_ev = torch.utils.data.DataLoader(
@@ -256,7 +257,9 @@ def create_loaders(data_root, num_workers, size_batch, num_classes_iter=None,
         #sampler = CombineSampler(list_of_indices_for_each_class,
         #                        num_classes_iter, num_elements_class)
         sampler = PseudoSamplerIII(num_classes_iter, num_elements_class)
-
+        #sampler = DistanceSampler(num_classes_iter, num_elements_class,
+        #                              ddict, distance_sampler, 1)
+        sampler.epoch = 2
         drop_last = True
         print("batch size {}".format(size_batch))
         dl_ev_gnn = torch.utils.data.DataLoader(
@@ -283,8 +286,47 @@ def create_loaders(data_root, num_workers, size_batch, num_classes_iter=None,
             num_workers=1,
             pin_memory=True )
 
+    elif mode == 'knn' or mode == 'knn_test' or mode == 'knn_hyper_search':
+        ddict = defaultdict(list)
+        for idx, label in enumerate(dataset_ev.ys):
+            ddict[label].append(idx)
+
+        list_of_indices_for_each_class = []
+        for key in ddict:
+            list_of_indices_for_each_class.append(ddict[key])
+
+        #sampler = CombineSampler(list_of_indices_for_each_class,
+        #                        num_classes_iter, num_elements_class)
+        sampler = PseudoSampler(num_classes_iter, num_elements_class)
+
+        drop_last = True
+        print("batch size {}".format(size_batch))
+        dl_ev_gnn = torch.utils.data.DataLoader(
+            dataset_ev,
+            batch_size=size_batch,
+            shuffle=False,
+            sampler=sampler,
+            num_workers=1,
+            drop_last=drop_last,
+            pin_memory=True)
+        '''
+        print("Random Pseudo")
+        dl_ev_gnn = torch.utils.data.DataLoader(
+            copy.deepcopy(dataset_ev),
+            batch_size=128,
+            shuffle=True,
+            num_workers=1,
+            pin_memory=True )
+        '''
+        dl_ev = torch.utils.data.DataLoader(
+            copy.deepcopy(dataset_ev),
+            batch_size=64,
+            shuffle=True,
+            num_workers=1,
+            pin_memory=True )
+    
     elif (mode == 'traintest' or mode == 'traintest_test') and \
-            os.path.basename(data_root) != 'CUB_200_2011' and os.path.basename(data_root) != 'CARS' :
+            os.path.basename(data_root) != 'CUB_200_2011' and os.path.basename(data_root) != 'CARS' and os.path.basename(data_root) != 'Stanford_Online_Products':
         ddict_query = defaultdict(list)
         for idx, label in enumerate(dataset_ev.ys_query):
             ddict_query[label].append(idx)
@@ -340,7 +382,7 @@ def create_loaders(data_root, num_workers, size_batch, num_classes_iter=None,
             pin_memory=True)
 
     elif (mode == 'traintest' or mode == 'traintest_test') and \
-            (os.path.basename(data_root) == 'CUB_200_2011' or os.path.basename(data_root) != 'CARS'):
+            (os.path.basename(data_root) == 'CUB_200_2011' or os.path.basename(data_root) != 'CARS' or os.path.basename(data_root) != 'Stanford_Online_Products'):
 
         ddict_test = defaultdict(list)
         for idx, label in enumerate(dataset_ev.ys_test):
