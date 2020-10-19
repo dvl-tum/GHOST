@@ -1,5 +1,6 @@
 import torch
 import torch.nn as nn
+import torch.utils.model_zoo as model_zoo
 
 __all__ = ['BNInception', 'bn_inception']
 
@@ -12,8 +13,12 @@ https://github.com/dichotomies/proxy-nca.
 
 def bn_inception(pretrained=False, **kwargs):
     model = BNInception(**kwargs)
-    #if pretrained:
-    #    model.load_state_dict(torch.load('net/bn_inception_weights_pt04.pt'))
+    if pretrained:
+        model.load_state_dict(torch.load('net/bn_inception_weights_pt04.pt'))
+    else:
+        weight = model_zoo.load_url('http://data.lip6.fr/cadene/pretrainedmodels/bn_inception-52deb4733.pth')
+        weight = {k: v.squeeze(0) if v.size(0) == 1 else v for k, v in weight.items()}
+        model.load_state_dict(weight)
     return model
 
 class BNInception(nn.Module):
