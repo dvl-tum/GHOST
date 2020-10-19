@@ -4,21 +4,28 @@ import torch
 import logging
 import json
 from collections import defaultdict
+import sklearn.cluster
+import sklearn.metrics.cluster
 
 logger = logging.getLogger('GNNReID.Evaluator')
 
 
 class Evaluator_DML():
-    def __init__(self, lamb, k1, k2, output_test='norm', re_rank=False):
+    def __init__(self, lamb, k1, k2, output_test_enc='norm', output_test_gnn='norm', re_rank=False, cat=0, nb_clusters=0):
+        self.nb_clusters = nb_clusters
         self.lamb = lamb
         self.k1 = k1
         self.k2 = k2
-        self.output_test = output_test
+        self.output_test_enc = output_test_enc
+        self.output_test_gnn = output_test_gnn
         self.re_rank = re_rank
+        self.cat = cat
 
     def evaluate(self, model, dataloader, query=None, gallery=None,
             gnn=None, graph_generator=None, dl_ev_gnn=None, net_type='bn_inception',
             dataroot='CARS', nb_classes=None):
+        self.dataroot = dataroot
+        self.nb_classes = nb_classes
         model_is_training = model.training
         model.eval()
 
@@ -42,6 +49,7 @@ class Evaluator_DML():
                                                         dataloader, dl_ev_gnn)
                 gnn.train(gnn_is_training)
             else:  # pseudo
+                logger.info("Using {} number of clusters for kmeans sampling".format(self.nb_clusters))
                 gnn_is_training = gnn.training
                 gnn.eval()
                 X, T = self.predict_batchwise_pseudo(model, gnn,
@@ -55,7 +63,7 @@ class Evaluator_DML():
                                               dataloader)
             gnn.train(gnn_is_training)
 
-        if dataroot != 'Stanford':
+        if dataroot != 'Stanford_Online_Products':
             # calculate NMI with kmeans clustering
             nmi = calc_normalized_mutual_information(T, cluster_by_kmeans(X, nb_classes))
             logger.info("NMI: {:.3f}".format(nmi * 100))
@@ -63,11 +71,11 @@ class Evaluator_DML():
             nmi = -1
 
         recall = []
-        if dataroot != 'Stanford':
-            Y = assign_by_euclidian_at_k(X, T, 8)
+        if dataroot != 'Stanford_Online_Products':
+            Y, T = assign_by_euclidian_at_k(X, T, 8)
             which_nearest_neighbors = [1, 2, 4, 8]
         else:
-            Y = assign_by_euclidian_at_k(X, T, 1000)
+            Y, T = assign_by_euclidian_at_k(X, T, 1000)
             which_nearest_neighbors = [1, 10, 100, 1000]
 
         for k in which_nearest_neighbors:
@@ -80,42 +88,72 @@ class Evaluator_DML():
 
     # just looking at this gives me AIDS, fix it fool!
     def predict_batchwise(self, model, dataloader, net_type):
+        logger.info("Evaluate normal")
         fc7s, L = [], []
         with torch.no_grad():
-            for X, Y, _ in dataloader:
+            for X, Y, _, _ in dataloader:
                 if torch.cuda.is_available(): X = X.cuda()
-                _, _, fc7 = model(X, output_option=self.output_test, val=True)
+                _, fc7, _ = model(X, output_option=self.output_test_enc, val=True)
                 fc7s.append(fc7.cpu())
                 L.append(Y)
         fc7, Y = torch.cat(fc7s), torch.cat(L)
         return torch.squeeze(fc7), torch.squeeze(Y)
 
     def predict_batchwise_gnn(self, model, gnn, graph_generator, dataloader):
+        logger.info("Evaluate gnn")
         fc7s, L = [], []
+        feature_dict = dict()
+        ys = dict()
         with torch.no_grad():
-            for X, Y, _ in dataloader:
+            for X, Y, I, P in dataloader:
                 if torch.cuda.is_available(): X = X.cuda()
-                _, _, fc7 = model(X, output_option=self.output_test,
+                _, fc7, _ = model(X, output_option=self.output_test_enc,
                                   val=True)  ##### Actually _, fc7, _ CHECK THIS
+                for path, out, y, i in zip(P, fc7, Y, I):
+                    feature_dict[i] = out
+                    ys[i] = y
+
                 edge_attr, edge_index, fc7 = graph_generator.get_graph(fc7)
+                fc7 = fc7.cuda(0)
+                edge_attr = edge_attr.cuda(0)
+                edge_index = edge_index.cuda(0) 
                 _, fc7 = gnn(fc7, edge_index, edge_attr,
-                             output_option=self.output_test)
+                             output_option=self.output_test_gnn)
+                
+                if self.cat:
+                    fc7 = torch.cat(fc7, dim=1)
+                else:
+                    fc7 = fc7[-1]
+
                 fc7s.append(fc7.cpu())
                 L.append(Y)
         fc7, Y = torch.cat(fc7s), torch.cat(L)
+        
+        # Evaliation after ResNet
+        if self.dataroot != 'Stanford_Online_Products':
+            x = torch.cat([f.unsqueeze(0).cpu() for f in feature_dict.values()], 0)
+            ys = torch.cat([y.unsqueeze(0).cpu() for y in ys.values()], 0)
+            cluster = sklearn.cluster.KMeans(self.nb_classes).fit(x).labels_
+            NMI = sklearn.metrics.cluster.normalized_mutual_info_score(cluster, ys)
+            logger.info("NMI after ResNet50 {}".format(NMI))
+        
+            y, ys = assign_by_euclidian_at_k(x, ys, 1)
+            r_at_k = calc_recall_at_k(ys, y, 1)
+            logger.info("R@{} after ResNet50: {:.3f}".format(1, 100 * r_at_k))
 
         return torch.squeeze(fc7), torch.squeeze(Y)
 
     def predict_batchwise_pseudo_rand(self, model, gnn, graph_generator, dataloader, dl_ev_gnn):
         fc7s, L = [], []
+        logger.info("Evaluate Rand Pseudo")
         with torch.no_grad():
-            for X, Y, _ in dataloader:
+            for X, Y, _, _ in dataloader:
                 if torch.cuda.is_available(): X = X.cuda()
-                _, _, fc7 = model(X, output_option=self.output_test,
+                _, fc7, _ = model(X, output_option=self.output_test_enc,
                                   val=True)  ##### Actually _, fc7, _ CHECK THIS
                 edge_attr, edge_index, fc7 = graph_generator.get_graph(fc7)
                 _, fc7 = gnn(fc7, edge_index, edge_attr,
-                             output_option=self.output_test)
+                             output_option=self.output_test_gnn)
                 fc7s.append(fc7.cpu())
                 L.append(Y)
         fc7, Y = torch.cat(fc7s), torch.cat(L)
@@ -124,46 +162,77 @@ class Evaluator_DML():
     
     def predict_batchwise_pseudo(self, model, gnn, graph_generator, dataloader,
                                  dl_ev_gnn):
+        logger.info("Evaluate Pseudo")
         fc7s, L = [], []
         preds = dict()
         features = dict()
         labels = dict()
+        feature_dict = dict()
+        features_dict = dict()
+        ys = dict()
         with torch.no_grad():
-            for X, Y, P in dataloader:
+            for X, Y, I, P in dataloader:
                 if torch.cuda.is_available(): X = X.cuda()
-                pred, _, fc7 = model(X, output_option=self.output_test,
+                pred, fc7, _ = model(X, output_option=self.output_test_enc,
                                      val=True)
-                for path, out, y, p in zip(P, fc7, Y, pred):
+                for path, out, y, p, i in zip(P, fc7, Y, pred, I):
+                    feature_dict[i] = out
                     features[path] = out
                     preds[path] = torch.argmax(p).detach()
                     labels[path] = y
-
-        for k, v in preds.items():
-            ind = dl_ev_gnn.dataset.im_paths.index(k)
-            dl_ev_gnn.dataset.ys[ind] = v.item()
+                    ys[i] = y
+                for y, f, i in zip(Y, fc7, I):
+                    new_ind = y.data.item()-100
+                    if new_ind in features_dict.keys():
+                        features_dict[new_ind][i.item()] = f
+                    else:
+                        features_dict[new_ind] = {i.item(): f}
         
-        ddict = defaultdict(list)
-        for idx, label in enumerate(dl_ev_gnn.dataset.ys):
-            ddict[label].append(idx)
+        logger.info("ResNet completed")
+        
+        # Evaliation after ResNet
+        if self.dataroot != 'Stanford_Online_Products':
+            x = torch.cat([f.unsqueeze(0).cpu() for f in feature_dict.values()], 0)
+            ys = torch.cat([y.unsqueeze(0).cpu() for y in ys.values()], 0)
+            logger.info("Compute KMeans for nb classes {}".format(self.nb_classes))
+            cluster = sklearn.cluster.KMeans(self.nb_classes).fit(x).labels_
+            logger.info("Compute NMI")
+            NMI = sklearn.metrics.cluster.normalized_mutual_info_score(cluster, ys)
+            logger.info("NMI after ResNet50 {}".format(NMI))
+            logger.info("Compute Rand Index")
+            RI = sklearn.metrics.adjusted_rand_score(ys, cluster)
+            logger.info("RI after Resnet50 {}".format(RI))
+            Y, ys = assign_by_euclidian_at_k(x, ys, 1)
+            r_at_k = calc_recall_at_k(ys, Y, 1)
+            logger.info("R@{} after ResNet50: {:.3f}".format(1, 100 * r_at_k))
+        
+        # Update after feature dict for sampling
+        dl_ev_gnn.sampler.feature_dict = feature_dict
+        dl_ev_gnn.sampler.nb_clusters = self.nb_clusters
+        logger.info(dl_ev_gnn.sampler.nb_clusters)
+        #dl_ev_gnn.sampler.feature_dict = features_dict
 
-        list_of_indices_for_each_class = []
-        for key in ddict:
-            list_of_indices_for_each_class.append(ddict[key])
-
-        dl_ev_gnn.sampler.l_inds = list_of_indices_for_each_class
-
+        features_new = dict()
+        labels_new = dict()
         with torch.no_grad():
-            for X, Y, P in dl_ev_gnn:
+            for X, Y, I, P in dl_ev_gnn:
                 fc7 = torch.stack([features[p] for p in P])
                 edge_attr, edge_index, fc7 = graph_generator.get_graph(fc7)
+                fc7 = fc7.cuda(0)
+                edge_attr = edge_attr.cuda(0)
+                edge_index = edge_index.cuda(0)
                 _, fc7 = gnn(fc7, edge_index, edge_attr,
-                             output_option=self.output_test)
+                             output_option=self.output_test_gnn)
+                if self.cat:
+                    fc7 = torch.cat(fc7, dim=1)
+                else:
+                    fc7 = fc7[-1]
+                for path, out, y, i in zip(P, fc7, Y, I):
+                    features_new[path] = out
+                    labels_new[path] = labels[path]
 
-                fc7s.append(fc7.cpu())
-                L.append(torch.tensor([labels[p] for p in P]))
-                print(torch.stack([labels[p] for p in P]), Y)
-        fc7, Y = torch.cat(fc7s), torch.cat(L)
-
+        fc7 = torch.cat([v.unsqueeze(dim=0).cpu() for v in features_new.values()])
+        Y = torch.cat([v.unsqueeze(dim=0).cpu() for v in labels_new.values()])
         return torch.squeeze(fc7), torch.squeeze(Y)
     
     def predict_batchwise_knn(self, model, gnn, graph_generator,
@@ -310,7 +379,7 @@ class Evaluator():
         labels = dict()
 
         with torch.no_grad():
-            for X, Y, P in dataloader:
+            for X, Y, I, P in dataloader:
                 if torch.cuda.is_available(): X = X.cuda()
                 _, _, fc7 = model(X, output_option=self.output_test, val=True)
                 for path, out, y in zip(P, fc7, Y):
@@ -327,7 +396,7 @@ class Evaluator():
         features = dict()
         labels = dict()
         with torch.no_grad():
-            for X, Y, P in dataloader:
+            for X, Y, I, P in dataloader:
                 if torch.cuda.is_available(): X = X.cuda()
                 _, _, fc7 = model(X, output_option=self.output_test, val=True) ##### Actually _, fc7, _ CHECK THIS
                 edge_attr, edge_index, fc7 = graph_generator.get_graph(fc7)
@@ -346,7 +415,7 @@ class Evaluator():
         fc7s, L = [], []
         features = dict()
         with torch.no_grad():
-            for X, Y, P in dataloader:
+            for X, Y, I, P in dataloader:
                 if torch.cuda.is_available(): X = X.cuda()
                 _, _, fc7 = model(X, output_option=self.output_test,
                                   val=True)  ##### Actually _, fc7, _ CHECK THIS
@@ -368,7 +437,7 @@ class Evaluator():
         features = dict()
         labels = dict()
         with torch.no_grad():
-            for X, Y, P in dataloader:
+            for X, Y, I, P in dataloader:
                 if torch.cuda.is_available(): X = X.cuda()
                 pred, _, fc7 = model(X, output_option=self.output_test, val=True)
                 for path, out, y, p in zip(P, fc7, Y, pred):
@@ -393,7 +462,7 @@ class Evaluator():
         features_new = dict()
         labels_new = dict()
         with torch.no_grad():
-            for X, Y, P in dl_ev_gnn:
+            for X, Y, I, P in dl_ev_gnn:
                 fc7 = torch.stack([features[p] for p in P])
                 edge_attr, edge_index, fc7 = graph_generator.get_graph(fc7)
                 _, fc7 = gnn(fc7, edge_index, edge_attr,
@@ -422,7 +491,7 @@ class Evaluator():
         with torch.no_grad():
             #for i in len(dl_ev_gnn.l_inds)):
             i = 0
-            for X, Y, P in dl_ev_gnn:
+            for X, Y, I, P in dl_ev_gnn:
                 if torch.cuda.is_available(): X = X.cuda()
                 fc7 = torch.stack([features[p] for p in P])
                 edge_attr, edge_index, fc7 = graph_generator.get_graph(fc7)
