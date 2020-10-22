@@ -339,32 +339,35 @@ class PseudoSamplerIII(Sampler):
                 split_list_of_indices.append(inds[:self.n_cl])
                 inds = inds[self.n_cl:] 
             assert len(inds) == 0
+        
+        logger.info("{} blocks".format(len(split_list_of_indices)))
         # shuffle the order of classes --> Could it be that same class appears twice in one batch?
         random.shuffle(split_list_of_indices)
         if len(split_list_of_indices) % self.cl_b != 0:
             b = np.random.choice(np.arange(len(split_list_of_indices)), size=self.cl_b - len(split_list_of_indices) % self.cl_b, replace=False).tolist()
+            logger.info("Add {} blocks".format(self.cl_b - len(split_list_of_indices) % self.cl_b))
             [split_list_of_indices.append(split_list_of_indices[m]) for m in b]
-        #print(len(split_list_of_indices), self.cl_b) 
-        #print(split_list_of_indices)
+        assert len(split_list_of_indices) % self.cl_b == 0
+
         self.flat_list = [item for sublist in split_list_of_indices for item in sublist]
-        print(len(set(self.flat_list))) 
+        logger.info("{} samples to process".format(len(set(self.flat_list)))) 
         return iter(self.flat_list)
 
     def __len__(self):
         return len(self.flat_list)
 
 
-class PseudoSamplerVI(Sampler):
+class PseudoSamplerIV(Sampler):
     def __init__(self, num_classes, num_samples):
         # kNN
-        logger.info("Pseudo sampler VI - reciprocal kNN")
+        self.epoch = 0
+        logger.info("Pseudo sampler VI - 8 closest within class")
         self.feature_dict = None
         self.bs = num_classes * num_samples
-
-    def __iter__(self):
-        # generate distance mat for all classes as in Hierachrical Triplet Loss
-        x = torch.cat([f.unsqueeze(0) for f in self.feature_dict.values()], 0)
-        y = torch.cat([f.unsqueeze(0) for f in self.feature_dict.values()], 0)
+        self.num_classes = num_classes
+        self.num_samples = num_samples
+    
+    def get_dist(self, x, y):
         m, n = x.size(0), y.size(0)
         x = x.view(m, -1)
         y = y.view(n, -1)
@@ -373,22 +376,51 @@ class PseudoSamplerVI(Sampler):
 
         dist.addmm_(1, -2, x, y.t())
         sorted_dist = np.argsort(dist.cpu().numpy(), axis=1)
-        indices = list(self.feature_dict.keys())
+        return sorted_dist
+
+    def get_classes(self):
+        feats = list()
+        indices = list()
+        dists = list()
+        for k in self.feature_dict.keys():
+            #print(self.feature_dict[k])
+            feats.append([f.cpu() for f in self.feature_dict[k].values()])
+            indices.append(list(self.feature_dict[k].keys()))
+            x = torch.cat([f.unsqueeze(0) for f in self.feature_dict[k].values()], 0)
+            y = torch.cat([f.unsqueeze(0) for f in self.feature_dict[k].values()], 0)
+            dists.append(self.get_dist(x, y))
+
+        self.feats = feats
+        self.indices = indices
+        self.dists = dists
+
+    def __iter__(self):
+        if self.epoch % 5 == 2:
+            logger.info('recompute dist for classes')
+            self.get_classes()
+        
         batches = list()
-        for samp in sorted_dist:
-            q = indices[samp[0]]
-            rec_nn = list()
-            i = 0
-            while len(rec_nn) < self.bs and i <= len(samp):
-                if q in [indices[i] for i in sorted_dist[indices[samp[i]]]]:
-                    rec_nn.append(indices[samp[i]])
-                i += 1
-            if len(rec_nn) < self.bs:
-                [rec_nn.append(indices[k]) for k in random.choices(samp, k=self.bs-len(rec_nn))]
-            batches.append(rec_nn)
-        logger.info("Number batches {}".format(len(batches)))
-        self.flat_list = [s for batch in batches for s in batch]
-        logger.info(len(self.flat_list))
+        for ind, dist in zip(self.indices, self.dists):
+            for i in range(len(ind)):
+                #closest
+                batches.append([ind[dist[i][j]] for j in range(self.num_samples)])
+                
+                #farthest away
+                #batch = [ind[dist[i][0]]]
+                #[batch.append(ind[dist[i][j]]) for j in range(len(ind) - 1, len(ind) - self.num_samples, -1)]
+                #batches.append(batch)
+        
+        logger.info("Number of anchors {}".format(len(batches)))
+
+        if len(batches)%self.num_classes != 0:
+            n = (len(batches)//self.num_classes)*self.num_classes + self.num_classes - len(batches)
+            logger.info("Add {} anchors".format(n))
+            batches += random.choices(batches, k=n)
+        assert len(batches)%self.num_classes == 0
+
+        random.shuffle(batches)
+        self.flat_list = [item for anchor in batches for item in anchor]
+        logger.info("Samples to be processed".format(len(self.flat_list)))
         return (iter(self.flat_list))
 
     def __len__(self):
