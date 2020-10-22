@@ -130,7 +130,7 @@ class Bottleneck(nn.Module):
             out += identity
         else:
             out = out * self.stoch_depth + identity
-        
+
         out = self.relu(out)
 
         return out
