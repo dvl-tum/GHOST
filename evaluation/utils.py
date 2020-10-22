@@ -33,15 +33,16 @@ class Evaluator_DML():
         if not gnn:
             X, T = self.predict_batchwise(model, dataloader, net_type)
         elif dl_ev_gnn is not None:
-            if dl_ev_gnn.sampler.__class__.__name__ == 'PseudoSampler':
+            if dl_ev_gnn.sampler.__class__.__name__ == 'PseudoSampler' or dl_ev_gnn.sampler.__class__.__name__ == 'PseudoSamplerV' or dl_ev_gnn.sampler.__class__.__name__ == 'PseudoSamplerIV':
                 gnn_is_training = gnn.training
                 gnn.eval()
+                logger.info("Evaluate KNN evaluate")
                 X, T = self.predict_batchwise_knn(model, gnn,
                                                         graph_generator,
                                                         dataloader, dl_ev_gnn)
                 gnn.train(gnn_is_training)
 
-            if dl_ev_gnn.dataset.labels_train is not None:  # traintest
+            elif dl_ev_gnn.dataset.labels_train is not None:  # traintest
                 gnn_is_training = gnn.training
                 gnn.eval()
                 X, T = self.predict_batchwise_traintest(model, gnn,
@@ -243,6 +244,7 @@ class Evaluator_DML():
         features = dict()
         labels = dict()
         feature_dict = dict()
+        features_dict = dict()
         ys = dict()
         with torch.no_grad():
             for X, Y, I, P in dataloader:
@@ -251,28 +253,43 @@ class Evaluator_DML():
                                      val=True)
                 for path, out, y, p, i in zip(P, fc7, Y, pred, I):
                     features[path] = out
-                    feature_dict[i] = out
+                    feature_dict[i.item()] = out
                     preds[path] = torch.argmax(p).detach()
-                    labels[path] = y
+                    labels[path] = y #.data.item()
                     ys[i] = y
-
+                for y, f, i in zip(Y, fc7, I):
+                    if y.data.item() in features_dict.keys():
+                        features_dict[y.data.item()][i.item()] = f.cpu()
+                    else:
+                        features_dict[y.data.item()] = {i.item(): f.cpu()}
+        #print(features_dict)
         # Evaliation after ResNet
         if self.dataroot != 'Stanford_Online_Products':
             x = torch.cat([f.unsqueeze(0).cpu() for f in feature_dict.values()], 0)
             ys = torch.cat([y.unsqueeze(0).cpu() for y in ys.values()], 0)
             cluster = sklearn.cluster.KMeans(self.nb_classes).fit(x).labels_
             NMI = sklearn.metrics.cluster.normalized_mutual_info_score(cluster, ys)
-            logger.info("NMI after ResNet50 {}".format(NMI))
-    
+            logger.info("KNN: NMI after ResNet50 {}".format(NMI))
+            
+            RI = sklearn.metrics.adjusted_rand_score(ys, cluster)
+            logger.info("RI after Resnet50 {}".format(RI))
+
             Y, ys = assign_by_euclidian_at_k(x, ys, 1)
             r_at_k = calc_recall_at_k(ys, Y, 1)
-            logger.info("R@{} after ResNet50: {:.3f}".format(1, 100 * r_at_k))
-
+            logger.info("KNN: R@{} after ResNet50: {:.3f}".format(1, 100 * r_at_k))
+        
         # Update after feature dict for sampling
         dl_ev_gnn.sampler.feature_dict = feature_dict
-        
-        features_new = defaultdict(dict)
-        labels_new = defaultdict(dict)
+        if dl_ev_gnn.sampler.__class__.__name__ == 'PseudoSampler':
+            features_new = defaultdict(dict)
+            labels_new = defaultdict(dict)
+        elif dl_ev_gnn.sampler.__class__.__name__ == 'PseudoSamplerV' or dl_ev_gnn.sampler.__class__.__name__ == 'PseudoSamplerIV':
+            features_new = dict()
+            labels_new = dict()
+            if dl_ev_gnn.sampler.__class__.__name__ == 'PseudoSamplerIV':
+                dl_ev_gnn.sampler.feature_dict = features_dict
+                
+        gt = list() 
         with torch.no_grad():
             for X, Y, I, P in dl_ev_gnn:
                 if torch.cuda.is_available(): X = X.cuda()
@@ -289,14 +306,25 @@ class Evaluator_DML():
                     fc7 = torch.cat(fc7, dim=1)
                 else:
                     fc7 = fc7[-1]
+                
+                if dl_ev_gnn.sampler.__class__.__name__ == 'PseudoSampler':
+                    p_0 = P[0]
+                    out_0 = fc7[0]
+                    label_0 = Y[0]
+                    for p, out, y in zip(P, fc7, Y):
+                        features_new[p_0][p] = (out_0 @ out_0 + out @ out - 2 * (out_0 @ out)).detach()
+                        labels_new[p_0][p] = y
+                
+                elif dl_ev_gnn.sampler.__class__.__name__ == 'PseudoSamplerV' or dl_ev_gnn.sampler.__class__.__name__ == 'PseudoSamplerIV' :
+                    anchors = [i for i in range(dl_ev_gnn.sampler.bs) if i%dl_ev_gnn.sampler.num_classes == 0]
+                    for i in anchors:
+                        labels_new[P[i]]= labels[P[i]]
+                        features_new[P[i]]= fc7[i]
 
-                p_0 = P[0]
-                out_0 = fc7[0]
-                label_0 = Y[0]
-                for p, out, y in zip(P, fc7, Y):
-                    features_new[p_0][p] = (out_0 @ out_0 + out @ out - 2 * (out_0 @ out)).detach()
-                    labels_new[p_0][p] = y
-
+        if dl_ev_gnn.sampler.__class__.__name__ == 'PseudoSamplerV' or dl_ev_gnn.sampler.__class__.__name__ == 'PseudoSamplerIV':
+            features_new = torch.cat([v.unsqueeze(dim=0).cpu() for v in features_new.values()]).squeeze()
+            labels_new = torch.cat([v.unsqueeze(dim=0).cpu() for v in labels_new.values()]).squeeze()
+        
         return features_new, labels_new
     
     def predict_batchwise_traintest(self, model, gnn, graph_generator,
