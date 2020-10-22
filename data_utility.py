@@ -4,7 +4,7 @@ from collections import defaultdict
 from combine_sampler import CombineSampler, CombineSamplerAdvanced, \
     CombineSamplerSuperclass, CombineSamplerSuperclass2, PretraingSampler, \
     DistanceSampler, DistanceSamplerMean, DistanceSamplerOrig, TrainTestCombi, \
-    PseudoSampler, PseudoSamplerII, PseudoSamplerIII, PseudoSamplerVI
+    PseudoSampler, PseudoSamplerII, PseudoSamplerIII, PseudoSamplerIV, PseudoSamplerV
 import numpy as np
 import os
 import matplotlib.pyplot as plt
@@ -17,7 +17,7 @@ def create_loaders(data_root, num_workers, size_batch, num_classes_iter=None,
                    num_elements_class=None, pretraining=False,
                    input_size=[384, 128], mode='single', trans= 'norm',
                    distance_sampler='only', val=0, m=100, seed=0, magnitude=15,
-                   number_aug=0, num_classes=None, net_type='resnet50'):
+                   number_aug=0, num_classes=None, net_type='resnet50', nb_clusters=None):
     query, gallery = None, None
     if os.path.basename(data_root) != 'CARS' and os.path.basename(data_root) != 'CUB_200_2011' and os.path.basename(data_root) != 'Stanford_Online_Products':
         labels, paths = dataset.load_data(root=data_root, mode=mode, val=val, seed=seed)
@@ -125,6 +125,16 @@ def create_loaders(data_root, num_workers, size_batch, num_classes_iter=None,
     elif distance_sampler == 'pre' or distance_sampler == 'pre_soft' or distance_sampler == 'only' or distance_sampler == 'alternating':
         print(distance_sampler)
         sampler = DistanceSampler(num_classes_iter, num_elements_class, ddict, distance_sampler, m)
+        drop_last = True
+    elif distance_sampler == '8closest':
+        sampler = PseudoSamplerV(num_classes_iter, num_elements_class)
+        drop_last = True
+    elif distance_sampler == '8closestClass':
+        print("Train 8clostestClass")
+        sampler = PseudoSamplerIV(num_classes_iter, num_elements_class)
+        drop_last = True
+    elif distance_sampler == 'kmeans':
+        sampler = PseudoSamplerIII(num_classes_iter, num_elements_class, nb_clusters=nb_clusters)
         drop_last = True
     else:
         sampler = CombineSampler(list_of_indices_for_each_class,
@@ -260,6 +270,7 @@ def create_loaders(data_root, num_workers, size_batch, num_classes_iter=None,
         #sampler = CombineSampler(list_of_indices_for_each_class,
         #                        num_classes_iter, num_elements_class)
         sampler = PseudoSamplerIII(num_classes_iter, num_elements_class)
+        print("evl")
         #sampler = DistanceSampler(num_classes_iter, num_elements_class,
         #                              ddict, distance_sampler, 1)
         sampler.epoch = 2
