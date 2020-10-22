@@ -206,8 +206,7 @@ class PseudoSamplerII(Sampler):
         self.num_classes = num_classes
         self.num_samples = num_samples
 
-    def __iter__(self):
-        # generate distance mat for all classes as in Hierachrical Triplet Loss
+    def get_dist(self):
         x = torch.cat([f.unsqueeze(0) for f in self.feature_dict.values()], 0)
         y = torch.cat([f.unsqueeze(0) for f in self.feature_dict.values()], 0)
         m, n = x.size(0), y.size(0)
@@ -217,36 +216,41 @@ class PseudoSamplerII(Sampler):
                torch.pow(y, 2).sum(dim=1, keepdim=True).expand(n, m).t()
 
         dist.addmm_(1, -2, x, y.t())
-        sorted_dist = np.argsort(dist.cpu().numpy(), axis=1)
-        indices = list(self.feature_dict.keys())
-        indices_orig = copy.deepcopy(indices)
+        self.sorted_dist = np.argsort(dist.cpu().numpy(), axis=1)
+        self.indices_orig = list(self.feature_dict.keys())
+
+    def __iter__(self):
+        # generate distance mat for all classes as in Hierachrical Triplet Loss
+        if self.epoch % 5 == 2:
+            self.get_dist()
+        
+        indices = copy.deepcopy(self.indices_orig)
         batches = list()
         while indices:
             batch = list()
-            i = 1
-            while len(batch) < self.bs:
-                if indices:
-                    c = random.choice(indices)
-                else:
-                    c = random.choice(indices_orig)
-                ind = indices_orig.index(c)
-                #logger.info("class")
-                #logger.info('{}, {}'.format(c, ind))
-                j = 0
-                while len(batch) < i * self.num_samples:
-                    if not indices:
-                        batch.append(indices_orig[sorted_dist[ind][j]])
-                    elif indices_orig[sorted_dist[ind][j]] in indices:
-                        #logger.info('{}, {}'.format(sorted_dist[ind][j], indices_orig[sorted_dist[ind][j]]))
-                        batch.append(indices_orig[sorted_dist[ind][j]])
-                        indices.remove(indices_orig[sorted_dist[ind][j]])
-                    j += 1
-                #indices.remove(c)
-                i += 1
+            anchor = random.choice(indices)
+            ind = self.indices_orig.index(anchor)
+            j = 0
+            while len(batch) < self.num_samples:
+                if not indices:
+                    batch.append(self.indices_orig[self.sorted_dist[ind][j]])
+                elif self.indices_orig[self.sorted_dist[ind][j]] in indices:
+                    #logger.info('{}, {}'.format(sorted_dist[ind][j], indices_orig[sorted_dist[ind][j]]))
+                    batch.append(self.indices_orig[self.sorted_dist[ind][j]])
+                    indices.remove(self.indices_orig[self.sorted_dist[ind][j]])
+                j += 1
             batches.append(batch)
-        logger.info("Number batches {}".format(len(batches)))
+        logger.info("Number anchors {}".format(len(batches)))
+        
+        if len(batches)%self.num_classes != 0:
+            n = (len(batches)//self.num_classes)*self.num_classes + self.num_classes - len(batches)
+            logger.info("Add {} anochors".format(n))
+            batches += random.choices(batches, k=n)
+        assert len(batches)%self.num_classes == 0
+        
+        random.shuffle(batches)
         self.flat_list = [s for batch in batches for s in batch]
-        logger.info(len(self.flat_list))
+        logger.info("{} Number of samples to process".format(len(self.flat_list)))
         return (iter(self.flat_list))
 
     def __len__(self):
