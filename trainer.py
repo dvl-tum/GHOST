@@ -55,9 +55,9 @@ class Trainer():
         for i in range(self.num_iter):
             #print("Iter {}/{}".format(i+1, self.num_iter))
             #self.config['models']['gnn_params']['gnn']['num_layers'] = num_layers[i]
-            #nb_clusters = num_classes[i]
-            nb_clusters = self.config['train_params']['num_classes_iter']
-            #nb_clusters = 900
+            #self.nb_clusters = num_classes[i]
+            self.nb_clusters = self.config['train_params']['num_classes_iter']
+            #self.nb_clusters = 900
             #self.config['train_params']['num_elements_class'] = num_samples[i]
             logger.info('Search iteration {}'.format(i + 1))
             mode = self.get_save_name()

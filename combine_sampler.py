@@ -17,6 +17,7 @@ class CombineSampler(Sampler):
     """
 
     def __init__(self, l_inds, cl_b, n_cl):
+        logger.info("Combine Sampler")
         self.l_inds = l_inds
         self.max = -1
         self.cl_b = cl_b

@@ -65,7 +65,6 @@ class Evaluator_DML():
             X, T = self.predict_batchwise_gnn(model, gnn, graph_generator,
                                               dataloader)
             gnn.train(gnn_is_training)
-
         if dataroot != 'Stanford_Online_Products':
             # calculate NMI with kmeans clustering
             nmi = calc_normalized_mutual_information(T, cluster_by_kmeans(X, nb_classes))
@@ -200,14 +199,15 @@ class Evaluator_DML():
         if self.dataroot != 'Stanford_Online_Products':
             x = torch.cat([f.unsqueeze(0).cpu() for f in feature_dict.values()], 0)
             ys = torch.cat([y.unsqueeze(0).cpu() for y in ys.values()], 0)
+
             logger.info("Compute KMeans for nb classes {}".format(self.nb_classes))
             cluster = sklearn.cluster.KMeans(self.nb_classes).fit(x).labels_
-            logger.info("Compute NMI")
             NMI = sklearn.metrics.cluster.normalized_mutual_info_score(cluster, ys)
             logger.info("NMI after ResNet50 {}".format(NMI))
-            logger.info("Compute Rand Index")
+            
             RI = sklearn.metrics.adjusted_rand_score(ys, cluster)
             logger.info("RI after Resnet50 {}".format(RI))
+            
             Y, ys = assign_by_euclidian_at_k(x, ys, 1)
             r_at_k = calc_recall_at_k(ys, Y, 1)
             logger.info("R@{} after ResNet50: {:.3f}".format(1, 100 * r_at_k))
@@ -253,7 +253,7 @@ class Evaluator_DML():
         ys = dict()
         with torch.no_grad():
             for X, Y, I, P in dataloader:
-                if torch.cuda.is_available(): X = X.cuda()
+                if torch.cuda.is_available(): X = X.cuda(self.dev)
                 pred, fc7, _ = model(X, output_option=self.output_test_enc,
                                      val=True)
                 for path, out, y, p, i in zip(P, fc7, Y, pred, I):
@@ -269,9 +269,11 @@ class Evaluator_DML():
                         features_dict[y.data.item()] = {i.item(): f.cpu()}
         #print(features_dict)
         # Evaliation after ResNet
+        
         if self.dataroot != 'Stanford_Online_Products':
             x = torch.cat([f.unsqueeze(0).cpu() for f in feature_dict.values()], 0)
             ys = torch.cat([y.unsqueeze(0).cpu() for y in ys.values()], 0)
+            
             cluster = sklearn.cluster.KMeans(self.nb_classes).fit(x).labels_
             NMI = sklearn.metrics.cluster.normalized_mutual_info_score(cluster, ys)
             logger.info("KNN: NMI after ResNet50 {}".format(NMI))
@@ -293,8 +295,7 @@ class Evaluator_DML():
             labels_new = dict()
             if dl_ev_gnn.sampler.__class__.__name__ == 'PseudoSamplerIV':
                 dl_ev_gnn.sampler.feature_dict = features_dict
-                
-        gt = list() 
+                 
         with torch.no_grad():
             for X, Y, I, P in dl_ev_gnn:
                 if torch.cuda.is_available(): X = X.cuda()
