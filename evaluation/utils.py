@@ -11,7 +11,7 @@ logger = logging.getLogger('GNNReID.Evaluator')
 
 
 class Evaluator_DML():
-    def __init__(self, lamb, k1, k2, output_test_enc='norm', output_test_gnn='norm', re_rank=False, cat=0, nb_clusters=0):
+    def __init__(self, lamb, k1, k2, output_test_enc='norm', output_test_gnn='norm', re_rank=False, cat=0, nb_clusters=0, dev=0, gnn_dev=0):
         self.nb_clusters = nb_clusters
         self.lamb = lamb
         self.k1 = k1
@@ -20,6 +20,8 @@ class Evaluator_DML():
         self.output_test_gnn = output_test_gnn
         self.re_rank = re_rank
         self.cat = cat
+        self.gnn_dev = gnn_dev
+        self.dev = dev
 
     def evaluate(self, model, dataloader, query=None, gallery=None,
             gnn=None, graph_generator=None, dl_ev_gnn=None, net_type='bn_inception',
@@ -93,7 +95,7 @@ class Evaluator_DML():
         fc7s, L = [], []
         with torch.no_grad():
             for X, Y, _, _ in dataloader:
-                if torch.cuda.is_available(): X = X.cuda()
+                if torch.cuda.is_available(): X = X.cuda(self.dev)
                 _, fc7, _ = model(X, output_option=self.output_test_enc, val=True)
                 fc7s.append(fc7.cpu())
                 L.append(Y)
@@ -107,7 +109,7 @@ class Evaluator_DML():
         ys = dict()
         with torch.no_grad():
             for X, Y, I, P in dataloader:
-                if torch.cuda.is_available(): X = X.cuda()
+                if torch.cuda.is_available(): X = X.cuda(self.dev)
                 _, fc7, _ = model(X, output_option=self.output_test_enc,
                                   val=True)  ##### Actually _, fc7, _ CHECK THIS
                 for path, out, y, i in zip(P, fc7, Y, I):
@@ -115,9 +117,9 @@ class Evaluator_DML():
                     ys[i] = y
 
                 edge_attr, edge_index, fc7 = graph_generator.get_graph(fc7)
-                fc7 = fc7.cuda(0)
-                edge_attr = edge_attr.cuda(0)
-                edge_index = edge_index.cuda(0) 
+                fc7 = fc7.cuda(self.gnn_dev)
+                edge_attr = edge_attr.cuda(self.gnn_dev)
+                edge_index = edge_index.cuda(self.gnn_dev) 
                 _, fc7 = gnn(fc7, edge_index, edge_attr,
                              output_option=self.output_test_gnn)
                 
@@ -149,10 +151,13 @@ class Evaluator_DML():
         logger.info("Evaluate Rand Pseudo")
         with torch.no_grad():
             for X, Y, _, _ in dataloader:
-                if torch.cuda.is_available(): X = X.cuda()
+                if torch.cuda.is_available(): X = X.cuda(self.dev)
                 _, fc7, _ = model(X, output_option=self.output_test_enc,
                                   val=True)  ##### Actually _, fc7, _ CHECK THIS
                 edge_attr, edge_index, fc7 = graph_generator.get_graph(fc7)
+                fc7 = fc7.cuda(self.gnn_dev)
+                edge_attr = edge_attr.cuda(self.gnn_dev)
+                edge_index = edge_index.cuda(self.gnn_dev)
                 _, fc7 = gnn(fc7, edge_index, edge_attr,
                              output_option=self.output_test_gnn)
                 fc7s.append(fc7.cpu())
@@ -173,7 +178,7 @@ class Evaluator_DML():
         ys = dict()
         with torch.no_grad():
             for X, Y, I, P in dataloader:
-                if torch.cuda.is_available(): X = X.cuda()
+                if torch.cuda.is_available(): X = X.cuda(self.dev)
                 pred, fc7, _ = model(X, output_option=self.output_test_enc,
                                      val=True)
                 for path, out, y, p, i in zip(P, fc7, Y, pred, I):
@@ -219,9 +224,9 @@ class Evaluator_DML():
             for X, Y, I, P in dl_ev_gnn:
                 fc7 = torch.stack([features[p] for p in P])
                 edge_attr, edge_index, fc7 = graph_generator.get_graph(fc7)
-                fc7 = fc7.cuda(0)
-                edge_attr = edge_attr.cuda(0)
-                edge_index = edge_index.cuda(0)
+                fc7 = fc7.cuda(self.gnn_dev)
+                edge_attr = edge_attr.cuda(self.gnn_dev)
+                edge_index = edge_index.cuda(self.gnn_dev)
                 _, fc7 = gnn(fc7, edge_index, edge_attr,
                              output_option=self.output_test_gnn)
                 if self.cat:
@@ -295,9 +300,9 @@ class Evaluator_DML():
                 if torch.cuda.is_available(): X = X.cuda()
                 fc7 = torch.stack([features[p] for p in P])
                 edge_attr, edge_index, fc7 = graph_generator.get_graph(fc7)
-                fc7 = fc7.cuda(0)
-                edge_attr = edge_attr.cuda(0)
-                edge_index = edge_index.cuda(0)
+                fc7 = fc7.cuda(self.gnn_dev)
+                edge_attr = edge_attr.cuda(self.gnn_dev)
+                edge_index = edge_index.cuda(self.gnn_dev)
                 _, fc7 = gnn(fc7, edge_index, edge_attr,
                              output_option=self.output_test_gnn)
                 #features_new[P[-1]][P[-2]] = {P[-1]: fc7[-1], P[-2]: fc7[-2]}
@@ -332,7 +337,7 @@ class Evaluator_DML():
         features = dict()
         with torch.no_grad():
             for X, Y, P in dataloader:
-                if torch.cuda.is_available(): X = X.cuda()
+                if torch.cuda.is_available(): X = X.cuda(self.dev)
                 pred, fc7, _ = model(X, output_option=self.output_test_enc, val=True)
                 for path, out, y, p in zip(P, fc7, Y, pred):
                     features[path] = out
@@ -343,9 +348,11 @@ class Evaluator_DML():
             #for i in len(dl_ev_gnn.l_inds)):
             i = 0
             for X, Y, I, P in dl_ev_gnn:
-                if torch.cuda.is_available(): X = X.cuda()
                 fc7 = torch.stack([features[p] for p in P])
                 edge_attr, edge_index, fc7 = graph_generator.get_graph(fc7)
+                fc7 = fc7.cuda(self.gnn_dev)
+                edge_attr = edge_attr.cuda(self.gnn_dev)
+                edge_index = edge_index.cuda(self.gnn_dev)
                 _, fc7 = gnn(fc7, edge_index, edge_attr,
                              output_option=self.output_test_gnn)
                 #features_new[P[-1]][P[-2]] = {P[-1]: fc7[-1], P[-2]: fc7[-2]}

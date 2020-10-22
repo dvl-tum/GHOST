@@ -70,12 +70,15 @@ class Trainer():
                 self.config['dataset']['num_classes'],
                 self.config['mode'],
                 **self.config['models']['encoder_params'])
+            self.device = 0
+            self.encoder = encoder.cuda(self.device) #to(self.device) 
             if torch.cuda.device_count() > 1:
-                self.encoder = encoder.cuda(1) #to(self.device) 
+                self.gnn_dev = 1
             else:
-                self.encoder = encoder.cuda(0)
-
-            self.gnn = net.GNNReID(self.device, self.config['models']['gnn_params'], sz_embed).cuda(0) #to(self.device)
+                self.gnn_dev = 0
+            print(self.device, self.gnn_dev)
+            # 1 == dev
+            self.gnn = net.GNNReID(self.gnn_dev, self.config['models']['gnn_params'], sz_embed).cuda(self.gnn_dev) #to(self.device)
             if self.config['models']['gnn_params']['pretrained_path'] != "no":
                 
                 load_dict = torch.load(self.config['models']['gnn_params']['pretrained_path'], map_location='cpu')
@@ -97,7 +100,7 @@ class Trainer():
             self.graph_generator = net.GraphGenerator(self.device, **self.config['graph_params'])
              
             if self.config['application'] == 'DML':
-                self.evaluator = Evaluator_DML(nb_clusters=nb_clusters, **self.config['eval_params'])
+                self.evaluator = Evaluator_DML(nb_clusters=self.nb_clusters, dev=self.device, gnn_dev=self.gnn_dev, **self.config['eval_params'])
             else:
                 self.evaluator = Evaluator(**self.config['eval_params'])
             
@@ -141,11 +144,13 @@ class Trainer():
                                                         opt_level="O1")
             #print(torch.cuda.device_count())
             #quit()
-            if torch.cuda.device_count() > 2:
-                self.encoder = nn.DataParallel(self.encoder, device_ids=[1])
+            if torch.cuda.device_count() > 1:
+                gpus = list(range(torch.cuda.device_count()))
+                gpus.remove(self.gnn_dev)
+                self.encoder = nn.DataParallel(self.encoder, device_ids=gpus)
                 #self.encoder = nn.DataParallel(self.encoder)
                 #self.gnn = nn.DataParallel(self.gnn)
-            
+
             self.get_data(self.config['dataset'], self.config['train_params'],
                           self.config['mode'])
 
@@ -225,11 +230,14 @@ class Trainer():
                     loss = 0
                     with torch.no_grad():
                         for x, Y, I, P in self.dl_tr:
-                            Y = Y.to(self.device)
-                            probs, fc7, student_feats = self.encoder(x.to(self.device))
+                            Y = Y.cuda(self.device)
+                            probs, fc7, student_feats = self.encoder(x.cuda(self.device), train_params['output_train_enc'])
                             if self.gnn_loss or self.of:
                                 edge_attr, edge_index, fc7 = self.graph_generator.get_graph(fc7)
-                                pred, feats = self.gnn(fc7, edge_index, edge_attr, train_params['output_train'])
+                                fc7 = fc7.cuda(self.gnn_dev)
+                                edge_attr = edge_attr.cuda(self.gnn_dev)
+                                edge_index = edge_index.cuda(self.gnn_dev)
+                                pred, feats = self.gnn(fc7, edge_index, edge_attr, train_params['output_train_gnn'])
                                 features = feats[0]
                             else: 
                                 features = fc7
@@ -317,11 +325,11 @@ class Trainer():
         return best_accuracy, self.encoder
 
     def forward_pass(self, x, Y, I, P, train_params):
-        Y = Y.to(self.device)
+        Y = Y.cuda(self.device)
         self.opt.zero_grad()
         if self.center:
             self.opt_center.zero_grad()
-        probs, fc7, student_feats = self.encoder(x.to(self.device),
+        probs, fc7, student_feats = self.encoder(x.cuda(self.device),
                                   output_option=train_params['output_train_enc'])
 
         #print(torch.max(torch.nn.functional.softmax(probs, dim=1), dim=1), torch.argmax(torch.nn.functional.softmax(probs, dim=1), dim=1), Y)
@@ -338,8 +346,8 @@ class Trainer():
         # Compute CE Loss
         loss = 0
         if self.ce:
-            probs = probs.cuda(0)
-            Y = Y.cuda(0)
+            probs = probs.cuda(self.gnn_dev)
+            Y = Y.cuda(self.gnn_dev)
             #print(Y)
             loss0 = self.ce(probs/self.config['train_params']['temperatur'], Y)
             loss+= train_params['loss_fn']['scaling_ce'] * loss0
@@ -353,10 +361,10 @@ class Trainer():
                 #print(torch.argmax(probs, dim=1), Y)
                 #print(fc7)
                 edge_attr, edge_index, fc7 = self.graph_generator.get_graph(fc7)
-                fc7 = fc7.cuda(0)
-                edge_attr = edge_attr.cuda(0)
-                edge_index = edge_index.cuda(0)
-                loss = loss.cuda(0)
+                fc7 = fc7.cuda(self.gnn_dev)
+                edge_attr = edge_attr.cuda(self.gnn_dev)
+                edge_index = edge_index.cuda(self.gnn_dev)
+                loss = loss.cuda(self.gnn_dev)
                 pred, feats = self.gnn(fc7, edge_index, edge_attr, train_params['output_train_gnn'])
 
                 for path,  pre, f, pre_b, f_b, lab in zip(P, pred[-1], feats[-1], fc7, probs, Y):
@@ -369,9 +377,9 @@ class Trainer():
                 #pred, feats = self.gnn(fc7, train_params['output_train'])
                 if self.gnn_loss:
                     if self.every:
-                        loss1 = [gnn_loss(pr/self.config['train_params']['temperatur'], Y.cuda(0)) for gnn_loss, pr in zip(self.gnn_loss, pred)]
+                        loss1 = [gnn_loss(pr/self.config['train_params']['temperatur'], Y.cuda(self.gnn_dev)) for gnn_loss, pr in zip(self.gnn_loss, pred)]
                     else:
-                        loss1 = [self.gnn_loss(pred[0]/self.config['train_params']['temperatur'], Y.cuda(0))]
+                        loss1 = [self.gnn_loss(pred[0]/self.config['train_params']['temperatur'], Y.cuda(self.gnn_dev))]
                     lo = [train_params['loss_fn']['scaling_gnn'] * l for l in loss1]
                     loss += sum(lo)
                     [self.losses['GNN'+ str(i)].append(l.item()) for i, l in enumerate(loss1)]
@@ -402,21 +410,21 @@ class Trainer():
 
             # Compute MSE regularization
             if self.of:
-                p = feats[0].detach()
+                p = feats[0].detach().cuda(self.gnn_dev)
                 of_reg = self.of(fc7, p)
                 loss += train_params['loss_fn']['scaling_of'] * of_reg
                 self.losses['OF'].append(of_reg.item())
 
             # Compute CE loss with soft targets = predictions of gnn
             if self.distill:
-                target = torch.stack([self.soft_targets[p] for p in P]).to(self.device)
+                target = torch.stack([self.soft_targets[p] for p in P]).cuda(self.gnn_dev)
                 distill = self.distill(probs/self.config['train_params']['loss_fn']['soft_temp'], target)
                 loss += train_params['loss_fn']['scaling_distill'] * distill
                 self.losses['Distillation'].append(distill.item())
 
             # compute MSE loss with feature vectors from gnn
             if self.of_pre:
-                target = torch.stack([torch.tensor(self.feat_targets[p]) for p in P]).to(self.device)
+                target = torch.stack([torch.tensor(self.feat_targets[p]) for p in P]).cuda(self.gnn_dev)
                 of_pre = self.of_pre(student_feats, target)
                 loss += train_params['loss_fn']['scaling_of_pre'] * of_pre
                 self.losses['OF Pretrained'].append(of_pre.item())
@@ -642,39 +650,39 @@ class Trainer():
         # Loss for GroupLoss
         self.every = None
         if 'gnn' in params['fns'].split('_'):
-            self.gnn_loss = nn.CrossEntropyLoss().to(self.device)
+            self.gnn_loss = nn.CrossEntropyLoss().cuda(self.gnn_dev)
         elif 'lsgnn' in params['fns'].split('_'):
             self.gnn_loss = losses.CrossEntropyLabelSmooth(
-                num_classes=num_classes).cuda(0)
+                num_classes=num_classes, dev=self.gnn_dev).cuda(self.gnn_dev)
         elif 'focalgnn' in params['fns'].split('_'):
-            self.gnn_loss = losses.FocalLoss().to(self.device)
+            self.gnn_loss = losses.FocalLoss().cuda(self.gnn_dev)
         else:
             self.gnn_loss = None
 
         if 'gnnL' in params['fns'].split('_'):
             self.every = 1
-            self.gnn_loss = [nn.CrossEntropyLoss().to(self.device) for 
+            self.gnn_loss = [nn.CrossEntropyLoss().cuda(self.gnn_dev) for 
                     _ in range(self.config['models']['gnn_params']['gnn']['num_layers'])] 
         elif 'lsgnnL' in params['fns'].split('_'):
             self.every = 1
             self.gnn_loss = [losses.CrossEntropyLabelSmooth(
-                num_classes=num_classes).cuda(0) for 
+                num_classes=num_classes, dev=self.gnn_dev).cuda(self.gnn_dev) for 
                     _ in range(self.config['models']['gnn_params']['gnn']['num_layers'])]
 
         # Label smoothing for CrossEntropy Loss
         if 'lsce' in params['fns'].split('_'):
             self.ce = losses.CrossEntropyLabelSmooth(
-                num_classes=num_classes).cuda(0)
+                num_classes=num_classes, dev=self.gnn_dev).cuda(self.gnn_dev)
         elif 'focalce' in params['fns'].split('_'):
-            self.ce = losses.FocalLoss().to(self.device)
+            self.ce = losses.FocalLoss().cuda(self.gnn_dev)
         elif 'ce' in params['fns'].split('_'):
-            self.ce = nn.CrossEntropyLoss().to(self.device)
+            self.ce = nn.CrossEntropyLoss().cuda(self.gnn_dev)
         else:
             self.ce = None
 
         # Add Center Loss
         if 'center' in params['fns'].split('_'):
-            self.center = losses.CenterLoss(num_classes=num_classes)
+            self.center = losses.CenterLoss(num_classes=num_classes).cuda(self.gnn_dev)
             self.opt_center = torch.optim.SGD(self.center.parameters(),
                                               lr=self.args.center_lr)
         else:
@@ -682,22 +690,22 @@ class Trainer():
 
         # Add triplet loss
         if 'triplet' in params['fns'].split('_'):
-            self.triplet = losses.TripletLoss(margin=0.5)
+            self.triplet = losses.TripletLoss(margin=0.5).cuda(self.gnn_dev)
         else:
             self.triplet = None
 
         if 'of' in params['fns'].split('_'):
-            self.of = nn.MSELoss().to(self.device)
+            self.of = nn.MSELoss().cuda(self.gnn_dev)
         else:
             self.of = None
 
         if 'distillSh' in params['fns'].split('_'):
-            self.distill = losses.CrossEntropyDistill().to(self.device)
+            self.distill = losses.CrossEntropyDistill().cuda(self.gnn_dev)
             with open(params['preds'], 'r') as f:
                 self.soft_targets = json.load(f)
             self.soft_targets = {k: F.softmax(torch.tensor(v)/params['soft_temp']) for k, v in self.soft_targets.items()}
         elif 'distillKL' in params['fns'].split('_'):
-            self.distill = losses.KLDivWithLogSM().to(self.device)
+            self.distill = losses.KLDivWithLogSM().cuda(self.gnn_dev)
             with open(params['preds'], 'r') as f:
                 self.soft_targets = json.load(f)
             self.soft_targets = {k: F.softmax(torch.tensor(v)/params['soft_temp']) for k, v in self.soft_targets.items()}
@@ -706,7 +714,7 @@ class Trainer():
 
         if 'ofpre' in params['fns'].split('_'):
             #self.of_pre = nn.MSELoss().to(self.device)
-            self.of_pre = nn.L1Loss().to(self.device)
+            self.of_pre = nn.L1Loss().cuda(self.gnn_dev)
             with open(params['feats'], 'r') as f:
                 self.feat_targets = json.load(f)
         else:
