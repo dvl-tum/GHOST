@@ -222,7 +222,10 @@ class Trainer():
                 # If distance_sampling == only, use first epoch to get features
                 if (self.distance_sampling == 'only' and e == 1) \
                         or (self.distance_sampling == 'pre' and e == 1) \
-                        or (self.distance_sampling == 'pre_soft' and e == 1):
+                        or (self.distance_sampling == 'pre_soft' and e == 1) \
+                        or (self.distance_sampling == '8closest' and e == 1) \
+                        or (self.distance_sampling == '8closestClass' and e == 1) \
+                        or (self.distance_sampling == 'kmeans' and e == 1):
                     model_is_training = self.encoder.training
                     gnn_is_training = self.gnn.training
                     self.encoder.eval()
@@ -305,7 +308,9 @@ class Trainer():
                 # Set model to training mode again, if first epoch and only
                 if (self.distance_sampling == 'only' and e == 1) \
                         or (self.distance_sampling == 'pre' and e == 1) \
-                        or (self.distance_sampling == 'pre_soft' and e == 1):
+                        or (self.distance_sampling == 'pre_soft' and e == 1) \
+                        or (self.distance_sampling == '8closest' and e == 1) \
+                        or (self.distance_sampling == 'kmeans' and e == 1):
                     self.encoder.train(model_is_training)
                     self.gnn.train(gnn_is_training)
                 best_accuracy, best_loss = self.evaluate(eval_params, scores, e, sum(self.losses['Total Loss'])/len(self.losses['Total Loss']) if len(self.losses['Total Loss'])>0 else 10,
@@ -339,9 +344,9 @@ class Trainer():
             for y, f, i in zip(Y, fc7, I):
                 i_new = y.data.item() - self.config['dataset']['num_classes']
                 if y.data.item() in self.feature_dict.keys():
-                    self.feature_dict[y.data.item()][i.item()] = f
+                    self.feature_dict[y.data.item()][i.item()] = f.detach()
                 else:
-                    self.feature_dict[y.data.item()] = {i.item(): f}
+                    self.feature_dict[y.data.item()] = {i.item(): f.detach()}
          
         # Compute CE Loss
         loss = 0
@@ -391,9 +396,9 @@ class Trainer():
                     features = fc7
                 for y, f, i in zip(Y, features, I):
                     if y.data.item() in self.feature_dict.keys():
-                        self.feature_dict[y.data.item()][i.item()] = f
+                        self.feature_dict[y.data.item()][i.item()] = f.detach()
                     else:
-                        self.feature_dict[y.data.item()] = {i.item(): f}
+                        self.feature_dict[y.data.item()] = {i.item(): f.detach()}
 
 
             # Compute center loss
@@ -550,7 +555,10 @@ class Trainer():
                 or (self.distance_sampling == 'alternating'
                     and e % 2 == 0) or (self.distance_sampling
                                         == 'pre' and e > 1) or (
-                self.distance_sampling == 'pre_soft' and e > 1):
+                self.distance_sampling == 'pre_soft' and e > 1) or (
+                        self.distance_sampling == '8closest' and e > 1) or (
+                                self.distance_sampling == '8closestClass' and e > 1) or (
+                                        self.distance_sampling == 'kmeans' and e > 1):
             self.dl_tr = self.dl_tr2
             self.dl_ev = self.dl_ev2
             self.gallery = self.gallery2
@@ -560,7 +568,10 @@ class Trainer():
                 or (self.distance_sampling == 'alternating'
                     and e % 2 != 0) or (self.distance_sampling
                                         == 'pre' and e == 1) or (
-                self.distance_sampling == 'pre_soft' and e == 1):
+                self.distance_sampling == 'pre_soft' and e == 1) or (
+                        self.distance_sampling == '8closest' and e == 1) or (
+                                self.distance_sampling == '8closestClass' and e == 1) or (
+                                        self.distance_sampling == 'kmeans' and e == 1):
             self.dl_tr = self.dl_tr1
             self.dl_ev = self.dl_ev1
             self.gallery = self.gallery1
@@ -796,7 +807,8 @@ class Trainer():
                     val=config['val'],
                     seed=seed,
                     num_classes=self.config['dataset']['num_classes'],
-                    net_type=self.net_type)
+                    net_type=self.net_type,
+                    nb_clusters=self.nb_clusters)
                 self.dl_tr1, self.dl_ev1, self.query1, self.gallery1, self.dl_ev_gnn1 = data_utility.create_loaders(
                     data_root=config['dataset_path'],
                     num_workers=config['nb_workers'],
@@ -812,7 +824,8 @@ class Trainer():
                     val=config['val'],
                     seed=seed,
                     num_classes=self.config['dataset']['num_classes'],
-                    net_type=self.net_type)
+                    net_type=self.net_type,
+                    nb_clusters=self.nb_clusters)
             # If testing or normal training
             else:
                 self.dl_tr, self.dl_ev, self.query, self.gallery, self.dl_ev_gnn = data_utility.create_loaders(
@@ -829,7 +842,8 @@ class Trainer():
                     distance_sampler=config['sampling'],
                     val=config['val'],
                     num_classes=self.config['dataset']['num_classes'], 
-                    net_type=self.net_type)
+                    net_type=self.net_type,
+                    nb_clusters=self.nb_clusters)
 
         # Pretraining dataloader
         else:
