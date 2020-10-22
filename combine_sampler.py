@@ -258,39 +258,51 @@ class PseudoSamplerII(Sampler):
 
 
 class PseudoSamplerIII(Sampler):
-    def __init__(self, num_classes, num_samples):
+    def __init__(self, num_classes, num_samples, nb_clusters=None):
         # kmeans
         logger.info("Pseudo sampler III - kmeans")
         self.feature_dict = None
         self.bs = num_classes * num_samples
         self.cl_b = 6
         self.n_cl = 9
-        self.nb_clusters = None 
-    def __iter__(self):
+        self.epoch = 0
+        self.nb_clusters = nb_clusters
+
+    def get_clusters(self):
         logger.info(self.nb_clusters)
         # generate distance mat for all classes as in Hierachrical Triplet Loss
-        x = torch.cat([f.unsqueeze(0).cpu() for f in self.feature_dict.values()], 0)
-        cluster = sklearn.cluster.KMeans(self.nb_clusters).fit(x).labels_        
-        #print('spectral')
-        #cluster = sklearn.cluster.SpectralClustering(self.nb_clusters, assign_labels="discretize", random_state=0).fit(x).labels_
-        #print('ward')
-        #cluster = sklearn.cluster.AgglomerativeClustering(n_clusters=self.nb_clusters).fit(x).labels_
-        #print('DBSCAN')
+        if type(self.feature_dict[list(self.feature_dict.keys())[0]]) == dict:
+            x = torch.cat([f.unsqueeze(0).cpu() for k in self.feature_dict.keys() for f in self.feature_dict[k].values()], 0)
+            self.indices = [ind for k in self.feature_dict.keys() for ind in self.feature_dict[k].keys()]
+        else:
+            x = torch.cat([f.unsqueeze(0).cpu() for f in self.feature_dict.values()], 0)
+            self.indices = [k.item() for k in self.feature_dict.keys()]
+        logger.info("Kmeans")
+        self.cluster = sklearn.cluster.KMeans(self.nb_clusters).fit(x).labels_        
+        #logger.info('spectral')
+        #self.cluster = sklearn.cluster.SpectralClustering(self.nb_clusters, assign_labels="discretize", random_state=0).fit(x).labels_
+        #self.nb_clusters = 900
+        #logger.info('ward')
+        #self.cluster = sklearn.cluster.AgglomerativeClustering(n_clusters=self.nb_clusters).fit(x).labels_
+        #logger.info('DBSCAN')
         #eps = 0.9
-        #min_samples = 6
-        #print("Eps {}, min samples {}".format(eps, min_samples))
-        #cluster = sklearn.cluster.DBSCAN(eps=eps, min_samples=min_samples).fit(x).labels_
-        #print("Optics")
+        #min_samples = 5
+        #logger.info("Eps {}, min samples {}".format(eps, min_samples))
+        #self.cluster = sklearn.cluster.DBSCAN(eps=eps, min_samples=min_samples).fit(x).labels_
+        #logger.info("Optics")
         #eps = 0.7
         #min_samples = 5
-        #print("Eps {}, min samples {}".format(eps, min_samples))
-        #cluster = sklearn.cluster.OPTICS(min_samples=min_samples, eps=eps).fit(x).labels_
-        #print("Birch")
-        #cluster = sklearn.cluster.Birch(n_clusters=self.nb_clusters).fit(x).labels_
-        indices = [k.item() for k in self.feature_dict.keys()]
-        
+        #logger.info("Eps {}, min samples {}".format(eps, min_samples))
+        #self.cluster = sklearn.cluster.OPTICS(min_samples=min_samples, eps=eps).fit(x).labels_
+        #logger.info("Birch")
+        #self.cluster = sklearn.cluster.Birch(n_clusters=self.nb_clusters).fit(x).labels_
+
+    def __iter__(self):
+        if self.epoch % 5 == 2:
+            self.get_clusters()
+
         ddict = defaultdict(list)
-        for idx, label in zip(indices, cluster):
+        for idx, label in zip(self.indices, self.cluster):
             ddict[label].append(idx)
 
         l_inds = []
