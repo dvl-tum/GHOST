@@ -430,40 +430,51 @@ class PseudoSamplerIV(Sampler):
 class PseudoSamplerV(Sampler):
     def __init__(self, num_classes, num_samples):
         # kNN
-        logger.info("Pseudo sampler V - reciprocal kNN NN as classes")
+        logger.info("Pseudo sampler V - num_classes anchors, num_samples closest")
         self.feature_dict = None
         self.bs = num_classes * num_samples
         self.num_classes = num_classes
         self.num_samples = num_samples
 
-    def __iter__(self):
+    def get_distances(self):
         # generate distance mat for all classes as in Hierachrical Triplet Loss
-        x = torch.cat([f.unsqueeze(0) for f in self.feature_dict.values()], 0)
-        y = torch.cat([f.unsqueeze(0) for f in self.feature_dict.values()], 0)
+        if type(self.feature_dict[list(self.feature_dict.keys())[0]]) == dict:
+            x = torch.cat([f.unsqueeze(0) for k in self.feature_dict.keys() for f in self.feature_dict[k].values()], 0)
+            y = torch.cat([f.unsqueeze(0) for k in self.feature_dict.keys() for f in self.feature_dict[k].values()], 0)
+            self.indices = [ind for k in self.feature_dict.keys() for ind in self.feature_dict[k].keys()]
+        else:
+            x = torch.cat([f.unsqueeze(0) for f in self.feature_dict.values()], 0)
+            y = torch.cat([f.unsqueeze(0) for f in self.feature_dict.values()], 0)
+            self.indices = list(self.feature_dict.keys())
         m, n = x.size(0), y.size(0)
         x = x.view(m, -1)
         y = y.view(n, -1)
         dist = torch.pow(x, 2).sum(dim=1, keepdim=True).expand(m, n) + \
                torch.pow(y, 2).sum(dim=1, keepdim=True).expand(n, m).t()
-
         dist.addmm_(1, -2, x, y.t())
-        sorted_dist = np.argsort(dist.cpu().numpy(), axis=1)
-        indices = list(self.feature_dict.keys())
+        self.sorted_dist = np.argsort(dist.cpu().numpy(), axis=1)
+
+    
+    def __iter__(self):
+        if self.epoch % 5 == 2:
+            logger.info("recompute dist")
+            self.get_distances()
+
         batches = list()
-        for samp in sorted_dist:
-            q = indices[samp[0]]
-            rec_nn = list()
-            i = 0
-            while len(rec_nn) < self.bs and i <= len(samp):
-                if q in [indices[i] for i in sorted_dist[indices[samp[i]]]]:
-                    rec_nn.append(indices[samp[i]])
-                i += 1
-            if len(rec_nn) < self.bs:
-                [rec_nn.append(indices[k]) for k in random.choices(samp, k=self.bs-len(rec_nn))]
-            batches.append(rec_nn)
-        logger.info("Number batches {}".format(len(batches)))
+        for i in range(len(self.indices)):
+            batches.append([self.indices[self.sorted_dist[i][j]] for j in range(self.num_samples)])
+        
+        logger.info("Number anchors {}".format(len(batches)))
+
+        if len(batches)%self.num_classes != 0:
+            n = (len(batches)//self.num_classes)*self.num_classes + self.num_classes - len(batches)
+            logger.info("Add {} anchors".format(n))
+            batches += random.choices(batches, k=n)
+        assert len(batches)%self.num_classes == 0
+
+        random.shufle(batches)
         self.flat_list = [s for batch in batches for s in batch]
-        logger.info(len(self.flat_list))
+        logger.info("Samples to be processed {}".format(len(self.flat_list)))
         return (iter(self.flat_list))
 
     def __len__(self):
