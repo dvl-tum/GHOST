@@ -187,8 +187,10 @@ class PseudoSampler(Sampler):
             batch = [indices[i] for i in samp[:self.bs]]
             batches.append(batch)
         logger.info("Number batches {}".format(len(batches)))
+        
+        random.shuffle(batches)
         self.flat_list = [s for batch in batches for s in batch]
-        logger.info(len(self.flat_list))
+        logger.info("{} Number of samples to process".format(len(self.flat_list)))
         return (iter(self.flat_list))
 
     def __len__(self):
