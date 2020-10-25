@@ -2,12 +2,25 @@ import torch
 import numpy as np
 import sklearn.metrics.pairwise
 
-def assign_by_euclidian_at_k(X, T, k):
+def assign_by_euclidian_at_k(X, T, k, P=None, query=None, gallery=None):
     """ 
     X : [nb_samples x nb_features], e.g. 100 x 64 (embeddings)
     k : for each sample, assign target labels of k nearest points
     """
-    if type(X) != dict:
+    if P is not None:
+        x = torch.cat([X[i] for i in range(len(P)) if P[i] in query], 0)
+        TQ = [T[i] for i in range(len(P)) if P[i] in query]
+        y = torch.cat([X[i] for i in range(len(P)) if P[i] in gallery], 0)
+        TG = [T[i] for i in range(len(P)) if P[i] in gallery]
+        m, n = x.size(0), y.size(0)
+        x = x.view(m, -1)
+        y = y.view(n, -1)
+        distances = torch.pow(x, 2).sum(dim=1, keepdim=True).expand(m, n) + \
+                    torch.pow(y, 2).sum(dim=1, keepdim=True).expand(n, m).t()
+
+        distances.addmm_(1, -2, x, y.t())
+
+    elif type(X) != dict:
         print("HERE")
         distances = sklearn.metrics.pairwise.pairwise_distances(X)
     else:
@@ -24,9 +37,12 @@ def assign_by_euclidian_at_k(X, T, k):
             distances.append(dist)
         distances = np.array(distances)
     # get nearest points
-    indices   = np.argsort(distances, axis = 1)[:, 1 : k + 1]
-    
-    return np.array([[T[i] for i in ii] for ii in indices]), T
+    indices = np.argsort(distances, axis = 1)[:, 1 : k + 1]
+
+    if P is not None:
+        return np.array([[T[i] for i in ii] for ii in indices]), T
+    else:
+        return np.array([[TG[i] for i in ii] for ii in indices]), TQ
 
 
 def calc_recall_at_k(T, Y, k):

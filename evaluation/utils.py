@@ -28,20 +28,21 @@ class Evaluator_DML():
             gnn=None, graph_generator=None, dl_ev_gnn=None, net_type='bn_inception',
             dataroot='CARS', nb_classes=None):
         self.dataroot = dataroot
-        print(self.dataroot)
+        self.query = query
+        self.gallery = gallery
         self.nb_classes = nb_classes
         model_is_training = model.training
         model.eval()
 
         # calculate embeddings with model, also get labels (non-batch-wise)
         if not gnn:
-            X, T = self.predict_batchwise(model, dataloader, net_type)
+            X, T, P = self.predict_batchwise(model, dataloader, net_type)
         elif dl_ev_gnn is not None:
             if dl_ev_gnn.sampler.__class__.__name__ == 'PseudoSampler' or dl_ev_gnn.sampler.__class__.__name__ == 'PseudoSamplerV' or dl_ev_gnn.sampler.__class__.__name__ == 'PseudoSamplerIV' or dl_ev_gnn.sampler.__class__.__name__ == 'PseudoSamplerVI':
                 gnn_is_training = gnn.training
                 gnn.eval()
                 logger.info("Evaluate KNN evaluate")
-                X, T = self.predict_batchwise_knn(model, gnn,
+                X, T, P = self.predict_batchwise_knn(model, gnn,
                                                         graph_generator,
                                                         dataloader, dl_ev_gnn)
                 gnn.train(gnn_is_training)
@@ -49,7 +50,7 @@ class Evaluator_DML():
             elif dl_ev_gnn.dataset.labels_train is not None:  # traintest
                 gnn_is_training = gnn.training
                 gnn.eval()
-                X, T = self.predict_batchwise_traintest(model, gnn,
+                X, T, P = self.predict_batchwise_traintest(model, gnn,
                                                         graph_generator,
                                                         dataloader, dl_ev_gnn)
                 gnn.train(gnn_is_training)
@@ -57,17 +58,17 @@ class Evaluator_DML():
                 logger.info("Using {} number of clusters for kmeans sampling".format(self.nb_clusters))
                 gnn_is_training = gnn.training
                 gnn.eval()
-                X, T = self.predict_batchwise_pseudo(model, gnn,
+                X, T, P = self.predict_batchwise_pseudo(model, gnn,
                                                      graph_generator,
                                                      dataloader, dl_ev_gnn)
                 gnn.train(gnn_is_training)
         else:  # gnn
             gnn_is_training = gnn.training
             gnn.eval()
-            X, T = self.predict_batchwise_gnn(model, gnn, graph_generator,
+            X, T, P = self.predict_batchwise_gnn(model, gnn, graph_generator,
                                               dataloader)
             gnn.train(gnn_is_training)
-        if dataroot != 'sop':
+        if dataroot != 'sop' and dataroot != 'in_shop':
             # calculate NMI with kmeans clustering
             nmi = calc_normalized_mutual_information(T, cluster_by_kmeans(X, nb_classes))
             logger.info("NMI: {:.3f}".format(nmi * 100))
@@ -75,8 +76,11 @@ class Evaluator_DML():
             nmi = -1
 
         recall = []
-        if dataroot != 'sop':
+        if dataroot != 'sop' and dataroot != 'in_shop':
             Y, T = assign_by_euclidian_at_k(X, T, 8)
+            which_nearest_neighbors = [1, 2, 4, 8]
+        elif dataroot == 'in_shop':
+            Y, T = assign_by_euclidian_at_k(X, T, 30, P, query, gallery)
             which_nearest_neighbors = [1, 2, 4, 8]
         else:
             Y, T = assign_by_euclidian_at_k(X, T, 1000)
@@ -93,19 +97,20 @@ class Evaluator_DML():
     # just looking at this gives me AIDS, fix it fool!
     def predict_batchwise(self, model, dataloader, net_type):
         logger.info("Evaluate normal")
-        fc7s, L = [], []
+        fc7s, L, paths = [], [], []
         with torch.no_grad():
-            for X, Y, _, _ in dataloader:
+            for X, Y, _, P in dataloader:
                 if torch.cuda.is_available(): X = X.cuda(self.dev)
                 _, fc7, _ = model(X, output_option=self.output_test_enc, val=True)
                 fc7s.append(fc7.cpu())
                 L.append(Y)
-        fc7, Y = torch.cat(fc7s), torch.cat(L)
-        return torch.squeeze(fc7), torch.squeeze(Y)
+                paths.append(P)
+        fc7, Y, paths = torch.cat(fc7s), torch.cat(L), torch.cat(paths)
+        return torch.squeeze(fc7), torch.squeeze(Y), torch.squeeze(paths)
 
     def predict_batchwise_gnn(self, model, gnn, graph_generator, dataloader):
         logger.info("Evaluate gnn")
-        fc7s, L = [], []
+        fc7s, L, paths = [], [], []
         feature_dict = dict()
         ys = dict()
         with torch.no_grad():
@@ -131,7 +136,8 @@ class Evaluator_DML():
 
                 fc7s.append(fc7.cpu())
                 L.append(Y)
-        fc7, Y = torch.cat(fc7s), torch.cat(L)
+                paths.append(P)
+        fc7, Y, paths = torch.cat(fc7s), torch.cat(L), torch.cat(paths)
         
         # Evaliation after ResNet
         if self.dataroot != 'sop':
@@ -145,13 +151,13 @@ class Evaluator_DML():
             r_at_k = calc_recall_at_k(ys, y, 1)
             logger.info("R@{} after ResNet50: {:.3f}".format(1, 100 * r_at_k))
 
-        return torch.squeeze(fc7), torch.squeeze(Y)
+        return torch.squeeze(fc7), torch.squeeze(Y), torch.squeeze(paths)
 
     def predict_batchwise_pseudo_rand(self, model, gnn, graph_generator, dataloader, dl_ev_gnn):
-        fc7s, L = [], []
+        fc7s, L, paths = [], [], []
         logger.info("Evaluate Rand Pseudo")
         with torch.no_grad():
-            for X, Y, _, _ in dataloader:
+            for X, Y, _, P in dataloader:
                 if torch.cuda.is_available(): X = X.cuda(self.dev)
                 _, fc7, _ = model(X, output_option=self.output_test_enc,
                                   val=True)  ##### Actually _, fc7, _ CHECK THIS
@@ -163,9 +169,10 @@ class Evaluator_DML():
                              output_option=self.output_test_gnn)
                 fc7s.append(fc7.cpu())
                 L.append(Y)
-        fc7, Y = torch.cat(fc7s), torch.cat(L)
+                paths.append(P)
+        fc7, Y, paths = torch.cat(fc7s), torch.cat(L), torch.cat(paths)
 
-        return torch.squeeze(fc7), torch.squeeze(Y)
+        return torch.squeeze(fc7), torch.squeeze(Y), torch.squeeze(paths)
     
     def predict_batchwise_pseudo(self, model, gnn, graph_generator, dataloader,
                                  dl_ev_gnn):
@@ -241,7 +248,8 @@ class Evaluator_DML():
 
         fc7 = torch.cat([v.unsqueeze(dim=0).cpu() for v in features_new.values()])
         Y = torch.cat([v.unsqueeze(dim=0).cpu() for v in labels_new.values()])
-        return torch.squeeze(fc7), torch.squeeze(Y)
+        paths = torch.cat([k for k in labels_new.keys()])
+        return torch.squeeze(fc7), torch.squeeze(Y), torch.squeeze(paths)
     
     def predict_batchwise_knn(self, model, gnn, graph_generator,
             dataloader, dl_ev_gnn):
@@ -331,12 +339,14 @@ class Evaluator_DML():
                     for i in anchors:
                         labels_new[P[i]]= labels[P[i]]
                         features_new[P[i]]= fc7[i]
+                    paths = None
 
         if dl_ev_gnn.sampler.__class__.__name__ == 'PseudoSamplerV' or dl_ev_gnn.sampler.__class__.__name__ == 'PseudoSamplerIV' or dl_ev_gnn.sampler.__class__.__name__ == 'PseudoSamplerVI':
             features_new = torch.cat([v.unsqueeze(dim=0).cpu() for v in features_new.values()]).squeeze()
             labels_new = torch.cat([v.unsqueeze(dim=0).cpu() for v in labels_new.values()]).squeeze()
+            paths = torch.cat([k for k in labels_new.keys()])
         
-        return features_new, labels_new
+        return features_new, labels_new, paths
     
     def predict_batchwise_traintest(self, model, gnn, graph_generator,
                                     dataloader, dl_ev_gnn):

@@ -1,10 +1,12 @@
 import dataset
 import torch
 from collections import defaultdict
-from combine_sampler import CombineSampler, CombineSamplerNoise, CombineSamplerAdvanced, \
+from combine_sampler import CombineSampler, CombineSamplerNoise, \
+    CombineSamplerAdvanced, \
     CombineSamplerSuperclass, CombineSamplerSuperclass2, PretraingSampler, \
     DistanceSampler, DistanceSamplerMean, DistanceSamplerOrig, TrainTestCombi, \
-    PseudoSampler, PseudoSamplerII, PseudoSamplerIII, PseudoSamplerIV, PseudoSamplerV, PseudoSamplerVI
+    PseudoSampler, PseudoSamplerII, PseudoSamplerIII, PseudoSamplerIV, \
+    PseudoSamplerV, PseudoSamplerVI
 import numpy as np
 import os
 import matplotlib.pyplot as plt
@@ -13,17 +15,45 @@ import copy
 
 logger = logging.getLogger('GNNReID.DataUtility')
 
+
 def create_loaders(data_root, num_workers, size_batch, num_classes_iter=None,
                    num_elements_class=None, pretraining=False,
-                   input_size=[384, 128], mode='single', trans= 'norm',
+                   input_size=[384, 128], mode='single', trans='norm',
                    distance_sampler='only', val=0, m=100, seed=0, magnitude=15,
-                   number_aug=0, num_classes=None, net_type='resnet50', nb_clusters=None, 
+                   number_aug=0, num_classes=None, net_type='resnet50',
+                   nb_clusters=None,
                    bssampling=None):
-    query, gallery = None, None
-    if os.path.basename(data_root) != 'CARS' and os.path.basename(data_root) != 'CUB_200_2011' and os.path.basename(data_root) != 'Stanford_Online_Products':
-        labels, paths = dataset.load_data(root=data_root, mode=mode, val=val, seed=seed)
+    query, gallery, labels, labels_ev = None, None, None, None
+    if os.path.basename(data_root) != 'CARS' and os.path.basename(
+            data_root) != 'CUB_200_2011' and os.path.basename(
+            data_root) != 'Stanford_Online_Products' and os.path.basename(
+        data_root) != 'In_shop':
+        labels, paths = dataset.load_data(root=data_root, mode=mode, val=val,
+                                          seed=seed)
         labels = labels[0]
         paths = paths[0]
+    elif os.path.basename(data_root) == 'In_shop':
+        with open(os.path.join(data_root, "query.txt"), "r") as f:
+            query_paths = f.readlines()
+        query_paths = [d.strip("\n") for d in query_paths]
+        with open(os.path.join(data_root, "gallery.txt"), "r") as f:
+            gallery_paths = f.readlines()
+        gallery_paths = [d.strip("\n") for d in gallery_paths]
+        with open(os.path.join(data_root, "train.txt"), "r") as f:
+            paths = f.readlines()
+        paths = [d.strip("\n") for d in paths]
+
+        with open(os.path.join(data_root, "query_labs.txt"), "r") as f:
+            query_labs = f.readlines()
+        query_labs = [d.strip("\n") for d in query_labs]
+        with open(os.path.join(data_root, "gallery_labs.txt"), "r") as f:
+            gallery_labs = f.readlines()
+        gallery_labs = [d.strip("\n") for d in gallery_labs]
+        with open(os.path.join(data_root, "train_labs.txt"), "r") as f:
+            labels = f.readlines()
+        labels = [d.strip("\n") for d in labels]
+
+        labels_ev = query_labs + gallery_labs
 
     if mode == 'both':
         data_root = os.path.dirname(data_root)
@@ -38,29 +68,33 @@ def create_loaders(data_root, num_workers, size_batch, num_classes_iter=None,
                                paths['query']['labeled']}
 
         query = [os.path.join(data_root, 'detected', 'images',
-                              '{:05d}'.format(int(q.split('_')[0])), q) for q in
+                              '{:05d}'.format(int(q.split('_')[0])), q) for q
+                 in
                  paths['query']['detected']] + [
                     os.path.join(data_root, 'labeled', 'images',
-                                 '{:05d}'.format(int(q.split('_')[0])), q) for q in
+                                 '{:05d}'.format(int(q.split('_')[0])), q) for
+                    q in
                     paths['query']['labeled']]
         gallery = [os.path.join(data_root, 'detected', 'images',
-                                '{:05d}'.format(int(g.split('_')[0])), g) for g in
+                                '{:05d}'.format(int(g.split('_')[0])), g) for g
+                   in
                    paths['bounding_box_test']['detected']] + [
                       os.path.join(data_root, 'labeled', 'images',
-                                   '{:05d}'.format(int(g.split('_')[0])), g) for g in
+                                   '{:05d}'.format(int(g.split('_')[0])), g)
+                      for g in
                       paths['bounding_box_test']['labeled']]
 
     elif mode == 'all':
         data_root = os.path.dirname(data_root)
         labels_ev = {'cuhk03': labels['bounding_box_test']['cuhk03'] +
-                                 labels['query']['cuhk03'],
+                               labels['query']['cuhk03'],
                      'market': labels['bounding_box_test']['market'] +
-                                labels['query']['market']}
+                               labels['query']['market']}
 
         paths_ev = {'cuhk03': paths['bounding_box_test']['cuhk03'] +
-                                paths['query']['cuhk03'],
+                              paths['query']['cuhk03'],
                     'market': paths['bounding_box_test']['market'] +
-                               paths['query']['market']}
+                              paths['query']['market']}
 
         query = [os.path.join(data_root, 'cuhk03', 'detected', 'images',
                               '{:05d}'.format(int(q.split('_')[0])), q) for q
@@ -74,39 +108,53 @@ def create_loaders(data_root, num_workers, size_batch, num_classes_iter=None,
                                 '{:05d}'.format(int(g.split('_')[0])), g) for g
                    in
                    paths['bounding_box_test']['cuhk03']] + [
-                      os.path.join(data_root, 'Market-1501-v15.09.15', 'images',
+                      os.path.join(data_root, 'Market-1501-v15.09.15',
+                                   'images',
                                    '{:05d}'.format(int(g.split('_')[0])), g)
                       for g in
                       paths['bounding_box_test']['market']]
 
-    elif os.path.basename(data_root) != 'CUB_200_2011' and os.path.basename(data_root) != 'CARS' and os.path.basename(data_root) != 'Stanford_Online_Products':
+    elif os.path.basename(data_root) != 'CUB_200_2011' and os.path.basename(
+            data_root) != 'CARS' and os.path.basename(
+            data_root) != 'Stanford_Online_Products' and os.path.basename(
+            data_root) != 'In_shop':
         labels_ev = labels['bounding_box_test'] + labels['query']
         paths_ev = paths['bounding_box_test'] + paths['query']
-        query = [os.path.join(data_root, 'images', '{:05d}'.format(int(q.split('_')[0])), q) for
+        query = [os.path.join(data_root, 'images',
+                              '{:05d}'.format(int(q.split('_')[0])), q) for
                  q in paths['query']]
-        gallery = [os.path.join(data_root, 'images', '{:05d}'.format(int(g.split('_')[0])), g)
+        gallery = [os.path.join(data_root, 'images',
+                                '{:05d}'.format(int(g.split('_')[0])), g)
                    for g in paths['bounding_box_test']]
 
-    if mode != 'all' and os.path.basename(data_root) != 'CUB_200_2011' and os.path.basename(data_root) != 'CARS' and os.path.basename(data_root) != 'Stanford_Online_Products':
+    if mode != 'all' and os.path.basename(
+            data_root) != 'CUB_200_2011' and os.path.basename(
+            data_root) != 'CARS' and os.path.basename(
+            data_root) != 'Stanford_Online_Products' and os.path.basename(
+            data_root) != 'In_shop':
         Dataset = dataset.Birds(root=data_root,
                                 labels=labels['bounding_box_train'],
                                 paths=paths['bounding_box_train'],
                                 trans=trans,
                                 magnitude=magnitude,
                                 number_aug=number_aug)
-    elif os.path.basename(data_root) == 'CUB_200_2011' or os.path.basename(data_root) == 'CARS' or os.path.basename(data_root) == 'Stanford_Online_Products':
+    elif os.path.basename(data_root) == 'CUB_200_2011' or os.path.basename(
+            data_root) == 'CARS' or os.path.basename(
+            data_root) == 'Stanford_Online_Products' or os.path.basename(
+            data_root) == 'In_shop':
+        labels = labels if labels is not None else list(range(0, num_classes))
         Dataset = dataset.Birds_DML(
             root=data_root,
-            labels=list(range(0, num_classes)),
+            labels=labels,
             transform=trans,
             net_type=net_type)
     else:
         Dataset = dataset.All(root=data_root,
-                                labels=labels['bounding_box_train'],
-                                paths=paths['bounding_box_train'],
-                                trans=trans,
-                                magnitude=magnitude,
-                                number_aug=number_aug)
+                              labels=labels['bounding_box_train'],
+                              paths=paths['bounding_box_train'],
+                              trans=trans,
+                              magnitude=magnitude,
+                              number_aug=number_aug)
 
     ddict = defaultdict(list)
     for idx, label in enumerate(Dataset.ys):
@@ -121,34 +169,42 @@ def create_loaders(data_root, num_workers, size_batch, num_classes_iter=None,
         drop_last = False
     elif distance_sampler == 'orig_pre' or distance_sampler == 'orig_pre_soft' or distance_sampler == 'orig_only' or distance_sampler == 'orig_alternating':
         print(distance_sampler)
-        sampler = DistanceSamplerOrig(num_classes_iter, num_elements_class, ddict, distance_sampler, m)
+        sampler = DistanceSamplerOrig(num_classes_iter, num_elements_class,
+                                      ddict, distance_sampler, m)
         drop_last = True
     elif distance_sampler == 'pre' or distance_sampler == 'pre_soft' or distance_sampler == 'only' or distance_sampler == 'alternating':
         print(distance_sampler)
-        sampler = DistanceSampler(num_classes_iter, num_elements_class, ddict, distance_sampler, m)
+        sampler = DistanceSampler(num_classes_iter, num_elements_class, ddict,
+                                  distance_sampler, m)
         drop_last = True
     elif distance_sampler == '8closest':
-        sampler = PseudoSamplerV(num_classes_iter, num_elements_class, batch_sampler=bssampling)
+        sampler = PseudoSamplerV(num_classes_iter, num_elements_class,
+                                 batch_sampler=bssampling)
         drop_last = True
     elif distance_sampler == '8closestClass':
         print("Train 8clostestClass")
-        sampler = PseudoSamplerIV(num_classes_iter, num_elements_class, batch_sampler=bssampling)
+        sampler = PseudoSamplerIV(num_classes_iter, num_elements_class,
+                                  batch_sampler=bssampling)
         drop_last = True
     elif distance_sampler == 'kmeans':
         nb_clusters = 100
         logger.info("NB clusters for training".format(nb_clusters))
-        sampler = PseudoSamplerIII(num_classes_iter, num_elements_class, nb_clusters=nb_clusters, batch_sampler=bssampling)
+        sampler = PseudoSamplerIII(num_classes_iter, num_elements_class,
+                                   nb_clusters=nb_clusters,
+                                   batch_sampler=bssampling)
         drop_last = True
     elif distance_sampler == 'kmeansClosest':
         nb_clusters = 100
         logger.info("NB clusters for training".format(nb_clusters))
-        sampler = PseudoSamplerVI(num_classes_iter, num_elements_class, nb_clusters, batch_sampler=bssampling)
+        sampler = PseudoSamplerVI(num_classes_iter, num_elements_class,
+                                  nb_clusters, batch_sampler=bssampling)
         drop_last = True
     else:
         sampler = CombineSampler(list_of_indices_for_each_class,
-                                 num_classes_iter, num_elements_class, batch_sampler=bssampling)
-        #logger.info("Pseudo for training")
-        #sampler = PseudoSamplerIII(num_classes_iter, num_elements_class)
+                                 num_classes_iter, num_elements_class,
+                                 batch_sampler=bssampling)
+        # logger.info("Pseudo for training")
+        # sampler = PseudoSamplerIII(num_classes_iter, num_elements_class)
 
         drop_last = True
 
@@ -176,14 +232,22 @@ def create_loaders(data_root, num_workers, size_batch, num_classes_iter=None,
     if pretraining:
         return dl_tr
     if mode != 'all' and mode != 'traintest' and mode != 'traintest_test' and \
-            os.path.basename(data_root) != 'CUB_200_2011' and os.path.basename(data_root) != 'CARS' and os.path.basename(data_root) != 'Stanford_Online_Products':
+            os.path.basename(data_root) != 'CUB_200_2011' and os.path.basename(
+        data_root) != 'CARS' and os.path.basename(
+        data_root) != 'Stanford_Online_Products' and os.path.basename(
+        data_root) != 'In_shop':
         dataset_ev = dataset.Birds(
-                root=data_root,
-                labels=labels_ev,
-                paths=paths_ev,
-                trans=trans,
-                eval_reid=True)
-    elif (mode == 'traintest' or mode == 'traintest_test') and os.path.basename(data_root) != 'CUB_200_2011' and os.path.basename(data_root) != 'CARS' and os.path.basename(data_root) != 'Stanford_Online_Products':
+            root=data_root,
+            labels=labels_ev,
+            paths=paths_ev,
+            trans=trans,
+            eval_reid=True)
+    elif (
+            mode == 'traintest' or mode == 'traintest_test') and os.path.basename(
+            data_root) != 'CUB_200_2011' and os.path.basename(
+            data_root) != 'CARS' and os.path.basename(
+            data_root) != 'Stanford_Online_Products' and os.path.basename(
+        data_root) != 'In_shop':
         dataset_ev = dataset.Birds(
             root=data_root,
             labels=labels['query'],
@@ -194,11 +258,16 @@ def create_loaders(data_root, num_workers, size_batch, num_classes_iter=None,
             paths_train=paths['bounding_box_train'],
             labels_gallery=labels['bounding_box_test'],
             paths_gallery=paths['bounding_box_test'])
-    elif (os.path.basename(data_root) == 'CUB_200_2011' or os.path.basename(data_root) == 'CARS' or os.path.basename(data_root) == 'Stanford_Online_Products') and  (mode == 'traintest' or mode == 'traintest_test'):
+    elif (os.path.basename(data_root) == 'CUB_200_2011' or os.path.basename(
+            data_root) == 'CARS' or os.path.basename(
+            data_root) == 'Stanford_Online_Products' or os.path.basename(
+            data_root) == 'In_shop') and (
+            mode == 'traintest' or mode == 'traintest_test'):
         if data_root == 'Stanford':
             class_end = 2 * num_classes - 2
         else:
             class_end = 2 * num_classes
+
         dataset_ev = dataset.Birds_DML(
             root=data_root,
             labels=list(range(num_classes, class_end)),
@@ -207,27 +276,32 @@ def create_loaders(data_root, num_workers, size_batch, num_classes_iter=None,
             eval_reid=True,
             net_type=net_type
         )
-    elif os.path.basename(data_root) == 'CUB_200_2011' or os.path.basename(data_root) == 'CARS' or os.path.basename(data_root) == 'Stanford_Online_Products':
+    elif os.path.basename(data_root) == 'CUB_200_2011' or os.path.basename(
+            data_root) == 'CARS' or os.path.basename(
+            data_root) == 'Stanford_Online_Products' or os.path.basename(
+            data_root) == 'In_shop':
         if data_root == 'Stanford':
             class_end = 2 * num_classes - 2
         else:
             class_end = 2 * num_classes
+
+        labels = labels_ev if labels_ev is not None else list(range(num_classes, class_end))
+
         dataset_ev = dataset.Birds_DML(
             root=data_root,
-            labels=list(range(num_classes, class_end)),
+            labels=labels_ev,
             transform=trans,
             eval_reid=True,
             net_type=net_type
         )
     else:
         dataset_ev = dataset.All(
-            root-data_root,
+            root - data_root,
             labels=labels_ev,
             paths=paths_ev,
             trans=trans,
             eval_reid=True
         )
-
 
     if mode == 'gnn' or mode == 'gnn_test' or mode == 'gnn_hyper_search':
         ddict = defaultdict(list)
@@ -251,7 +325,7 @@ def create_loaders(data_root, num_workers, size_batch, num_classes_iter=None,
         else:'''
         sampler = CombineSampler(list_of_indices_for_each_class,
                                  num_classes_iter, num_elements_class)
-                                 
+
         drop_last = True
 
         dl_ev = torch.utils.data.DataLoader(
@@ -274,12 +348,12 @@ def create_loaders(data_root, num_workers, size_batch, num_classes_iter=None,
         list_of_indices_for_each_class = []
         for key in ddict:
             list_of_indices_for_each_class.append(ddict[key])
-        
-        #sampler = CombineSampler(list_of_indices_for_each_class,
+
+        # sampler = CombineSampler(list_of_indices_for_each_class,
         #                        num_classes_iter, num_elements_class)
         sampler = PseudoSamplerIII(num_classes_iter, num_elements_class)
         print("evl")
-        #sampler = DistanceSampler(num_classes_iter, num_elements_class,
+        # sampler = DistanceSampler(num_classes_iter, num_elements_class,
         #                              ddict, distance_sampler, 1)
         sampler.epoch = 2
         drop_last = True
@@ -306,7 +380,7 @@ def create_loaders(data_root, num_workers, size_batch, num_classes_iter=None,
             batch_size=64,
             shuffle=True,
             num_workers=1,
-            pin_memory=True )
+            pin_memory=True)
 
     elif mode == 'knn' or mode == 'knn_test' or mode == 'knn_hyper_search':
         ddict = defaultdict(list)
@@ -317,7 +391,7 @@ def create_loaders(data_root, num_workers, size_batch, num_classes_iter=None,
         for key in ddict:
             list_of_indices_for_each_class.append(ddict[key])
 
-        #sampler = CombineSampler(list_of_indices_for_each_class,
+        # sampler = CombineSampler(list_of_indices_for_each_class,
         #                        num_classes_iter, num_elements_class)
         sampler = PseudoSampler(num_classes_iter, num_elements_class)
 
@@ -345,10 +419,12 @@ def create_loaders(data_root, num_workers, size_batch, num_classes_iter=None,
             batch_size=64,
             shuffle=True,
             num_workers=1,
-            pin_memory=True )
-    
+            pin_memory=True)
+
     elif (mode == 'traintest' or mode == 'traintest_test') and \
-            os.path.basename(data_root) != 'CUB_200_2011' and os.path.basename(data_root) != 'CARS' and os.path.basename(data_root) != 'Stanford_Online_Products':
+            os.path.basename(data_root) != 'CUB_200_2011' and os.path.basename(
+        data_root) != 'CARS' and os.path.basename(
+        data_root) != 'Stanford_Online_Products':
         ddict_query = defaultdict(list)
         for idx, label in enumerate(dataset_ev.ys_query):
             ddict_query[label].append(idx)
@@ -360,26 +436,27 @@ def create_loaders(data_root, num_workers, size_batch, num_classes_iter=None,
 
         ddict_train = defaultdict(list)
         for idx, label in enumerate(dataset_ev.ys_train):
-            ddict_train[label].append(idx + 1 + max_idx_query) # +1 becuase idx starts from 0
+            ddict_train[label].append(
+                idx + 1 + max_idx_query)  # +1 becuase idx starts from 0
             max_idx_train = idx + 1 + max_idx_query
 
         list_of_indices_for_each_class_train = []
         for key in ddict_train:
             list_of_indices_for_each_class_train.append(ddict_train[key])
-        
+
         ddict_gallery = defaultdict(list)
         for idx, label in enumerate(dataset_ev.ys_gallery):
             ddict_gallery[label].append(idx + 1 + max_idx_train)
-        
+
         list_of_indices_for_each_class_gallery = []
         for key in ddict_gallery:
             list_of_indices_for_each_class_gallery.append(ddict_gallery[key])
-        
+
         sampler_backbone = TrainTestCombi(list_of_indices_for_each_class_query,
-                                 num_classes_iter, num_elements_class,
-                                 list_of_indices_for_each_class_train,
-                                 list_of_indices_for_each_class_gallery, 
-                                 backbone=True)
+                                          num_classes_iter, num_elements_class,
+                                          list_of_indices_for_each_class_train,
+                                          list_of_indices_for_each_class_gallery,
+                                          backbone=True)
 
         sampler = TrainTestCombi(list_of_indices_for_each_class_query,
                                  num_classes_iter, num_elements_class,
@@ -397,14 +474,16 @@ def create_loaders(data_root, num_workers, size_batch, num_classes_iter=None,
 
         dl_ev = torch.utils.data.DataLoader(
             dataset_ev,
-            sampler= sampler_backbone,
+            sampler=sampler_backbone,
             batch_size=64,
             shuffle=False,
             num_workers=1,
             pin_memory=True)
 
     elif (mode == 'traintest' or mode == 'traintest_test') and \
-            (os.path.basename(data_root) == 'CUB_200_2011' or os.path.basename(data_root) != 'CARS' or os.path.basename(data_root) != 'Stanford_Online_Products'):
+            (os.path.basename(data_root) == 'CUB_200_2011' or os.path.basename(
+                data_root) != 'CARS' or os.path.basename(
+                data_root) != 'Stanford_Online_Products'):
 
         ddict_test = defaultdict(list)
         for idx, label in enumerate(dataset_ev.ys_test):
@@ -450,7 +529,7 @@ def create_loaders(data_root, num_workers, size_batch, num_classes_iter=None,
             shuffle=False,
             num_workers=1,
             pin_memory=True)
-        
+
     else:
         dl_ev = torch.utils.data.DataLoader(
             dataset_ev,
