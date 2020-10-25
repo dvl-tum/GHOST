@@ -6,6 +6,7 @@ import json
 from collections import defaultdict
 import sklearn.cluster
 import sklearn.metrics.cluster
+import os
 
 logger = logging.getLogger('GNNReID.Evaluator')
 
@@ -27,6 +28,7 @@ class Evaluator_DML():
             gnn=None, graph_generator=None, dl_ev_gnn=None, net_type='bn_inception',
             dataroot='CARS', nb_classes=None):
         self.dataroot = dataroot
+        print(self.dataroot)
         self.nb_classes = nb_classes
         model_is_training = model.training
         model.eval()
@@ -35,7 +37,7 @@ class Evaluator_DML():
         if not gnn:
             X, T = self.predict_batchwise(model, dataloader, net_type)
         elif dl_ev_gnn is not None:
-            if dl_ev_gnn.sampler.__class__.__name__ == 'PseudoSampler' or dl_ev_gnn.sampler.__class__.__name__ == 'PseudoSamplerV' or dl_ev_gnn.sampler.__class__.__name__ == 'PseudoSamplerIV':
+            if dl_ev_gnn.sampler.__class__.__name__ == 'PseudoSampler' or dl_ev_gnn.sampler.__class__.__name__ == 'PseudoSamplerV' or dl_ev_gnn.sampler.__class__.__name__ == 'PseudoSamplerIV' or dl_ev_gnn.sampler.__class__.__name__ == 'PseudoSamplerVI':
                 gnn_is_training = gnn.training
                 gnn.eval()
                 logger.info("Evaluate KNN evaluate")
@@ -65,7 +67,7 @@ class Evaluator_DML():
             X, T = self.predict_batchwise_gnn(model, gnn, graph_generator,
                                               dataloader)
             gnn.train(gnn_is_training)
-        if dataroot != 'Stanford_Online_Products':
+        if dataroot != 'sop':
             # calculate NMI with kmeans clustering
             nmi = calc_normalized_mutual_information(T, cluster_by_kmeans(X, nb_classes))
             logger.info("NMI: {:.3f}".format(nmi * 100))
@@ -73,7 +75,7 @@ class Evaluator_DML():
             nmi = -1
 
         recall = []
-        if dataroot != 'Stanford_Online_Products':
+        if dataroot != 'sop':
             Y, T = assign_by_euclidian_at_k(X, T, 8)
             which_nearest_neighbors = [1, 2, 4, 8]
         else:
@@ -132,7 +134,7 @@ class Evaluator_DML():
         fc7, Y = torch.cat(fc7s), torch.cat(L)
         
         # Evaliation after ResNet
-        if self.dataroot != 'Stanford_Online_Products':
+        if self.dataroot != 'sop':
             x = torch.cat([f.unsqueeze(0).cpu() for f in feature_dict.values()], 0)
             ys = torch.cat([y.unsqueeze(0).cpu() for y in ys.values()], 0)
             cluster = sklearn.cluster.KMeans(self.nb_classes).fit(x).labels_
@@ -196,7 +198,7 @@ class Evaluator_DML():
         logger.info("ResNet completed")
         
         # Evaliation after ResNet
-        if self.dataroot != 'Stanford_Online_Products':
+        if self.dataroot != 'sop':
             x = torch.cat([f.unsqueeze(0).cpu() for f in feature_dict.values()], 0)
             ys = torch.cat([y.unsqueeze(0).cpu() for y in ys.values()], 0)
 
@@ -270,7 +272,7 @@ class Evaluator_DML():
         #print(features_dict)
         # Evaliation after ResNet
         
-        if self.dataroot != 'Stanford_Online_Products':
+        if self.dataroot != 'sop':
             x = torch.cat([f.unsqueeze(0).cpu() for f in feature_dict.values()], 0)
             ys = torch.cat([y.unsqueeze(0).cpu() for y in ys.values()], 0)
             
@@ -290,11 +292,14 @@ class Evaluator_DML():
         if dl_ev_gnn.sampler.__class__.__name__ == 'PseudoSampler':
             features_new = defaultdict(dict)
             labels_new = defaultdict(dict)
-        elif dl_ev_gnn.sampler.__class__.__name__ == 'PseudoSamplerV' or dl_ev_gnn.sampler.__class__.__name__ == 'PseudoSamplerIV':
+        else:
             features_new = dict()
             labels_new = dict()
             if dl_ev_gnn.sampler.__class__.__name__ == 'PseudoSamplerIV':
                 dl_ev_gnn.sampler.feature_dict = features_dict
+            if dl_ev_gnn.sampler.__class__.__name__ == 'PseudoSamplerVI':
+                dl_ev_gnn.sampler.nb_clusters = self.nb_clusters
+                logger.info(dl_ev_gnn.sampler.nb_clusters)
                  
         with torch.no_grad():
             for X, Y, I, P in dl_ev_gnn:
@@ -321,13 +326,13 @@ class Evaluator_DML():
                         features_new[p_0][p] = (out_0 @ out_0 + out @ out - 2 * (out_0 @ out)).detach()
                         labels_new[p_0][p] = y
                 
-                elif dl_ev_gnn.sampler.__class__.__name__ == 'PseudoSamplerV' or dl_ev_gnn.sampler.__class__.__name__ == 'PseudoSamplerIV' :
+                else:
                     anchors = [i for i in range(dl_ev_gnn.sampler.bs) if i%dl_ev_gnn.sampler.num_classes == 0]
                     for i in anchors:
                         labels_new[P[i]]= labels[P[i]]
                         features_new[P[i]]= fc7[i]
 
-        if dl_ev_gnn.sampler.__class__.__name__ == 'PseudoSamplerV' or dl_ev_gnn.sampler.__class__.__name__ == 'PseudoSamplerIV':
+        if dl_ev_gnn.sampler.__class__.__name__ == 'PseudoSamplerV' or dl_ev_gnn.sampler.__class__.__name__ == 'PseudoSamplerIV' or dl_ev_gnn.sampler.__class__.__name__ == 'PseudoSamplerVI':
             features_new = torch.cat([v.unsqueeze(dim=0).cpu() for v in features_new.values()]).squeeze()
             labels_new = torch.cat([v.unsqueeze(dim=0).cpu() for v in labels_new.values()]).squeeze()
         

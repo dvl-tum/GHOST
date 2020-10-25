@@ -225,7 +225,8 @@ class Trainer():
                         or (self.distance_sampling == 'pre_soft' and e == 1) \
                         or (self.distance_sampling == '8closest' and e == 1) \
                         or (self.distance_sampling == '8closestClass' and e == 1) \
-                        or (self.distance_sampling == 'kmeans' and e == 1):
+                        or (self.distance_sampling == 'kmeans' and e == 1) \
+                        or (self.distance_sampling == 'kmeansClosest' and e == 1):
                     model_is_training = self.encoder.training
                     gnn_is_training = self.gnn.training
                     self.encoder.eval()
@@ -253,6 +254,7 @@ class Trainer():
                     
                 # Normal training with backpropagation
                 else:
+                    self.dl_tr.sampler.epoch = e
                     for x, Y, I, P in self.dl_tr:
                         loss = self.forward_pass(x, Y, I, P, train_params)
                         if self.gnn_loss:
@@ -310,7 +312,8 @@ class Trainer():
                         or (self.distance_sampling == 'pre' and e == 1) \
                         or (self.distance_sampling == 'pre_soft' and e == 1) \
                         or (self.distance_sampling == '8closest' and e == 1) \
-                        or (self.distance_sampling == 'kmeans' and e == 1):
+                        or (self.distance_sampling == 'kmeans' and e == 1) \
+                        or (self.distance_sampling == 'kmeansClosest' and e == 1):
                     self.encoder.train(model_is_training)
                     self.gnn.train(gnn_is_training)
                 best_accuracy, best_loss = self.evaluate(eval_params, scores, e, sum(self.losses['Total Loss'])/len(self.losses['Total Loss']) if len(self.losses['Total Loss'])>0 else 10,
@@ -558,7 +561,8 @@ class Trainer():
                 self.distance_sampling == 'pre_soft' and e > 1) or (
                         self.distance_sampling == '8closest' and e > 1) or (
                                 self.distance_sampling == '8closestClass' and e > 1) or (
-                                        self.distance_sampling == 'kmeans' and e > 1):
+                                        self.distance_sampling == 'kmeans' and e > 1) or (
+                                                self.distance_sampling == 'kmeansClosest' and e > 1):
             self.dl_tr = self.dl_tr2
             self.dl_ev = self.dl_ev2
             self.gallery = self.gallery2
@@ -571,7 +575,8 @@ class Trainer():
                 self.distance_sampling == 'pre_soft' and e == 1) or (
                         self.distance_sampling == '8closest' and e == 1) or (
                                 self.distance_sampling == '8closestClass' and e == 1) or (
-                                        self.distance_sampling == 'kmeans' and e == 1):
+                                        self.distance_sampling == 'kmeans' and e == 1) or (
+                                                self.distance_sampling == 'kmeansClosest' and e == 1):
             self.dl_tr = self.dl_tr1
             self.dl_ev = self.dl_ev1
             self.gallery = self.gallery1
@@ -754,12 +759,12 @@ class Trainer():
             self.config['train_params']['num_epochs'] += 30
 
     def sample_hypers(self):
-        config = {'lr': 10 ** random.uniform(-8, -3),
+        config = {'lr': 10 ** random.uniform(-8, -2),
                   'weight_decay': 10 ** random.uniform(-15, -6),
                   'num_classes_iter': random.randint(6, 13), #100
                   'num_elements_class': random.randint(3, 7),
                   'temperatur': random.random(),
-                  'num_epochs': 10}
+                  'num_epochs': 5}
         #config['temperatur'] = 1
         self.config['train_params'].update(config)
         
@@ -808,7 +813,8 @@ class Trainer():
                     seed=seed,
                     num_classes=self.config['dataset']['num_classes'],
                     net_type=self.net_type,
-                    nb_clusters=self.nb_clusters)
+                    nb_clusters=self.nb_clusters,
+                    bssampling=self.config['dataset']['bssampling'])
                 self.dl_tr1, self.dl_ev1, self.query1, self.gallery1, self.dl_ev_gnn1 = data_utility.create_loaders(
                     data_root=config['dataset_path'],
                     num_workers=config['nb_workers'],
@@ -825,7 +831,8 @@ class Trainer():
                     seed=seed,
                     num_classes=self.config['dataset']['num_classes'],
                     net_type=self.net_type,
-                    nb_clusters=self.nb_clusters)
+                    nb_clusters=self.nb_clusters,
+                    bssampling=self.config['dataset']['bssampling'])
             # If testing or normal training
             else:
                 self.dl_tr, self.dl_ev, self.query, self.gallery, self.dl_ev_gnn = data_utility.create_loaders(
@@ -843,7 +850,8 @@ class Trainer():
                     val=config['val'],
                     num_classes=self.config['dataset']['num_classes'], 
                     net_type=self.net_type,
-                    nb_clusters=self.nb_clusters)
+                    nb_clusters=self.nb_clusters,
+                    bssampling=self.config['dataset']['bssampling'])
 
         # Pretraining dataloader
         else:

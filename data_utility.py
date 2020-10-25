@@ -1,10 +1,10 @@
 import dataset
 import torch
 from collections import defaultdict
-from combine_sampler import CombineSampler, CombineSamplerAdvanced, \
+from combine_sampler import CombineSampler, CombineSamplerNoise, CombineSamplerAdvanced, \
     CombineSamplerSuperclass, CombineSamplerSuperclass2, PretraingSampler, \
     DistanceSampler, DistanceSamplerMean, DistanceSamplerOrig, TrainTestCombi, \
-    PseudoSampler, PseudoSamplerII, PseudoSamplerIII, PseudoSamplerIV, PseudoSamplerV
+    PseudoSampler, PseudoSamplerII, PseudoSamplerIII, PseudoSamplerIV, PseudoSamplerV, PseudoSamplerVI
 import numpy as np
 import os
 import matplotlib.pyplot as plt
@@ -17,7 +17,8 @@ def create_loaders(data_root, num_workers, size_batch, num_classes_iter=None,
                    num_elements_class=None, pretraining=False,
                    input_size=[384, 128], mode='single', trans= 'norm',
                    distance_sampler='only', val=0, m=100, seed=0, magnitude=15,
-                   number_aug=0, num_classes=None, net_type='resnet50', nb_clusters=None):
+                   number_aug=0, num_classes=None, net_type='resnet50', nb_clusters=None, 
+                   bssampling=None):
     query, gallery = None, None
     if os.path.basename(data_root) != 'CARS' and os.path.basename(data_root) != 'CUB_200_2011' and os.path.basename(data_root) != 'Stanford_Online_Products':
         labels, paths = dataset.load_data(root=data_root, mode=mode, val=val, seed=seed)
@@ -127,18 +128,25 @@ def create_loaders(data_root, num_workers, size_batch, num_classes_iter=None,
         sampler = DistanceSampler(num_classes_iter, num_elements_class, ddict, distance_sampler, m)
         drop_last = True
     elif distance_sampler == '8closest':
-        sampler = PseudoSamplerV(num_classes_iter, num_elements_class)
+        sampler = PseudoSamplerV(num_classes_iter, num_elements_class, batch_sampler=bssampling)
         drop_last = True
     elif distance_sampler == '8closestClass':
         print("Train 8clostestClass")
-        sampler = PseudoSamplerIV(num_classes_iter, num_elements_class)
+        sampler = PseudoSamplerIV(num_classes_iter, num_elements_class, batch_sampler=bssampling)
         drop_last = True
     elif distance_sampler == 'kmeans':
-        sampler = PseudoSamplerIII(num_classes_iter, num_elements_class, nb_clusters=nb_clusters)
+        nb_clusters = 100
+        logger.info("NB clusters for training".format(nb_clusters))
+        sampler = PseudoSamplerIII(num_classes_iter, num_elements_class, nb_clusters=nb_clusters, batch_sampler=bssampling)
+        drop_last = True
+    elif distance_sampler == 'kmeansClosest':
+        nb_clusters = 100
+        logger.info("NB clusters for training".format(nb_clusters))
+        sampler = PseudoSamplerVI(num_classes_iter, num_elements_class, nb_clusters, batch_sampler=bssampling)
         drop_last = True
     else:
         sampler = CombineSampler(list_of_indices_for_each_class,
-                                 num_classes_iter, num_elements_class)
+                                 num_classes_iter, num_elements_class, batch_sampler=bssampling)
         #logger.info("Pseudo for training")
         #sampler = PseudoSamplerIII(num_classes_iter, num_elements_class)
 

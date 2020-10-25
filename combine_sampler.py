@@ -16,7 +16,7 @@ class CombineSampler(Sampler):
     n_cl (int): num of obs per class inside the batch
     """
 
-    def __init__(self, l_inds, cl_b, n_cl):
+    def __init__(self, l_inds, cl_b, n_cl, batch_sampler):
         logger.info("Combine Sampler")
         self.l_inds = l_inds
         self.max = -1
@@ -28,7 +28,18 @@ class CombineSampler(Sampler):
         for inds in l_inds:
             if len(inds) > self.max:
                 self.max = len(inds)
+
+        if batch_sampler == 'NumberSampler':
+            self.sampler = NumberSampler(cl_b, n_cl)
+        elif batch_sampler == 'BatchSizeSampler':
+            self.sampler = BatchSizeSampler()
+        else:
+            self.sampler = None
+
     def __iter__(self):
+        if self.sampler:
+            self.cl_b, self.n_cl = self.sampler.sample()
+
         # shuffle elements inside each class
         l_inds = list(map(lambda a: random.sample(a, len(a)), self.l_inds))
 
@@ -66,6 +77,89 @@ class CombineSampler(Sampler):
             b = np.random.choice(np.arange(len(split_list_of_indices)), size=self.cl_b - len(split_list_of_indices) % self.cl_b, replace=False).tolist()
             [split_list_of_indices.append(split_list_of_indices[m]) for m in b]
         
+        self.flat_list = [item for sublist in split_list_of_indices for item in sublist]
+        return iter(self.flat_list)
+
+    def __len__(self):
+        return len(self.flat_list)
+
+
+class CombineSamplerNoise(Sampler):
+    """
+    l_inds (list of lists)
+    cl_b (int): classes in a batch
+    n_cl (int): num of obs per class inside the batch
+    """
+
+    def __init__(self, l_inds, cl_b, n_cl, batch_sampler):
+        logger.info("Combine Sampler Noise")
+        self.l_inds = l_inds
+        self.max = -1
+        self.cl_b = cl_b
+        self.n_cl = n_cl
+        self.batch_size = cl_b * n_cl
+        self.flat_list = []
+        self.feature_dict = None
+        self.epoch = 0
+        for inds in l_inds:
+            if len(inds) > self.max:
+                self.max = len(inds)
+
+        if batch_sampler == 'NumberSampler':
+            self.sampler = NumberSampler(cl_b, n_cl)
+        elif batch_sampler == 'BatchSizeSampler':
+            self.sampler = BatchSizeSampler()
+        else:
+            self.sampler = None
+
+    def __iter__(self):
+        if self.sampler:
+            self.cl_b, self.n_cl = self.sampler.sample()
+
+        # shuffle elements inside each class
+        l_inds = list(map(lambda a: random.sample(a, len(a)), self.l_inds))
+
+        # add elements till every class has the same num of obs
+        # np.random.choice(idxs, size=self.num_instances, replace=True)
+        #for inds in l_inds:
+        #    choose = copy.deepcopy(inds)
+        #    while len(inds) < self.max:
+        #        inds += [random.choice(choose)]
+        #print("NEW MAX")
+
+        #for inds in l_inds:
+        #    n_els = self.max - len(inds) + 1  # take out 1?
+        #    inds.extend(inds[:n_els])  # max + 1
+        #print("OLD MAX")
+
+        for inds in l_inds:
+            choose = copy.deepcopy(inds)
+            while len(inds) < self.n_cl:
+                inds += [random.choice(choose)]
+        print("Num samples")
+
+        # split lists of a class every n_cl elements
+        split_list_of_indices = []
+        for inds in l_inds:
+            inds = inds + np.random.choice(inds, size=(len(inds) // self.n_cl + 1)*self.n_cl - len(inds), replace=False).tolist()
+            # drop the last < n_cl elements
+            while len(inds) >= self.n_cl:
+                split_list_of_indices.append(inds[:self.n_cl])
+                inds = inds[self.n_cl:]
+            assert len(inds) == 0
+        
+        print(self.epoch)
+        for _ in range(1): #int((self.epoch/50)*self.n_cl)): #range(1)
+            rands = [lst.pop() for lst in split_list_of_indices]
+            random.shuffle(rands)
+            [lst.extend([rands.pop()]) for lst in split_list_of_indices]
+        
+        # shuffle the order of classes --> Could it be that same class appears twice in one batch?
+        random.shuffle(split_list_of_indices)
+        if len(split_list_of_indices) % self.cl_b != 0:
+            b = np.random.choice(np.arange(len(split_list_of_indices)), size=self.cl_b - len(split_list_of_indices) % self.cl_b, replace=False).tolist()
+            [split_list_of_indices.append(split_list_of_indices[m]) for m in b]
+
         self.flat_list = [item for sublist in split_list_of_indices for item in sublist]
         return iter(self.flat_list)
 
@@ -163,14 +257,47 @@ class TrainTestCombi(Sampler):
         return len(self.flat_list)
 
 
-class PseudoSampler(Sampler):
+class NumberSampler():
     def __init__(self, num_classes, num_samples):
+        self.bs = num_classes * num_samples
+        self.possible_denominators = [i for i in range(2, int(self.bs/2+1)) if self.bs%i == 0]
+
+    def sample(self):
+        num_classes = random.choice(self.possible_denominators)
+        num_samples = int(self.bs/num_classes)
+        logger.info("Number classes {}, number samples per class {}".format(num_classes, num_samples))
+        return num_classes, num_samples
+
+
+class BatchSizeSampler():
+    def sample(self):
+        num_classes = random.choice(range(2, 20))
+        num_samples = random.choice(range(2, 20))
+        logger.info("Number classes {}, number samples per class {}".format(num_classes, num_samples))
+        return num_classes, num_samples
+
+
+class PseudoSampler(Sampler):
+    def __init__(self, num_classes, num_samples, batch_sampler):
         # kNN
         logger.info("Pseudo sampler - kNN")
         self.feature_dict = None
         self.bs = num_classes * num_samples
+        self.num_classes = num_classes
+        self.num_samples = num_samples
+
+        if batch_sampler == 'NumberSampler':
+            self.sampler = NumberSampler(num_classes, num_samples)
+        elif batch_sampler == 'BatchSizeSampler':
+            self.sampler = BatchSizeSampler()
+        else:
+            self.sampler = None
 
     def __iter__(self):
+        if self.sampler:
+            self.num_classes, self.num_samples = self.sampler.sample()
+            self.bs = self.num_classes * self.num_samples
+
         # generate distance mat for all classes as in Hierachrical Triplet Loss
         x = torch.cat([f.unsqueeze(0) for f in self.feature_dict.values()], 0)
         y = torch.cat([f.unsqueeze(0) for f in self.feature_dict.values()], 0)
@@ -199,13 +326,20 @@ class PseudoSampler(Sampler):
 
 
 class PseudoSamplerII(Sampler):
-    def __init__(self, num_classes, num_samples):
+    def __init__(self, num_classes, num_samples, batch_sampler):
         # rows as classes
         logger.info("Pseudo sampler II - rows as classes")
         self.feature_dict = None
         self.bs = num_classes * num_samples
         self.num_classes = num_classes
         self.num_samples = num_samples
+
+        if batch_sampler == 'NumberSampler':
+            self.sampler = NumberSampler(num_classes, num_samples)
+        elif batch_sampler == 'BatchSizeSampler':
+            self.sampler = BatchSizeSampler()
+        else:
+            self.sampler = None
 
     def get_dist(self):
         x = torch.cat([f.unsqueeze(0) for f in self.feature_dict.values()], 0)
@@ -221,6 +355,9 @@ class PseudoSamplerII(Sampler):
         self.indices_orig = list(self.feature_dict.keys())
 
     def __iter__(self):
+        if self.sampler:
+            self.num_classes, self.num_samples = self.sampler.sample()
+
         # generate distance mat for all classes as in Hierachrical Triplet Loss
         if self.epoch % 5 == 2:
             self.get_dist()
@@ -259,7 +396,7 @@ class PseudoSamplerII(Sampler):
 
 
 class PseudoSamplerIII(Sampler):
-    def __init__(self, num_classes, num_samples, nb_clusters=None):
+    def __init__(self, num_classes, num_samples, nb_clusters=None, batch_sampler=None):
         # kmeans
         logger.info("Pseudo sampler III - kmeans")
         self.feature_dict = None
@@ -268,6 +405,13 @@ class PseudoSamplerIII(Sampler):
         self.n_cl = 9
         self.epoch = 0
         self.nb_clusters = nb_clusters
+
+        if batch_sampler == 'NumberSampler':
+            self.sampler = NumberSampler(num_classes, num_samples)
+        elif batch_sampler == 'BatchSizeSampler':
+            self.sampler = BatchSizeSampler()
+        else:
+            self.sampler = None
 
     def get_clusters(self):
         logger.info(self.nb_clusters)
@@ -299,9 +443,12 @@ class PseudoSamplerIII(Sampler):
         #self.cluster = sklearn.cluster.Birch(n_clusters=self.nb_clusters).fit(x).labels_
 
     def __iter__(self):
+        if self.sampler:
+            self.cl_b, self.n_cl = self.sampler.sample()
+        
         if self.epoch % 5 == 2:
             self.get_clusters()
-
+        
         ddict = defaultdict(list)
         for idx, label in zip(self.indices, self.cluster):
             ddict[label].append(idx)
@@ -359,7 +506,7 @@ class PseudoSamplerIII(Sampler):
 
 
 class PseudoSamplerIV(Sampler):
-    def __init__(self, num_classes, num_samples):
+    def __init__(self, num_classes, num_samples, batch_sampler=None):
         # kNN
         self.epoch = 0
         logger.info("Pseudo sampler VI - 8 closest within class")
@@ -367,6 +514,14 @@ class PseudoSamplerIV(Sampler):
         self.bs = num_classes * num_samples
         self.num_classes = num_classes
         self.num_samples = num_samples
+
+        if batch_sampler == 'NumberSampler':
+            self.sampler = NumberSampler(num_classes, num_samples)
+        elif batch_sampler == 'BatchSizeSampler':
+            self.sampler = BatchSizeSampler()
+        else:
+            self.sampler = None
+
     
     def get_dist(self, x, y):
         m, n = x.size(0), y.size(0)
@@ -379,7 +534,7 @@ class PseudoSamplerIV(Sampler):
         sorted_dist = np.argsort(dist.cpu().numpy(), axis=1)
         return sorted_dist
 
-    def get_classes(self):
+    def get_classes(self):        
         feats = list()
         indices = list()
         dists = list()
@@ -396,6 +551,9 @@ class PseudoSamplerIV(Sampler):
         self.dists = dists
 
     def __iter__(self):
+        if self.sampler:
+            self.num_classes, self.num_samples = self.sampler.sample()
+
         if self.epoch % 5 == 2:
             logger.info('recompute dist for classes')
             self.get_classes()
@@ -429,13 +587,20 @@ class PseudoSamplerIV(Sampler):
 
 
 class PseudoSamplerV(Sampler):
-    def __init__(self, num_classes, num_samples):
+    def __init__(self, num_classes, num_samples, batch_sampler=None):
         # kNN
         logger.info("Pseudo sampler V - num_classes anchors, num_samples closest")
         self.feature_dict = None
         self.bs = num_classes * num_samples
         self.num_classes = num_classes
         self.num_samples = num_samples
+
+        if batch_sampler == 'NumberSampler':
+            self.sampler = NumberSampler(num_classes, num_samples)
+        elif batch_sampler == 'BatchSizeSampler':
+            self.sampler = BatchSizeSampler()
+        else:
+            self.sampler = None
 
     def get_distances(self):
         # generate distance mat for all classes as in Hierachrical Triplet Loss
@@ -457,7 +622,11 @@ class PseudoSamplerV(Sampler):
 
     
     def __iter__(self):
-        if self.epoch % 5 == 2:
+        if self.sampler:
+            self.num_classes, self.num_samples = self.sampler.sample()
+
+        #if self.epoch % 5 == 2:
+        if self.epoch % 1 == 0 or self.epoch % 5 == 2:
             logger.info("recompute dist")
             self.get_distances()
 
@@ -473,13 +642,130 @@ class PseudoSamplerV(Sampler):
             batches += random.choices(batches, k=n)
         assert len(batches)%self.num_classes == 0
 
-        random.shufle(batches)
+        random.shuffle(batches)
         self.flat_list = [s for batch in batches for s in batch]
         logger.info("Samples to be processed {}".format(len(self.flat_list)))
         return (iter(self.flat_list))
 
     def __len__(self):
         return len(self.flat_list)
+
+
+class PseudoSamplerVI(Sampler):
+    def __init__(self, num_classes=6, num_samples=9, nb_clusters=None, batch_sampler=None):
+        logger.info("Pseudo sampler VI - closest kmeans")
+        self.feature_dict = None
+        self.bs = num_classes * num_samples
+        self.num_classes = 6
+        self.num_samples = 9
+        self.epoch = 0
+        self.nb_clusters = nb_clusters
+
+        if batch_sampler == 'NumberSampler':
+            self.sampler = NumberSampler(num_classes, num_samples)
+        elif batch_sampler == 'BatchSizeSampler':
+            self.sampler = BatchSizeSampler()
+        else:
+            self.sampler = None
+
+    def get_dist(self, x, y):
+        m, n = x.size(0), y.size(0)
+        x = x.view(m, -1)
+        y = y.view(n, -1)
+        dist = torch.pow(x, 2).sum(dim=1, keepdim=True).expand(m, n) + \
+               torch.pow(y, 2).sum(dim=1, keepdim=True).expand(n, m).t()
+
+        dist.addmm_(1, -2, x, y.t())
+        sorted_dist = np.argsort(dist.cpu().numpy(), axis=1)
+        return sorted_dist
+
+    def get_classes(self):
+        feats = list()
+        indices = list()
+        dists = list()
+        self.feature_dict = defaultdict(dict)
+        for i in range(len(self.indices)):
+            self.feature_dict[self.cluster[i]][self.indices[i]] = self.x[i]
+        
+        for k in self.feature_dict.keys():
+            #print(self.feature_dict[k])
+            feats.append([f.cpu() for f in self.feature_dict[k].values()])
+            indices.append(list(self.feature_dict[k].keys()))
+            x = torch.cat([f.unsqueeze(0) for f in self.feature_dict[k].values()], 0)
+            y = torch.cat([f.unsqueeze(0) for f in self.feature_dict[k].values()], 0)
+            dists.append(self.get_dist(x, y))
+
+        self.feats = feats
+        self.indices = indices
+        self.dists = dists
+
+
+    def get_clusters(self):
+        logger.info(self.nb_clusters)
+        # generate distance mat for all classes as in Hierachrical Triplet Loss
+        if type(self.feature_dict[list(self.feature_dict.keys())[0]]) == dict:
+            self.x = torch.cat([f.unsqueeze(0).cpu() for k in self.feature_dict.keys() for f in self.feature_dict[k].values()], 0)
+            self.indices = [ind for k in self.feature_dict.keys() for ind in self.feature_dict[k].keys()]
+        else:
+            self.x = torch.cat([f.unsqueeze(0).cpu() for f in self.feature_dict.values()], 0)
+            self.indices = [k for k in self.feature_dict.keys()]
+        logger.info("Kmeans")
+        self.cluster = sklearn.cluster.KMeans(self.nb_clusters).fit(self.x).labels_
+        #logger.info('spectral')
+        #self.cluster = sklearn.cluster.SpectralClustering(self.nb_clusters, assign_labels="discretize", random_state=0).fit(x).labels_
+        #self.nb_clusters = 900
+        #logger.info('ward')
+        #self.cluster = sklearn.cluster.AgglomerativeClustering(n_clusters=self.nb_clusters).fit(x).labels_
+        #logger.info('DBSCAN')
+        #eps = 0.9
+        #min_samples = 5
+        #logger.info("Eps {}, min samples {}".format(eps, min_samples))
+        #self.cluster = sklearn.cluster.DBSCAN(eps=eps, min_samples=min_samples).fit(x).labels_
+        #logger.info("Optics")
+        #eps = 0.7
+        #min_samples = 5
+        #logger.info("Eps {}, min samples {}".format(eps, min_samples))
+        #self.cluster = sklearn.cluster.OPTICS(min_samples=min_samples, eps=eps).fit(x).labels_
+        #logger.info("Birch")
+        #self.cluster = sklearn.cluster.Birch(n_clusters=self.nb_clusters).fit(x).labels_
+
+    def __iter__(self):
+        if self.sampler:
+            self.num_classes, self.num_samples = self.sampler.sample()
+
+        if self.epoch % 5 == 2:
+            logger.info('recompute clusters and dist in classes')
+            self.get_clusters()
+            self.get_classes()
+
+        batches = list()
+        for ind, dist in zip(self.indices, self.dists):
+            for i in range(len(ind)):
+                #closest
+                if len(ind) >= self.num_samples:
+                    batches.append([ind[dist[i][j]] for j in range(self.num_samples)])
+                else:
+                    batches.append(ind + random.choices(ind, k=self.num_samples-len(ind)))
+                #farthest away
+                #batch = [ind[dist[i][0]]]
+                #[batch.append(ind[dist[i][j]]) for j in range(len(ind) - 1, len(ind) - self.num_samples, -1)]
+                #batches.append(batch)
+
+        logger.info("Number of anchors {}".format(len(batches)))
+
+        if len(batches)%self.num_classes != 0:
+            n = (len(batches)//self.num_classes)*self.num_classes + self.num_classes - len(batches)
+            logger.info("Add {} anchors".format(n))
+            batches += random.choices(batches, k=n)
+        assert len(batches)%self.num_classes == 0
+
+        random.shuffle(batches)
+        self.flat_list = [item for anchor in batches for item in anchor]
+        logger.info("Samples to be processed".format(len(self.flat_list)))
+        return (iter(self.flat_list))
+    
+    def __len__(self):
+        return len(self.falt_list)
 
 
 
