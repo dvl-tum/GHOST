@@ -1,4 +1,4 @@
-mode: "pseudo" #train/test/hyper_search/pretraining
+mode: "pseudo_hyper_search" #train/test/hyper_search/pretraining
 application: "DML"
 
 models:
