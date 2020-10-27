@@ -1,9 +1,9 @@
-mode: "pseudo" #train/test/hyper_search/pretraining
+mode: "pesudo_hyper_search" #train/test/hyper_search/pretraining
 application: "DML"
 
 models:
   encoder_params:
-    pretrained_path: "no" #"0.8937908496732027neck_resnet50_cars.pth" #"pretrained/0.835444594760792neck_resnet50_cars.pth" #"pretrained/0.8101094576312876neck_resnet50_cars.pth" #"pretrained_gnn/0.9390158582089553neck_resnet50_cars.pth" 
+    pretrained_path: "no" #"0.8266303675287712resnet50_cars.pth" #"0.8324929282991022resnet50_cars.pth" #"0.8937908496732027neck_resnet50_cars.pth" #"pretrained/0.835444594760792neck_resnet50_cars.pth" #"pretrained/0.8101094576312876neck_resnet50_cars.pth" #"pretrained_gnn/0.9390158582089553neck_resnet50_cars.pth" 
     net_type: "resnet50"
     neck: 0
     red: 4
@@ -12,16 +12,16 @@ models:
     stoch_depth: 1 #0.8
     weight_norm: 0
     bn_inception:
-      embed: 0
+      embed: 1
       sz_embedding: 512
 
   gnn_params:
-    pretrained_path: "no" #"0.8937908496732027gnn_neck_resnet50_cars.pth" #"pretrained_gnn/0.9390158582089553gnn_neck_resnet50_cars.pth" 
+    pretrained_path: "no" #"0.8266303675287712gnn_resnet50_cars.pth" #"0.8324929282991022gnn_resnet50_cars.pth" #"0.8937908496732027gnn_neck_resnet50_cars.pth" #"pretrained_gnn/0.9390158582089553gnn_neck_resnet50_cars.pth" 
     use_edge_encoder: 0
     use_edge_model: 0
     use_node_encoder: 0
     red: 1
-    cat: 1
+    cat: 0
     every: 0
     gnn:
       num_layers: 2 #2 #2 #1 #2
@@ -67,6 +67,7 @@ dataset:
   number_aug: 2
   magnitude: 27
   sampling: "no"
+  bssampling: "no"
   val: 0
   nb_workers: 4
 
@@ -90,8 +91,8 @@ train_params:
     scaling_of_pre: 1
     scaling_distill: 1
     soft_temp: 10
-    preds: "results/0.9390158582089553_cars_1601197472.0445573/preds.json" #"results/0.949393656716418_cars_1601195553.3563294/preds.json" #"results/0.9390158582089553_cars_1601197472.0445573/preds.json"
-    feats: "results/0.9390158582089553_cars_1601197472.0445573/feats.json" #"results/0.949393656716418_cars_1601195553.3563294/feats.json" #"results/0.9390158582089553_cars_1601197472.0445573/feats.json"
+    preds: "results/0.8266303675287712_cars_1603570836.727446/preds.json" #"results/0.8324929282991022_cars_1603089151.0771358/preds.json" #"results/0.9390158582089553_cars_1601197472.0445573/preds.json" #"results/0.949393656716418_cars_1601195553.3563294/preds.json" #"results/0.9390158582089553_cars_1601197472.0445573/preds.json"
+    feats: "results/0.8266303675287712_cars_1603570836.727446/feats.json" #"results/0.8324929282991022_cars_1603089151.0771358/feats.json" #"results/0.9390158582089553_cars_1601197472.0445573/feats.json" #"results/0.949393656716418_cars_1601195553.3563294/feats.json" #"results/0.9390158582089553_cars_1601197472.0445573/feats.json"
 
 eval_params:
   re_rank: 0
@@ -100,4 +101,4 @@ eval_params:
   k2: 6
   output_test_enc: "plain"
   output_test_gnn: "plain"
-  cat: 1
+  cat: 0

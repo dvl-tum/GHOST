@@ -3,16 +3,16 @@ application: "DML"
 
 models:
   encoder_params:
-    pretrained_path: "no"  
+    pretrained_path: "no" #"0.7881073062183211bn_inception_cars.pth"  
     net_type: "bn_inception"
-    neck: 1
+    neck: 0
     red: 4
     last_stride: 0
     final_drop: 0 #0.5
     stoch_depth: 1 #0.8
     weight_norm: 0
     bn_inception:
-      embed: 0
+      embed: 1
       sz_embedding: 512
 
   gnn_params:
@@ -28,12 +28,12 @@ models:
       aggregator: "add"
       num_heads: 4 
       attention: "dot" #"dot_pygeo"
-      mlp: 0
+      mlp: 1
       dropout_mlp: 0.1
       norm1: 1
-      norm2: 0
+      norm2: 1
       res1: 1
-      res2: 0
+      res2: 1
       dropout_1: 0.1
       dropout_2: 0.1
     edge:
@@ -67,21 +67,22 @@ dataset:
   number_aug: 2
   magnitude: 27
   sampling: "no"
+  bssampling: "no" #"NumberSampler"
   val: 0
   nb_workers: 4
 
 train_params:
-  num_classes_iter: 12 
-  num_elements_class: 7 
-  lr: 0.001 #9.448566599801139e-05 
-  weight_decay: 0 #2.3714181045620526e-15 
-  num_epochs: 10 #70
+  num_classes_iter: 12 #7 #9 #7 #12 
+  num_elements_class: 7 #3 #6 #3 #7 
+  lr: 9.448566599801139e-05 #8.350394685224997e-05 #0.00029602854558490103 #8.350394685224997e-05 #9.448566599801139e-05 
+  weight_decay: 2.3714181045620526e-15 #4.2748353951568737e-13 #3.273246176537603e-13 #4.2748353951568737e-13 #2.3714181045620526e-15 
+  num_epochs: 70
   is_apex: 0
-  temperatur: 0.2
-  output_train_gnn: "norm"
-  output_train_enc: "norm"
+  temperatur: 0.2 #0.10975992604003759 #0.40945460508090836 #0.10975992604003759 #0.2
+  output_train_gnn: "plain"
+  output_train_enc: "plain"
   loss_fn:
-    fns: "lsce" #"lsce_lsgnn" #ce/focalce can be used instead of lsce and lsgnn/focalgnn instead of gnn, rest can be added by ce_gnn_center...
+    fns: "lsgnn_lsce" #"lsce_lsgnn" #ce/focalce can be used instead of lsce and lsgnn/focalgnn instead of gnn, rest can be added by ce_gnn_center...
     scaling_ce: 1
     scaling_gnn: 1
     scaling_center: 0.5
@@ -90,14 +91,14 @@ train_params:
     scaling_of_pre: 1
     scaling_distill: 1
     soft_temp: 10
-    preds: "results/0.9390158582089553_cars_1601197472.0445573/preds.json" #"results/0.949393656716418_cars_1601195553.3563294/preds.json" #"results/0.9390158582089553_cars_1601197472.0445573/preds.json"
-    feats: "results/0.9390158582089553_cars_1601197472.0445573/feats.json" #"results/0.949393656716418_cars_1601195553.3563294/feats.json" #"results/0.9390158582089553_cars_1601197472.0445573/feats.json"
+    preds: "results/0.7881073062183211_cars_1603527223.9040046/preds.json" #"results/0.9390158582089553_cars_1601197472.0445573/preds.json" #"results/0.949393656716418_cars_1601195553.3563294/preds.json" #"results/0.9390158582089553_cars_1601197472.0445573/preds.json"
+    feats: "results/0.7881073062183211_cars_1603527223.9040046/feats.json" #"results/0.9390158582089553_cars_1601197472.0445573/feats.json" #"results/0.949393656716418_cars_1601195553.3563294/feats.json" #"results/0.9390158582089553_cars_1601197472.0445573/feats.json"
 
 eval_params:
   re_rank: 0
   lamb: 0.3
   k1: 20
   k2: 6
-  output_test_enc: "norm"
-  output_test_gnn: "norm"
+  output_test_enc: "plain"
+  output_test_gnn: "plain"
   cat: 0

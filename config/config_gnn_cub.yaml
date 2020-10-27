@@ -3,9 +3,9 @@ application: "DML"
 
 models:
   encoder_params:
-    pretrained_path: "no" #"0.6044902093180283neck_resnet50_cub.pth" #"0.8342911877394636neck_resnet50_cub.pth" #"pretrained/0.6215395003376097neck_resnet50_cub.pth" #"pretrained/0.5403443619176233neck_resnet50_cub.pth" #"0.5383187035786631neck_resnet50_cub.pth" #"pretrained/0.5183997299122215neck_resnet50_cub.pth" #"0.8532544378698225neck_resnet50_cub.pth" #"0.5183997299122215neck_resnet50_cub.pth" #"0.5146860229574611neck_resnet50_cub.pth" #"0.5183997299122215neck_resnet50_cub.pth" 
+    pretrained_path: "no" #"0.575793382849426resnet50_cub.pth" #"0.6355503038487509resnet50_cub.pth" #"0.6522619851451722resnet50_cub.pth" #"0.6580013504388926resnet50_cub.pth" #"0.5958811613774476resnet50_cub.pth" #"0.6465226198514518resnet50_cub.pth" #"0.6568197164078325resnet50_cub.pth" #"0.6044902093180283neck_resnet50_cub.pth" #"0.8342911877394636neck_resnet50_cub.pth" #"pretrained/0.6215395003376097neck_resnet50_cub.pth" #"pretrained/0.5403443619176233neck_resnet50_cub.pth" #"0.5383187035786631neck_resnet50_cub.pth" #"pretrained/0.5183997299122215neck_resnet50_cub.pth" #"0.8532544378698225neck_resnet50_cub.pth" #"0.5183997299122215neck_resnet50_cub.pth" #"0.5146860229574611neck_resnet50_cub.pth" #"0.5183997299122215neck_resnet50_cub.pth" 
     net_type: "resnet50"
-    neck: 0
+    neck: 0 #1
     red: 4
     last_stride: 0
     final_drop: 0 #0.5
@@ -16,7 +16,7 @@ models:
       sz_embedding: 512
 
   gnn_params:
-    pretrained_path: "no" #"0.6044902093180283gnn_neck_resnet50_cub.pth" #"0.8342911877394636gnn_neck_resnet50_cub.pth" #"0.7921455938697318gnn_neck_resnet50_cub.pth" #"0.9857227840571089gnn_neck_resnet50_Market.pth"
+    pretrained_path: "no" #"0.6568197164078325gnn_resnet50_cub.pth" #"0.6044902093180283gnn_neck_resnet50_cub.pth" #"0.8342911877394636gnn_neck_resnet50_cub.pth" #"0.7921455938697318gnn_neck_resnet50_cub.pth" #"0.9857227840571089gnn_neck_resnet50_Market.pth"
     use_edge_encoder: 0
     use_edge_model: 0
     use_node_encoder: 0
@@ -66,20 +66,21 @@ dataset:
   number_aug: 2
   magnitude: 27
   trans: "GL_orig_RE"
-  sampling: "no"
+  sampling: "no" #"8closest" #"kmeans" #"8closestClass" #"8closestClass"
+  bssampling: "no" #"BatchSizeSampler" #"NumberSampler" #"BatchSizeSampler"
   val: 0
   nb_workers: 4
 
 train_params:
-  num_classes_iter: 6 #70 #93 #49 #16 #77 #6 #13 #4 #11 #7 #6 #4 #5 #6
+  num_classes_iter: 24 #6 #6 #70 #93 #49 #16 #77 #6 #13 #4 #11 #7 #6 #4 #5 #6
   num_elements_class: 9 #5 #6 #3 #6 #4 #9 #4 #10 #4 #4 #9 #10 #4 #9
   lr: 0.0001563663718906821 #6.672588679081452e-05 #0.00020339694922318633 #0.0003748794338638487 #3.086144407593132e-05 #3.713929187265863e-06 #0.0001563663718906821 #0.0007233037750317697 #4.556233790187342e-06 #0.000125659279744098246 #2.3563343509425235e-05 #0.0001563663718906821 #4.556233790187342e-06 #1.5555986096652693e-05 #0.0001563663718906821
   weight_decay: 6.059722614369727e-06 #4.034721886446752e-15 #1.540877591169665e-09 #3.6969091409165646e-09 #3.2589175436736478e-12 #6.639399829512107e-11 #6.059722614369727e-06 #3.282279592881143e-13 #2.4790123787229617e-08 #1.2388341865788295e-07 #4.877694174178942e-10 #6.059722614369727e-06 #2.4790123787229617e-08 #3.558002740229624e-07 #6.059722614369727e-0##6
-  num_epochs: 70
+  num_epochs: 50
   is_apex: 0
-  temperatur: 0.2 #0.2 #0.6968750970069256 #0.4377229208978527 #0.3394695255047063 #0.39180769763315104 #0.44216974710821155 #0.2 
-  output_train_enc: "plain"
-  output_train_gnn: "plain"
+  temperatur: 0.1111111111111111 #0.2 #0.6968750970069256 #0.4377229208978527 #0.3394695255047063 #0.39180769763315104 #0.44216974710821155 #0.2 
+  output_train_enc: "plain" #"plain"
+  output_train_gnn: "plain" #"plain"
   loss_fn:
     fns: "lsgnn_lsce" #ce/focalce can be used instead of lsce and lsgnn/focalgnn instead of gnn, rest can be added by ce_gnn_center...
     scaling_ce: 1
@@ -90,8 +91,8 @@ train_params:
     scaling_of_pre: 1
     scaling_distill: 1
     soft_temp: 1
-    feats: "results/0.8532544378698225_cub_1601148947.5862918/feats.json"
-    preds: "results/0.8532544378698225_cub_1601148947.5862918/preds.json"
+    feats: "results/0.575793382849426_cub_1603720735.984556/feats.json" #"results/0.6355503038487509_cub_1603720317.1169167/feats.json" #"results/0.6522619851451722_cub_1603694398.8692238/feats.json" #"results/0.6580013504388926_cub_1603694513.557752/feats.json" # "results/0.5958811613774476_cub_1603544327.0474813/feats.json" #"results/0.6465226198514518_cub_1603526145.4713461/feats.json" #"results/0.6568197164078325_cub_1603382799.7607217/feats.json" #"results/0.6433153274814315_cub_1603171188.2557971/feats.json"
+    preds: "results/0.575793382849426_cub_1603720735.984556/preds.json" #"results/0.6355503038487509_cub_1603720317.1169167/preds.json" #"results/0.6522619851451722_cub_1603694398.8692238/preds.json" #"results/0.6580013504388926_cub_1603694513.557752/preds.json" #"results/0.5958811613774476_cub_1603544327.0474813/preds.json" #"results/0.6465226198514518_cub_1603526145.4713461/preds.json" #"results/0.6568197164078325_cub_1603382799.7607217/preds.json" #"results/0.6433153274814315_cub_1603171188.2557971/preds.json"
 
 eval_params:
   cat: 1
