@@ -433,7 +433,7 @@ class Trainer():
             # compute MSE loss with feature vectors from gnn
             if self.of_pre:
                 target = torch.stack([torch.tensor(self.feat_targets[p]) for p in P]).cuda(self.gnn_dev)
-                of_pre = self.of_pre(student_feats, target)
+                of_pre = self.of_pre(fc7, target)
                 loss += train_params['loss_fn']['scaling_of_pre'] * of_pre
                 self.losses['OF Pretrained'].append(of_pre.item())
 
@@ -759,12 +759,19 @@ class Trainer():
             self.config['train_params']['num_epochs'] += 30
 
     def sample_hypers(self):
+        print("-------------------Hardcoded batchsize in line 769!-------------------")
+        bs = 200
+        num_classes_iter = random.randint(6, 40)
+        num_elements_class = int(bs // num_classes_iter)
         config = {'lr': 10 ** random.uniform(-8, -2),
-                  'weight_decay': 10 ** random.uniform(-15, -6),
-                  'num_classes_iter': random.randint(6, 13), #100
-                  'num_elements_class': random.randint(3, 7),
-                  'temperatur': random.random(),
-                  'num_epochs': 5}
+                'num_classes_iter': num_classes_iter,
+                'num_elements_class': num_elements_class,
+                'num_epochs': 20} #,
+        #          'weight_decay': 10 ** random.uniform(-15, -6),
+        #          'num_classes_iter': random.randint(6, 13), #100
+        #          'num_elements_class': random.randint(3, 7),
+        #          'temperatur': random.random(),
+        #          'num_epochs': 5}
         #config['temperatur'] = 1
         self.config['train_params'].update(config)
         

@@ -16,8 +16,9 @@ def load_net(dataset, nb_classes, mode, net_type, bn_inception={'embed': 0, 'sz_
 
         if bn_inception['embed']:
             model = net.Inception_embed(model, 1024, bn_inception['sz_embedding'], num_classes=nb_classes)
-            if not mode  == 'pretraining':
-                model.load_state_dict(torch.load(os.path.join('net', 'finetuned_cub_embedded_512_10_.pth')))
+            sz_embed = bn_inception['sz_embedding']
+            #if not mode  == 'pretraining':
+            #    model.load_state_dict(torch.load(os.path.join('net', 'finetuned_cub_embedded_512_10_.pth')))
 
     elif net_type == 'resnet18':
         sz_embed = 512

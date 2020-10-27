@@ -70,6 +70,11 @@ def make_transform_GL_orig(sz_resize = 256, sz_crop = 227, mean = [104, 117, 128
 
     resnet_sz_resize = 256
     resnet_sz_crop = 227
+    
+    #print("Proxy size")
+    #resnet_sz_resize = 288
+    #resnet_sz_crop = 256
+
     resnet_mean = [0.485, 0.456, 0.406]
     resnet_std = [0.229, 0.224, 0.225]
     resnet_transform = transforms.Compose([
@@ -111,14 +116,16 @@ class RGBToBGR():
 
 def GL_orig_RE(sz_crop=[384, 128], mean=[0.485, 0.456, 0.406],
                        std=[0.299, 0.224, 0.225], is_train=True, net_type='resnet50'):
-    if is_train:
-        sz_crop = 256
-    else:
-        sz_resize = 288
-        sz_crop = 256
-    #sz_resize = 256
-    #sz_crop = 227
+    #print("Resize Proxy")
+    #if is_train:
+    #    sz_crop = 256
+    #else:
+    #    sz_resize = 288
+    #    sz_crop = 256
     
+    sz_resize = 256
+    sz_crop = 227
+    # transforms.RandomResizedCrop(sz_crop), 
     normalize_transform = transforms.Normalize(mean=mean, std=std)
     if is_train:
         transform = transforms.Compose([

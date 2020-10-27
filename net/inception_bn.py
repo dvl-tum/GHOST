@@ -551,9 +551,15 @@ class BNInception(nn.Module):
             128, eps=1e-05, momentum=0.9, affine=True
         )
         self.inception_5b_relu_pool_proj = nn.ReLU(inplace)
-        self.global_pool = nn.AvgPool2d (
+        print("Global Avg Pool")
+        self.add_pool = nn.AvgPool2d (
             7, stride=1, padding=0, ceil_mode=True, count_include_pad=True
         )
+        #print("Global Max Pool")
+        #self.max_pool = nn.AvgMax2d (
+        #    7, stride=1, padding=0, ceil_mode=True, count_include_pad=True
+        #)
+
         self.last_linear = nn.Linear(1024, nb_classes)
 
     def features(self, input):
@@ -1298,7 +1304,7 @@ class BNInception(nn.Module):
         # return inception_5b_output_out, inception_4e_output_out, inception_3c_output_out
 
     def logits(self, features):
-        x = self.global_pool(features)
+        x = self.add_pool(features)
         fc7 = x.view(x.size(0), -1)
         x = self.last_linear(fc7)
         return x, fc7
@@ -1307,10 +1313,10 @@ class BNInception(nn.Module):
         x_h = self.features(input)
         x_h, fc7_h = self.logits(x_h)
 
-        if output_option == 'norm':
-            return x_h, fc7_h, None
-        elif output_option == 'plain':
-            return x_h, F.normalize(fc7_h, p=2, dim=1), None
+        #if output_option == 'norm':
+        #    return x_h, fc7_h, None
+        #elif output_option == 'plain':
+        #    return x_h, F.normalize(fc7_h, p=2, dim=1), None
 
         return x_h, fc7_h, None
 
@@ -1335,11 +1341,17 @@ class Inception_embed(nn.Module):
         self.embed = nn.Linear(inception_features_size, embed_features_size)
         self.fc = nn.Linear(embed_features_size, num_classes)
 
-    def forward(self, input):
-        x, fc7 = self.inception(input)
+    def forward(self, input, output_option='norm', val=False):
+        x, fc7, _ = self.inception(input)
         embedding_features = self.embed(fc7)
         x = self.fc(embedding_features)
-        return x, embedding_features
+        
+        if output_option == 'norm':
+            return x, embedding_features, None
+        elif output_option == 'plain':
+            return x, F.normalize(embedding_features, p=2, dim=1), None
+
+        return x, embedding_features, None
 
 
 
