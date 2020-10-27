@@ -35,23 +35,23 @@ def create_loaders(data_root, num_workers, size_batch, num_classes_iter=None,
     elif os.path.basename(data_root) == 'In_shop':
         with open(os.path.join(data_root, "query.txt"), "r") as f:
             query_paths = f.readlines()
-        query_paths = [d.strip("\n") for d in query_paths]
+        query = [d.strip("\n") for d in query_paths]
         with open(os.path.join(data_root, "gallery.txt"), "r") as f:
             gallery_paths = f.readlines()
-        gallery_paths = [d.strip("\n") for d in gallery_paths]
+        gallery = [d.strip("\n") for d in gallery_paths]
         with open(os.path.join(data_root, "train.txt"), "r") as f:
             paths = f.readlines()
         paths = [d.strip("\n") for d in paths]
 
         with open(os.path.join(data_root, "query_labs.txt"), "r") as f:
             query_labs = f.readlines()
-        query_labs = [d.strip("\n") for d in query_labs]
+        query_labs = [int(d.strip("\n")) for d in query_labs]
         with open(os.path.join(data_root, "gallery_labs.txt"), "r") as f:
             gallery_labs = f.readlines()
-        gallery_labs = [d.strip("\n") for d in gallery_labs]
+        gallery_labs = [int(d.strip("\n")) for d in gallery_labs]
         with open(os.path.join(data_root, "train_labs.txt"), "r") as f:
             labels = f.readlines()
-        labels = [d.strip("\n") for d in labels]
+        labels = [int(d.strip("\n")) for d in labels]
 
         labels_ev = query_labs + gallery_labs
 
@@ -285,7 +285,7 @@ def create_loaders(data_root, num_workers, size_batch, num_classes_iter=None,
         else:
             class_end = 2 * num_classes
 
-        labels = labels_ev if labels_ev is not None else list(range(num_classes, class_end))
+        labels_ev = labels_ev if labels_ev is not None else list(range(num_classes, class_end))
 
         dataset_ev = dataset.Birds_DML(
             root=data_root,
@@ -540,7 +540,7 @@ def create_loaders(data_root, num_workers, size_batch, num_classes_iter=None,
         )
 
         dl_ev_gnn = None
-
+    
     return dl_tr, dl_ev, query, gallery, dl_ev_gnn
 
 

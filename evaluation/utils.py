@@ -105,8 +105,10 @@ class Evaluator_DML():
                 fc7s.append(fc7.cpu())
                 L.append(Y)
                 paths.append(P)
-        fc7, Y, paths = torch.cat(fc7s), torch.cat(L), torch.cat(paths)
-        return torch.squeeze(fc7), torch.squeeze(Y), torch.squeeze(paths)
+        
+        fc7, Y = torch.cat(fc7s), torch.cat(L)
+        paths = [p for pa in paths for p in pa]
+        return torch.squeeze(fc7), torch.squeeze(Y), paths
 
     def predict_batchwise_gnn(self, model, gnn, graph_generator, dataloader):
         logger.info("Evaluate gnn")
@@ -137,7 +139,7 @@ class Evaluator_DML():
                 fc7s.append(fc7.cpu())
                 L.append(Y)
                 paths.append(P)
-        fc7, Y, paths = torch.cat(fc7s), torch.cat(L), torch.cat(paths)
+        fc7, Y = torch.cat(fc7s), torch.cat(L)
         
         # Evaliation after ResNet
         if self.dataroot != 'sop':
@@ -151,7 +153,7 @@ class Evaluator_DML():
             r_at_k = calc_recall_at_k(ys, y, 1)
             logger.info("R@{} after ResNet50: {:.3f}".format(1, 100 * r_at_k))
 
-        return torch.squeeze(fc7), torch.squeeze(Y), torch.squeeze(paths)
+        return torch.squeeze(fc7), torch.squeeze(Y), paths
 
     def predict_batchwise_pseudo_rand(self, model, gnn, graph_generator, dataloader, dl_ev_gnn):
         fc7s, L, paths = [], [], []
@@ -170,9 +172,9 @@ class Evaluator_DML():
                 fc7s.append(fc7.cpu())
                 L.append(Y)
                 paths.append(P)
-        fc7, Y, paths = torch.cat(fc7s), torch.cat(L), torch.cat(paths)
+        fc7, Y = torch.cat(fc7s), torch.cat(L)
 
-        return torch.squeeze(fc7), torch.squeeze(Y), torch.squeeze(paths)
+        return torch.squeeze(fc7), torch.squeeze(Y), paths
     
     def predict_batchwise_pseudo(self, model, gnn, graph_generator, dataloader,
                                  dl_ev_gnn):
@@ -248,8 +250,8 @@ class Evaluator_DML():
 
         fc7 = torch.cat([v.unsqueeze(dim=0).cpu() for v in features_new.values()])
         Y = torch.cat([v.unsqueeze(dim=0).cpu() for v in labels_new.values()])
-        paths = torch.cat([k for k in labels_new.keys()])
-        return torch.squeeze(fc7), torch.squeeze(Y), torch.squeeze(paths)
+        paths = [k for k in labels_new.keys()]
+        return torch.squeeze(fc7), torch.squeeze(Y), paths
     
     def predict_batchwise_knn(self, model, gnn, graph_generator,
             dataloader, dl_ev_gnn):
@@ -344,7 +346,7 @@ class Evaluator_DML():
         if dl_ev_gnn.sampler.__class__.__name__ == 'PseudoSamplerV' or dl_ev_gnn.sampler.__class__.__name__ == 'PseudoSamplerIV' or dl_ev_gnn.sampler.__class__.__name__ == 'PseudoSamplerVI':
             features_new = torch.cat([v.unsqueeze(dim=0).cpu() for v in features_new.values()]).squeeze()
             labels_new = torch.cat([v.unsqueeze(dim=0).cpu() for v in labels_new.values()]).squeeze()
-            paths = torch.cat([k for k in labels_new.keys()])
+            paths = [k for k in labels_new.keys()]
         
         return features_new, labels_new, paths
     

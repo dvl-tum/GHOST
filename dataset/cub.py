@@ -233,6 +233,10 @@ class Birds_DML(torch.utils.data.Dataset):
         self.labels_train = labels_train
         self.net_type = net_type
         self.ys, self.im_paths = [], []
+        if os.path.basename(root) == 'In_shop':
+            self.map = dict()
+            j = 0
+
         for i in torchvision.datasets.ImageFolder(
                 root=os.path.join(root, 'images')
         ).imgs:
@@ -241,6 +245,11 @@ class Birds_DML(torch.utils.data.Dataset):
             # fn needed for removing non-images starting with `._`
             fn = os.path.split(i[0])[1]
             if y in self.labels and fn[:2] != '._':
+                if os.path.basename(root) == 'In_shop':
+                    if y not in self.map.keys():
+                        self.map[y] = j
+                        j += 1
+                    y = self.map[y]
                 self.ys += [y]
                 self.im_paths.append(i[0])
 
