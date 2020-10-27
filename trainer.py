@@ -771,7 +771,7 @@ class Trainer():
         config = {'lr': 10 ** random.uniform(-8, -2),
                 'num_classes_iter': num_classes_iter,
                 'num_elements_class': num_elements_class,
-                'num_epochs': 20} #,
+                'num_epochs': 50} #,
         #          'weight_decay': 10 ** random.uniform(-15, -6),
         #          'num_classes_iter': random.randint(6, 13), #100
         #          'num_elements_class': random.randint(3, 7),
