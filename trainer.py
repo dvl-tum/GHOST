@@ -203,15 +203,20 @@ class Trainer():
                 logger.info(
                     'Epoch {}/{}'.format(e, train_params['num_epochs']))
                 logger.info("No reduction of learning rate")
-                if e == 131:
+                if e == 31:
                     print("reduces Learning rate")
                     self.encoder.load_state_dict(torch.load(
                         osp.join(self.save_folder_nets, self.fn + '.pth')))
+                    self.gnn.load_state_dict(orch.load(osp.join(self.save_folder_nets,
+                        'gnn_' + self.fn + '.pth')))
                     for g in self.opt.param_groups:
                         g['lr'] = train_params['lr'] / 10.
 
-                if e == 161:
+                if e == 41:
                     print("reduces Learning rate")
+                    self.gnn.load_state_dict(orch.load(osp.join(self.save_folder_nets,
+                        'gnn_' + self.fn + '.pth')))
+
                     self.encoder.load_state_dict(torch.load(
                         osp.join(self.save_folder_nets, self.fn + '.pth')))
                     for g in self.opt.param_groups:
