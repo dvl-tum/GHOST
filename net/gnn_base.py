@@ -269,8 +269,8 @@ class DotAttentionLayer(nn.Module):
         return custom_forward
     
     def forward(self, feats, egde_index, edge_attr):
-        #feats2  = self.att(feats, egde_index, edge_attr)
-        feats2 = checkpoint.checkpoint(self.custom(), feats, egde_index, edge_attr, preserve_rng_state=True)
+        feats2  = self.att(feats, egde_index, edge_attr)
+        #feats2 = checkpoint.checkpoint(self.custom(), feats, egde_index, edge_attr, preserve_rng_state=True)
 
         feats2 = self.dropout1(feats2)
         feats = feats + feats2 if self.res1 else feats2
