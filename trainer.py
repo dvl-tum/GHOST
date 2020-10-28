@@ -207,14 +207,14 @@ class Trainer():
                     print("reduces Learning rate")
                     self.encoder.load_state_dict(torch.load(
                         osp.join(self.save_folder_nets, self.fn + '.pth')))
-                    self.gnn.load_state_dict(orch.load(osp.join(self.save_folder_nets,
+                    self.gnn.load_state_dict(torch.load(osp.join(self.save_folder_nets,
                         'gnn_' + self.fn + '.pth')))
                     for g in self.opt.param_groups:
                         g['lr'] = train_params['lr'] / 10.
 
                 if e == 41:
                     print("reduces Learning rate")
-                    self.gnn.load_state_dict(orch.load(osp.join(self.save_folder_nets,
+                    self.gnn.load_state_dict(torch.load(osp.join(self.save_folder_nets,
                         'gnn_' + self.fn + '.pth')))
 
                     self.encoder.load_state_dict(torch.load(
