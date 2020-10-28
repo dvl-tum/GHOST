@@ -310,17 +310,17 @@ class ResNet(nn.Module):
         x = self.relu(x)
         x = self.maxpool(x)
         
-        #x = self.layer1(x, val)
-        x = checkpoint.checkpoint(self.layer1, x, val)
+        x = self.layer1(x, val)
+        #x = checkpoint.checkpoint(self.layer1, x, val)
         
-        #x = self.layer2(x, val)
-        x = checkpoint.checkpoint(self.layer2, x, val)
+        x = self.layer2(x, val)
+        #x = checkpoint.checkpoint(self.layer2, x, val)
         
-        #x = self.layer3(x, val)
-        x = checkpoint.checkpoint(self.layer3, x, val)
+        x = self.layer3(x, val)
+        #x = checkpoint.checkpoint(self.layer3, x, val)
         
-        #x = self.layer4(x, val)
-        x = checkpoint.checkpoint(self.layer4, x, val)
+        x = self.layer4(x, val)
+        #x = checkpoint.checkpoint(self.layer4, x, val)
         
         #x = self.layer5(x, val)
         #x = checkpoint.checkpoint(self.layer5, x, val)
