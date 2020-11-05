@@ -244,7 +244,9 @@ class Trainer():
                         or (self.distance_sampling == '8closest' and e == 1) \
                         or (self.distance_sampling == '8closestClass' and e == 1) \
                         or (self.distance_sampling == 'kmeans' and e == 1) \
-                        or (self.distance_sampling == 'kmeansClosest' and e == 1):
+                        or (self.distance_sampling == 'kmeansClosest' and e == 1) \
+                        or (self.distance_sampling == 'knn' and e == 1) \
+                        or (self.distance_sampling == 'reciprocal' and e == 1):
                     model_is_training = self.encoder.training
                     gnn_is_training = self.gnn.training
                     self.encoder.eval()
@@ -331,7 +333,9 @@ class Trainer():
                         or (self.distance_sampling == 'pre_soft' and e == 1) \
                         or (self.distance_sampling == '8closest' and e == 1) \
                         or (self.distance_sampling == 'kmeans' and e == 1) \
-                        or (self.distance_sampling == 'kmeansClosest' and e == 1):
+                        or (self.distance_sampling == 'kmeansClosest' and e == 1) \
+                        or (self.distance_sampling == 'knn' and e == 1) \
+                        or (self.distance_sampling == 'reciprocal' and e == 1):
                     self.encoder.train(model_is_training)
                     self.gnn.train(gnn_is_training)
                 best_accuracy, best_loss = self.evaluate(eval_params, scores, e, sum(self.losses['Total Loss'])/len(self.losses['Total Loss']) if len(self.losses['Total Loss'])>0 else 10,
@@ -357,7 +361,7 @@ class Trainer():
             self.opt_center.zero_grad()
         probs, fc7, student_feats = self.encoder(x.cuda(self.device),
                                   output_option=train_params['output_train_enc'])
-
+        
         #print(torch.max(torch.nn.functional.softmax(probs, dim=1), dim=1), torch.argmax(torch.nn.functional.softmax(probs, dim=1), dim=1), Y)
         #quit()
         # Add feature vectors to dict if distance sampling
@@ -594,7 +598,9 @@ class Trainer():
                         self.distance_sampling == '8closest' and e > 1) or (
                                 self.distance_sampling == '8closestClass' and e > 1) or (
                                         self.distance_sampling == 'kmeans' and e > 1) or (
-                                                self.distance_sampling == 'kmeansClosest' and e > 1):
+                                                self.distance_sampling == 'kmeansClosest' and e > 1) or (
+                                                        self.distance_sampling == 'knn' and e > 1) or (
+                                                    self.distance_sampling == 'reciprocal' and e > 1):
             self.dl_tr = self.dl_tr2
             self.dl_ev = self.dl_ev2
             self.gallery = self.gallery2
@@ -608,7 +614,9 @@ class Trainer():
                         self.distance_sampling == '8closest' and e == 1) or (
                                 self.distance_sampling == '8closestClass' and e == 1) or (
                                         self.distance_sampling == 'kmeans' and e == 1) or (
-                                                self.distance_sampling == 'kmeansClosest' and e == 1):
+                                                self.distance_sampling == 'kmeansClosest' and e == 1) or (
+                                                    self.distance_sampling == 'knn' and e == 1) or (
+                                                    self.distance_sampling == 'reciprocal' and e == 1):
             self.dl_tr = self.dl_tr1
             self.dl_ev = self.dl_ev1
             self.gallery = self.gallery1

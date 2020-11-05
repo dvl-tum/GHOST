@@ -6,7 +6,7 @@ from combine_sampler import CombineSampler, CombineSamplerNoise, \
     CombineSamplerSuperclass, CombineSamplerSuperclass2, PretraingSampler, \
     DistanceSampler, DistanceSamplerMean, DistanceSamplerOrig, TrainTestCombi, \
     PseudoSampler, PseudoSamplerII, PseudoSamplerIII, PseudoSamplerIV, \
-    PseudoSamplerV, PseudoSamplerVI
+    PseudoSamplerV, PseudoSamplerVI, PseudoSamplerVII,PseudoSamplerVIII
 import numpy as np
 import os
 import matplotlib.pyplot as plt
@@ -19,7 +19,7 @@ logger = logging.getLogger('GNNReID.DataUtility')
 def create_loaders(data_root, num_workers, size_batch, num_classes_iter=None,
                    num_elements_class=None, pretraining=False,
                    input_size=[384, 128], mode='single', trans='norm',
-                   distance_sampler='only', val=0, m=100, seed=0, magnitude=15,
+                   distance_sampler='only', val=0, m=40, seed=0, magnitude=15,
                    number_aug=0, num_classes=None, net_type='resnet50',
                    nb_clusters=None,
                    bssampling=None):
@@ -175,7 +175,7 @@ def create_loaders(data_root, num_workers, size_batch, num_classes_iter=None,
     elif distance_sampler == 'pre' or distance_sampler == 'pre_soft' or distance_sampler == 'only' or distance_sampler == 'alternating':
         print(distance_sampler)
         sampler = DistanceSampler(num_classes_iter, num_elements_class, ddict,
-                                  distance_sampler, m)
+                                  distance_sampler, m, batch_sampler=bssampling)
         drop_last = True
     elif distance_sampler == '8closest':
         sampler = PseudoSamplerV(num_classes_iter, num_elements_class,
@@ -198,6 +198,14 @@ def create_loaders(data_root, num_workers, size_batch, num_classes_iter=None,
         logger.info("NB clusters for training".format(nb_clusters))
         sampler = PseudoSamplerVI(num_classes_iter, num_elements_class,
                                   nb_clusters, batch_sampler=bssampling)
+        drop_last = True
+    elif distance_sampler == 'knn':
+        logger.info("Knn Graph")
+        sampler = PseudoSampler(num_classes_iter, num_elements_class, batch_sampler=bssampling)
+        drop_last = True
+    elif distance_sampler == 'reciprocal':
+        logger.info("reciprocal knn Graph")
+        sampler = PseudoSamplerVIII(num_classes_iter, num_elements_class, batch_sampler=bssampling)
         drop_last = True
     else:
         sampler = CombineSampler(list_of_indices_for_each_class,
@@ -351,7 +359,7 @@ def create_loaders(data_root, num_workers, size_batch, num_classes_iter=None,
 
         # sampler = CombineSampler(list_of_indices_for_each_class,
         #                        num_classes_iter, num_elements_class)
-        sampler = PseudoSamplerIII(num_classes_iter, num_elements_class)
+        sampler = PseudoSamplerVIII(num_classes_iter, num_elements_class)
         print("evl")
         # sampler = DistanceSampler(num_classes_iter, num_elements_class,
         #                              ddict, distance_sampler, 1)
@@ -360,7 +368,7 @@ def create_loaders(data_root, num_workers, size_batch, num_classes_iter=None,
         print("batch size {}".format(size_batch))
         dl_ev_gnn = torch.utils.data.DataLoader(
             dataset_ev,
-            batch_size=size_batch,
+            batch_size=7, #size_batch,
             shuffle=False,
             sampler=sampler,
             num_workers=1,
