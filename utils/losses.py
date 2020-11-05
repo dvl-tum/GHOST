@@ -46,6 +46,31 @@ class KLDivWithLogSM(torch.nn.Module):
         return loss
 
 
+class DistanceLoss(torch.nn.Module):
+    def __init__(self):
+        super(DistanceLoss, self).__init__()
+        #self.l2_teacher = torch.nn.MSELoss(reduce=False)
+        #self.l2_student = torch.nn.MSELoss(reduce=False)
+        #print('mean') 
+        self.l2_teacher = torch.nn.SmoothL1Loss(reduce=False)
+        self.l2_student = torch.nn.SmoothL1Loss(reduce=False)
+
+    def forward(self, teacher, student):
+        num_samps = teacher.shape[0]
+        i1 = torch.tensor([i for i in range(num_samps) for j in range(num_samps)]).cuda(student.get_device())
+        i2 = torch.tensor([j for i in range(num_samps) for j in range(num_samps)]).cuda(student.get_device())
+
+        teacher_l2s = torch.sum(self.l2_teacher(teacher.index_select(0, i1), teacher.index_select(0, i2)), dim=1)
+        teacher_l2s = teacher_l2s/teacher_l2s.mean()
+        #print(teacher_l2s.cpu().tolist()[:num_samps])
+        student_l2s = torch.sum(self.l2_student(student.index_select(0, i1), student.index_select(0, i2)), dim=1)
+        student_l2s = student_l2s/student_l2s.mean()
+        #print(student_l2s.cpu().tolist()[:num_samps])
+        #quit()
+        return torch.sum(torch.abs(teacher_l2s - student_l2s))
+        
+
+
 # cross entropy and center loss
 class CrossEntropyLabelSmooth(torch.nn.Module):
     """Cross entropy loss with label smoothing regularizer.
@@ -121,7 +146,7 @@ class CenterLoss(torch.nn.Module):
         feat_dim (int): feature dimension.
     """
 
-    def __init__(self, num_classes=751, feat_dim=2048, use_gpu=True):
+    def __init__(self, num_classes=751, feat_dim=512, use_gpu=True):
         super(CenterLoss, self).__init__()
         self.num_classes = num_classes
         self.feat_dim = feat_dim

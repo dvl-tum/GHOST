@@ -309,7 +309,7 @@ class Trainer():
                         if self.center:
                             for param in self.center.parameters():
                                 param.grad.data *= (
-                                        1. / self.args.scaling_center)
+                                        1. / self.config['train_params']['loss_fn']['scaling_center'])
                             self.opt_center.step()
 
                 # Set model to training mode again, if first epoch and only
@@ -439,8 +439,16 @@ class Trainer():
             if self.of_pre:
                 target = torch.stack([torch.tensor(self.feat_targets[p]) for p in P]).cuda(self.gnn_dev)
                 of_pre = self.of_pre(fc7, target)
+
                 loss += train_params['loss_fn']['scaling_of_pre'] * of_pre
                 self.losses['OF Pretrained'].append(of_pre.item())
+
+            if self.distance:
+                teacher = torch.stack([torch.tensor(self.feat_targets[p]) for p in P]).cuda(self.gnn_dev)
+                dist = self.distance(teacher, fc7)
+
+                loss += train_params['loss_fn']['scaling_distance'] * dist
+                self.losses['Distance'].append(dist.item())
 
             self.losses['Total Loss'].append(loss.item())
 
@@ -705,7 +713,7 @@ class Trainer():
         if 'center' in params['fns'].split('_'):
             self.center = losses.CenterLoss(num_classes=num_classes).cuda(self.gnn_dev)
             self.opt_center = torch.optim.SGD(self.center.parameters(),
-                                              lr=self.args.center_lr)
+                                              lr=0.5)
         else:
             self.center = None
 
@@ -735,11 +743,20 @@ class Trainer():
 
         if 'ofpre' in params['fns'].split('_'):
             #self.of_pre = nn.MSELoss().to(self.device)
-            self.of_pre = nn.L1Loss().cuda(self.gnn_dev)
+            #self.of_pre = nn.L1Loss().cuda(self.gnn_dev)
+            print("Huber")
+            self.of_pre = nn.SmoothL1Loss().cuda(self.gnn_dev)
             with open(params['feats'], 'r') as f:
                 self.feat_targets = json.load(f)
         else:
             self.of_pre = None
+
+        if 'distance' in params['fns'].split('_'):
+            self.distance = losses.DistanceLoss().cuda(self.gnn_dev)
+            with open(params['feats'], 'r') as f:
+                self.feat_targets = json.load(f)
+        else:
+            self.distance = None
 
     def get_save_name(self):
         if self.config['mode'] == 'pretraining':
