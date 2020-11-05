@@ -38,7 +38,7 @@ class Evaluator_DML():
         if not gnn:
             X, T, P = self.predict_batchwise(model, dataloader, net_type)
         elif dl_ev_gnn is not None:
-            if dl_ev_gnn.sampler.__class__.__name__ == 'PseudoSampler' or dl_ev_gnn.sampler.__class__.__name__ == 'PseudoSamplerV' or dl_ev_gnn.sampler.__class__.__name__ == 'PseudoSamplerIV' or dl_ev_gnn.sampler.__class__.__name__ == 'PseudoSamplerVI':
+            if dl_ev_gnn.sampler.__class__.__name__ == 'PseudoSampler' or dl_ev_gnn.sampler.__class__.__name__ == 'PseudoSamplerV' or dl_ev_gnn.sampler.__class__.__name__ == 'PseudoSamplerIV' or dl_ev_gnn.sampler.__class__.__name__ == 'PseudoSamplerVI' or dl_ev_gnn.sampler.__class__.__name__ == 'PseudoSamplerVII' or dl_ev_gnn.sampler.__class__.__name__ == 'PseudoSamplerVIII':
                 gnn_is_training = gnn.training
                 gnn.eval()
                 logger.info("Evaluate KNN evaluate")
@@ -98,48 +98,61 @@ class Evaluator_DML():
     def predict_batchwise(self, model, dataloader, net_type):
         logger.info("Evaluate normal")
         fc7s, L, paths = [], [], []
+        feature_dict, ys = dict(), dict()
         with torch.no_grad():
-            for X, Y, _, P in dataloader:
+            for X, Y, I, P in dataloader:
                 if torch.cuda.is_available(): X = X.cuda(self.dev)
                 _, fc7, _ = model(X, output_option=self.output_test_enc, val=True)
                 fc7s.append(fc7.cpu())
                 L.append(Y)
                 paths.append(P)
-        
-        fc7, Y = torch.cat(fc7s), torch.cat(L)
-        paths = [p for pa in paths for p in pa]
+                for path, out, y, i in zip(P, fc7, Y, I):
+                    feature_dict[i.data.item()] = out
+                    ys[i.data.item()] = y
+        #fc7, Y = torch.cat(fc7s), torch.cat(L)
+
+        fc7 = torch.cat([f.unsqueeze(0).cpu() for f in feature_dict.values()], 0)
+        Y = torch.cat([y.unsqueeze(0).cpu() for y in ys.values()], 0)
+
+        print(fc7.shape, Y.shape)
         return torch.squeeze(fc7), torch.squeeze(Y), paths
 
     def predict_batchwise_gnn(self, model, gnn, graph_generator, dataloader):
         logger.info("Evaluate gnn")
         fc7s, L, paths = [], [], []
-        feature_dict = dict()
-        ys = dict()
+        feature_dict, feature_dict2 = dict(), dict()
+        ys, ys2 = dict(), dict()
         with torch.no_grad():
             for X, Y, I, P in dataloader:
                 if torch.cuda.is_available(): X = X.cuda(self.dev)
                 _, fc7, _ = model(X, output_option=self.output_test_enc,
                                   val=True)  ##### Actually _, fc7, _ CHECK THIS
                 for path, out, y, i in zip(P, fc7, Y, I):
-                    feature_dict[i] = out
-                    ys[i] = y
+                    feature_dict[i.data.item()] = out
+                    ys[i.data.item()] = y
 
                 edge_attr, edge_index, fc7 = graph_generator.get_graph(fc7)
                 fc7 = fc7.cuda(self.gnn_dev)
                 edge_attr = edge_attr.cuda(self.gnn_dev)
                 edge_index = edge_index.cuda(self.gnn_dev) 
-                _, fc7 = gnn(fc7, edge_index, edge_attr,
+                _, fc7, _ = gnn(fc7, edge_index, edge_attr,
                              output_option=self.output_test_gnn)
                 
                 if self.cat:
                     fc7 = torch.cat(fc7, dim=1)
                 else:
                     fc7 = fc7[-1]
-
+                
                 fc7s.append(fc7.cpu())
                 L.append(Y)
                 paths.append(P)
-        fc7, Y = torch.cat(fc7s), torch.cat(L)
+                for path, out, y, i in zip(P, fc7, Y, I):
+                    feature_dict2[i.data.item()] = out
+                    ys2[i.data.item()] = y
+        #fc7, Y = torch.cat(fc7s), torch.cat(L)
+
+        fc7 = torch.cat([f.unsqueeze(0).cpu() for f in feature_dict2.values()], 0)
+        Y = torch.cat([y.unsqueeze(0).cpu() for y in ys2.values()], 0)
         
         # Evaliation after ResNet
         if self.dataroot != 'sop':
@@ -152,14 +165,15 @@ class Evaluator_DML():
             y, ys = assign_by_euclidian_at_k(x, ys, 1)
             r_at_k = calc_recall_at_k(ys, y, 1)
             logger.info("R@{} after ResNet50: {:.3f}".format(1, 100 * r_at_k))
-
+        print(fc7.shape, Y.shape)
         return torch.squeeze(fc7), torch.squeeze(Y), paths
 
     def predict_batchwise_pseudo_rand(self, model, gnn, graph_generator, dataloader, dl_ev_gnn):
         fc7s, L, paths = [], [], []
+        feature_dict, ys = dict(), dict()
         logger.info("Evaluate Rand Pseudo")
         with torch.no_grad():
-            for X, Y, _, P in dataloader:
+            for X, Y, I, P in dataloader:
                 if torch.cuda.is_available(): X = X.cuda(self.dev)
                 _, fc7, _ = model(X, output_option=self.output_test_enc,
                                   val=True)  ##### Actually _, fc7, _ CHECK THIS
@@ -167,13 +181,19 @@ class Evaluator_DML():
                 fc7 = fc7.cuda(self.gnn_dev)
                 edge_attr = edge_attr.cuda(self.gnn_dev)
                 edge_index = edge_index.cuda(self.gnn_dev)
-                _, fc7 = gnn(fc7, edge_index, edge_attr,
+                _, fc7, _ = gnn(fc7, edge_index, edge_attr,
                              output_option=self.output_test_gnn)
                 fc7s.append(fc7.cpu())
                 L.append(Y)
                 paths.append(P)
-        fc7, Y = torch.cat(fc7s), torch.cat(L)
-
+                for path, out, y, i in zip(P, fc7, Y, I):
+                    feature_dict[i.data.item()] = out
+                    ys[i.data.item()] = y
+        #fc7, Y = torch.cat(fc7s), torch.cat(L)
+        
+        fc7 = torch.cat([f.unsqueeze(0).cpu() for f in feature_dict.values()], 0)
+        Y = torch.cat([y.unsqueeze(0).cpu() for y in ys.values()], 0)
+        print(fc7.shape, Y.shape)
         return torch.squeeze(fc7), torch.squeeze(Y), paths
     
     def predict_batchwise_pseudo(self, model, gnn, graph_generator, dataloader,
@@ -183,6 +203,7 @@ class Evaluator_DML():
         preds = dict()
         features = dict()
         labels = dict()
+        labels2 = dict()
         feature_dict = dict()
         features_dict = dict()
         ys = dict()
@@ -192,11 +213,12 @@ class Evaluator_DML():
                 pred, fc7, _ = model(X, output_option=self.output_test_enc,
                                      val=True)
                 for path, out, y, p, i in zip(P, fc7, Y, pred, I):
-                    feature_dict[i] = out
+                    feature_dict[i.data.item()] = out
+                    labels2[i.data.item()] = y.data.item()
                     features[path] = out
                     preds[path] = torch.argmax(p).detach()
                     labels[path] = y
-                    ys[i] = y
+                    ys[i.data.item()] = y
                 for y, f, i in zip(Y, fc7, I):
                     new_ind = y.data.item()-100
                     if new_ind in features_dict.keys():
@@ -210,7 +232,7 @@ class Evaluator_DML():
         if self.dataroot != 'sop':
             x = torch.cat([f.unsqueeze(0).cpu() for f in feature_dict.values()], 0)
             ys = torch.cat([y.unsqueeze(0).cpu() for y in ys.values()], 0)
-
+            print(x.shape, ys.shape)
             logger.info("Compute KMeans for nb classes {}".format(self.nb_classes))
             cluster = sklearn.cluster.KMeans(self.nb_classes).fit(x).labels_
             NMI = sklearn.metrics.cluster.normalized_mutual_info_score(cluster, ys)
@@ -226,6 +248,7 @@ class Evaluator_DML():
         # Update after feature dict for sampling
         dl_ev_gnn.sampler.feature_dict = feature_dict
         dl_ev_gnn.sampler.nb_clusters = self.nb_clusters
+        dl_ev_gnn.sampler.labels = labels2
         logger.info(dl_ev_gnn.sampler.nb_clusters)
         #dl_ev_gnn.sampler.feature_dict = features_dict
 
@@ -238,7 +261,7 @@ class Evaluator_DML():
                 fc7 = fc7.cuda(self.gnn_dev)
                 edge_attr = edge_attr.cuda(self.gnn_dev)
                 edge_index = edge_index.cuda(self.gnn_dev)
-                _, fc7 = gnn(fc7, edge_index, edge_attr,
+                _, fc7, _ = gnn(fc7, edge_index, edge_attr,
                              output_option=self.output_test_gnn)
                 if self.cat:
                     fc7 = torch.cat(fc7, dim=1)
@@ -247,9 +270,12 @@ class Evaluator_DML():
                 for path, out, y, i in zip(P, fc7, Y, I):
                     features_new[path] = out
                     labels_new[path] = labels[path]
-
-        fc7 = torch.cat([v.unsqueeze(dim=0).cpu() for v in features_new.values()])
-        Y = torch.cat([v.unsqueeze(dim=0).cpu() for v in labels_new.values()])
+        
+        fc7 = torch.cat([f.unsqueeze(0).cpu() for f in features_new.values()], 0)
+        Y = torch.cat([y.unsqueeze(0).cpu() for y in labels_new.values()], 0)
+        print(fc7.shape, Y.shape)
+        #fc7 = torch.cat([v.unsqueeze(dim=0).cpu() for v in features_new.values()])
+        #Y = torch.cat([v.unsqueeze(dim=0).cpu() for v in labels_new.values()])
         paths = [k for k in labels_new.keys()]
         return torch.squeeze(fc7), torch.squeeze(Y), paths
     
@@ -260,6 +286,7 @@ class Evaluator_DML():
         preds = dict()
         features = dict()
         labels = dict()
+        labels2 = dict()
         feature_dict = dict()
         features_dict = dict()
         ys = dict()
@@ -271,9 +298,10 @@ class Evaluator_DML():
                 for path, out, y, p, i in zip(P, fc7, Y, pred, I):
                     features[path] = out
                     feature_dict[i.item()] = out
+                    labels2[i.data.item()] = y.data.item()
                     preds[path] = torch.argmax(p).detach()
                     labels[path] = y #.data.item()
-                    ys[i] = y
+                    ys[i.data.item()] = y
                 for y, f, i in zip(Y, fc7, I):
                     if y.data.item() in features_dict.keys():
                         features_dict[y.data.item()][i.item()] = f.cpu()
@@ -281,7 +309,7 @@ class Evaluator_DML():
                         features_dict[y.data.item()] = {i.item(): f.cpu()}
         #print(features_dict)
         # Evaliation after ResNet
-        
+         
         if self.dataroot != 'sop':
             x = torch.cat([f.unsqueeze(0).cpu() for f in feature_dict.values()], 0)
             ys = torch.cat([y.unsqueeze(0).cpu() for y in ys.values()], 0)
@@ -299,19 +327,23 @@ class Evaluator_DML():
         
         # Update after feature dict for sampling
         dl_ev_gnn.sampler.feature_dict = feature_dict
-        if dl_ev_gnn.sampler.__class__.__name__ == 'PseudoSampler':
+        dl_ev_gnn.sampler.labels = labels2
+        if dl_ev_gnn.sampler.__class__.__name__ == 'PseudoSampler' or dl_ev_gnn.sampler.__class__.__name__ == 'PseudoSamplerVIII':
             features_new = defaultdict(dict)
             labels_new = defaultdict(dict)
+            features_new = dict()
+            labels_new = dict()
         else:
             features_new = dict()
             labels_new = dict()
             if dl_ev_gnn.sampler.__class__.__name__ == 'PseudoSamplerIV':
                 dl_ev_gnn.sampler.feature_dict = features_dict
-            if dl_ev_gnn.sampler.__class__.__name__ == 'PseudoSamplerVI':
+            if dl_ev_gnn.sampler.__class__.__name__ == 'PseudoSamplerVI' or dl_ev_gnn.sampler.__class__.__name__ == 'PseudoSamplerVII':
                 dl_ev_gnn.sampler.nb_clusters = self.nb_clusters
                 logger.info(dl_ev_gnn.sampler.nb_clusters)
                  
         with torch.no_grad():
+            k = 1
             for X, Y, I, P in dl_ev_gnn:
                 if torch.cuda.is_available(): X = X.cuda()
                 fc7 = torch.stack([features[p] for p in P])
@@ -319,7 +351,7 @@ class Evaluator_DML():
                 fc7 = fc7.cuda(self.gnn_dev)
                 edge_attr = edge_attr.cuda(self.gnn_dev)
                 edge_index = edge_index.cuda(self.gnn_dev)
-                _, fc7 = gnn(fc7, edge_index, edge_attr,
+                _, fc7, Y = gnn(fc7, edge_index, edge_attr,
                              output_option=self.output_test_gnn)
                 #features_new[P[-1]][P[-2]] = {P[-1]: fc7[-1], P[-2]: fc7[-2]}
                 
@@ -329,25 +361,41 @@ class Evaluator_DML():
                     fc7 = fc7[-1]
                 
                 if dl_ev_gnn.sampler.__class__.__name__ == 'PseudoSampler':
+                    
+                    labels_new[P[0]] = labels[P[0]]
+                    features_new[P[0]] = fc7[0]
+                    paths = None
+                    '''
                     p_0 = P[0]
                     out_0 = fc7[0]
-                    label_0 = Y[0]
+                    label_0 = Y[0].data.item()
                     for p, out, y in zip(P, fc7, Y):
                         features_new[p_0][p] = (out_0 @ out_0 + out @ out - 2 * (out_0 @ out)).detach()
-                        labels_new[p_0][p] = y
-                
+                        labels_new[p_0][p] = y.data.item()
+                    features_new[p_0]["feats"] = out_0
+                    '''
+                    paths = None
+                    #print(len(labels_new), len(features_new))
+                elif dl_ev_gnn.sampler.__class__.__name__ == 'PseudoSamplerVII':
+                    for i in range(len(P)):
+                        labels_new[P[i]]= labels[P[i]]
+                        features_new[P[i]]= fc7[i]
                 else:
-                    anchors = [i for i in range(dl_ev_gnn.sampler.bs) if i%dl_ev_gnn.sampler.num_classes == 0]
+                    anchors = [i for i in range(dl_ev_gnn.sampler.bs) if i%dl_ev_gnn.sampler.num_samples == 0]
+                    #print(anchors, len(dl_ev_gnn), len(features_new), k)
+                    k += 1 
                     for i in anchors:
                         labels_new[P[i]]= labels[P[i]]
                         features_new[P[i]]= fc7[i]
                     paths = None
-
-        if dl_ev_gnn.sampler.__class__.__name__ == 'PseudoSamplerV' or dl_ev_gnn.sampler.__class__.__name__ == 'PseudoSamplerIV' or dl_ev_gnn.sampler.__class__.__name__ == 'PseudoSamplerVI':
+        print(len(features_new))
+        print(len(sorted(list(features_new.keys()))))
+        if dl_ev_gnn.sampler.__class__.__name__ == 'PseudoSamplerV' or dl_ev_gnn.sampler.__class__.__name__ == 'PseudoSamplerIV' or dl_ev_gnn.sampler.__class__.__name__ == 'PseudoSamplerVI' or dl_ev_gnn.sampler.__class__.__name__ == 'PseudoSamplerVII' or dl_ev_gnn.sampler.__class__.__name__ == 'PseudoSampler' or dl_ev_gnn.sampler.__class__.__name__ == 'PseudoSamplerVIII':
             features_new = torch.cat([v.unsqueeze(dim=0).cpu() for v in features_new.values()]).squeeze()
-            labels_new = torch.cat([v.unsqueeze(dim=0).cpu() for v in labels_new.values()]).squeeze()
             paths = [k for k in labels_new.keys()]
-        
+            labels_new = torch.cat([v.unsqueeze(dim=0).cpu() for v in labels_new.values()]).squeeze()
+            print("Shape")
+            print(features_new.shape, labels_new.shape)
         return features_new, labels_new, paths
     
     def predict_batchwise_traintest(self, model, gnn, graph_generator,
@@ -371,7 +419,7 @@ class Evaluator_DML():
                 fc7 = fc7.cuda(self.gnn_dev)
                 edge_attr = edge_attr.cuda(self.gnn_dev)
                 edge_index = edge_index.cuda(self.gnn_dev)
-                _, fc7 = gnn(fc7, edge_index, edge_attr,
+                _, fc7, _ = gnn(fc7, edge_index, edge_attr,
                              output_option=self.output_test_gnn)
                 #features_new[P[-1]][P[-2]] = {P[-1]: fc7[-1], P[-2]: fc7[-2]}
                 features_new[P[-1]][P[-2]] = (fc7[-1] @ fc7[-1] + fc7[-2] @ fc7[-2] - 2 * (fc7[-1] @ fc7[-2])).detach()

@@ -20,7 +20,7 @@ def assign_by_euclidian_at_k(X, T, k, P=None, query=None, gallery=None):
 
         distances.addmm_(1, -2, x, y.t())
 
-    elif type(X) != dict:
+    elif X.__class__.__name__ != 'defaultdict':
         print("HERE")
         distances = sklearn.metrics.pairwise.pairwise_distances(X)
     else:
