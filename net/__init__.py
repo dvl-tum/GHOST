@@ -8,3 +8,4 @@ from .load_trained_net import load_net
 from .gnn_base import GNNReID
 from .graph_generator import GraphGenerator
 from .encoder import TransformerEncoder
+from .proxy_generator import ProxyGen

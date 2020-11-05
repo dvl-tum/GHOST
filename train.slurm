@@ -2,8 +2,8 @@
 #SBATCH --job-name=GL
 #SBATCH --nodes=1
 #SBATCH --gres=gpu:1
+#SBATCH --exclude=node11,node12,node9,node7,node13
 #SBATCH --cpus-per-gpu=3
-#SBATCH --exclude=node11,node12,node9,node7,node1
 #SBATCH --mem=128G
 #SBATCH --time=120:00:00
 

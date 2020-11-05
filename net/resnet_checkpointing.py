@@ -336,14 +336,15 @@ class ResNet(nn.Module):
 
         # student
         #feats = self.linear2(self.dropout(self.activation(self.linear1(fc7))))
-        #feats_after = self.final_drop(feats_after)
         feats = fc7
 
         if self.neck:
             feats_after = self.bottleneck(feats)
         else:
             feats_after = feats
- 
+
+        feats_after = self.final_drop(feats_after)
+
         x = self.fc(feats_after)
         
         if output_option == 'norm':

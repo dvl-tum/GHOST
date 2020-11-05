@@ -51,13 +51,20 @@ class Trainer():
         #self.num_iter = 26
         #num_classes = [50, 100, 150, 200, 250, 300, 350, 400, 450, 500, 550, 600, 650, 700, 750, 800, 850, 900, 950, 1000] #[10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120, 130, 140, 150, 160, 170, 180, 190, 200]
         #num_samples = [2, 4, 6, 8, 2, 4, 6, 8, 2, 4, 6, 8, 2, 4, 6, 8, 2, 4, 6, 8, 2, 4, 6, 8, 2, 4, 6, 8, 2, 4, 6, 8, 2, 4, 6, 8, 2, 4, 6, 8]
-        #num_layers = list(range(1, 14))
+        #self.num_iter = 8
+        #num_layers = list(range(1, 8))
+        #num_iter = 14
+        #times = list(range(2, 29, 2))
+        #self.num_iter = 10
+        #num_samples_class = list(range(1, 11))
         for i in range(self.num_iter):
             #print("Iter {}/{}".format(i+1, self.num_iter))
             #self.config['models']['gnn_params']['gnn']['num_layers'] = num_layers[i]
             #self.nb_clusters = num_classes[i]
             self.nb_clusters = self.config['train_params']['num_classes_iter']
-            #self.nb_clusters = 900
+            #self.config['train_params']['num_elements_class'] = num_samples_class[i]
+            #self.config['train_params']['num_classes_iter'] = self.config['train_params']['num_classes_iter'] * times[i]
+            self.nb_clusters = 900
             #self.config['train_params']['num_elements_class'] = num_samples[i]
             logger.info('Search iteration {}'.format(i + 1))
             mode = self.get_save_name()
@@ -70,6 +77,19 @@ class Trainer():
                 self.config['dataset']['num_classes'],
                 self.config['mode'],
                 **self.config['models']['encoder_params'])
+            
+            # Freeze BN layers
+            print('No freeze')
+            '''print("freeze")
+            for module in encoder.modules():
+                # print(module)
+                if isinstance(module, nn.BatchNorm2d):
+                    if hasattr(module, 'weight'):
+                        module.weight.requires_grad_(False)
+                    if hasattr(module, 'bias'):
+                        module.bias.requires_grad_(False)
+                    module.eval()
+            '''
             self.device = 0
             self.encoder = encoder.cuda(self.device) #to(self.device) 
             if torch.cuda.device_count() > 1:
@@ -79,8 +99,7 @@ class Trainer():
             print(self.device, self.gnn_dev)
             # 1 == dev
             self.gnn = net.GNNReID(self.gnn_dev, self.config['models']['gnn_params'], sz_embed).cuda(self.gnn_dev) #to(self.device)
-            if self.config['models']['gnn_params']['pretrained_path'] != "no":
-                
+            if self.config['models']['gnn_params']['pretrained_path'] != "no": 
                 load_dict = torch.load(self.config['models']['gnn_params']['pretrained_path'], map_location='cpu')
                 '''
                 load_dict_new = dict()
@@ -159,7 +178,8 @@ class Trainer():
             #quit()
             if torch.cuda.device_count() > 1:
                 gpus = list(range(torch.cuda.device_count()))
-                gpus.remove(self.gnn_dev)
+                #gpus.remove(self.gnn_dev)
+                print(gpus)
                 self.encoder = nn.DataParallel(self.encoder, device_ids=gpus)
                 #self.encoder = nn.DataParallel(self.encoder)
                 #self.gnn = nn.DataParallel(self.gnn)
@@ -215,7 +235,7 @@ class Trainer():
             else:
                 logger.info(
                     'Epoch {}/{}'.format(e, train_params['num_epochs']))
-                logger.info("No reduction of learning rate")
+                #logger.info("No reduction of learning rate")
                 if e == 31:
                     print("reduces Learning rate")
                     self.encoder.load_state_dict(torch.load(
@@ -225,7 +245,7 @@ class Trainer():
                     for g in self.opt.param_groups:
                         g['lr'] = train_params['lr'] / 10.
 
-                if e == 41:
+                if e == 51:
                     print("reduces Learning rate")
                     self.gnn.load_state_dict(torch.load(osp.join(self.save_folder_nets,
                         'gnn_' + self.fn + '.pth')))
@@ -501,14 +521,14 @@ class Trainer():
                             dataroot=self.config['dataset']['dataset_short'], 
                             nb_classes=self.config['dataset']['num_classes'])
                 else:
-                    if self.dataset_short != 'sop':
+                    '''if self.dataset_short != 'sop':
                         logger.info('Train Dataset')
                         mAP_train, top_train = self.evaluator.evaluate(self.encoder, self.dl_tr,
                                     self.query, self.gallery, self.gnn, self.graph_generator, 
                                     dl_ev_gnn=None, net_type=self.net_type,
                                     dataroot=self.config['dataset']['dataset_short'],
                                     nb_classes=self.config['dataset']['num_classes'])
-                    
+                    '''
                     logger.info('Test Dataset')
                     mAP, top = self.evaluator.evaluate(self.encoder, self.dl_ev,
                             self.query, self.gallery, self.gnn, self.graph_generator, 
@@ -553,9 +573,13 @@ class Trainer():
                 else:
                     scores.append((mAP, top))
                     eval_met = top[0]
+                    #eval_met = top_train[0]
 
                 self.encoder.current_epoch = e
+                #print("Just after last epoc")
+                #eval_met = 2*e
                 if eval_met > best_accuracy:
+                    #print(eval_met)
                     best_accuracy = eval_met
                     #if loss < best_loss:
                     #logger.info("Loss {}, best Loss {}, Epoch {}".format(loss, best_loss, e))
@@ -805,42 +829,16 @@ class Trainer():
             self.config['train_params']['num_epochs'] = 1
 
         if self.config['dataset']['sampling'] != 'no':
-            self.config['train_params']['num_epochs'] += 30
+            self.config['train_params']['num_epochs'] += 10
 
     def sample_hypers(self):
-        print("-------------------Hardcoded batchsize in line 769!-------------------")
-        bs = 200
-        num_classes_iter = random.randint(6, 40)
-        num_elements_class = int(bs // num_classes_iter)
         config = {'lr': 10 ** random.uniform(-8, -2),
-                'num_classes_iter': num_classes_iter,
-                'num_elements_class': num_elements_class,
-                'num_epochs': 50} #,
-        #          'weight_decay': 10 ** random.uniform(-15, -6),
-        #          'num_classes_iter': random.randint(6, 13), #100
-        #          'num_elements_class': random.randint(3, 7),
-        #          'temperatur': random.random(),
-        #          'num_epochs': 5}
-        #config['temperatur'] = 1
+                  'weight_decay': 10 ** random.uniform(-15, -6),
+                  'num_classes_iter': random.randint(6, 13), #100
+                  'num_elements_class': random.randint(3, 7),
+                  'temperatur': random.random(),
+                  'num_epochs': 40}
         self.config['train_params'].update(config)
-        
-        """
-        self.config['train_params']['loss_fn']['soft_temp'] = config['temperatur']
-        self.config['train_params']['loss_fn']['scaling_of_pre'] = random.random()*5
-        self.config['train_params']['loss_fn']['scaling_distill'] = random.random()*5
-        """
-        #config = {'num_layers': random.randint(1, 8),
-        #          'num_heads': random.choice([1, 2, 4, 8, 16])}
-        #self.config['models']['gnn_params']['gnn'].update(config)
-        
-        '''logger.info("Additional augmentation hyper search")
-        config = {'final_drop': random.random(),
-                  'stoch_depth': random.random()}
-        self.config['models']['encoder_params'].update(config)
-        
-        config = {'magnitude': random.randint(0, 30), 
-                  'number_aug': random.randint(0, 14)}
-        self.config['dataset'].update(config)'''
 
         logger.info("Updated Hyperparameters:")
         logger.info(self.config)
