@@ -1,4 +1,4 @@
-mode: "pesudo_hyper_search" #train/test/hyper_search/pretraining
+mode: "pseudo" #train/test/hyper_search/pretraining
 application: "DML"
 
 models:
@@ -23,8 +23,9 @@ models:
     red: 1
     cat: 0
     every: 0
+    proxies: 0
     gnn:
-      num_layers: 2 #2 #2 #1 #2
+      num_layers: 1 #2 #2 #1 #2
       aggregator: "add"
       num_heads: 4 #2 #2 #2 #2
       attention: "dot" #"dot_pygeo"
@@ -36,6 +37,7 @@ models:
       res2: 1
       dropout_1: 0.1
       dropout_2: 0.1
+      mult_attr: 0
     edge:
       fc_dims: [2048]
       dropout_p: 0.4
@@ -63,22 +65,23 @@ dataset:
   dataset_path: "../../datasets/CARS"
   dataset_short: "cars"
   num_classes: 98
-  trans: "GL_orig_RE"
+  trans: "GLorig" #"GL_orig_RE"
   number_aug: 2
   magnitude: 27
   sampling: "no"
-  bssampling: "no"
+  bssampling: "NumerSampler"
   val: 0
   nb_workers: 4
 
 train_params:
   num_classes_iter: 12 #70 #32 #70 #12 #4 #12 #9 #4 #6 #4 #5 #6 #5
   num_elements_class: 7 #5 #5 #5 #7 #8 #8 #4 #5 #8 #10 #7 #4 #7
+  proxy_lr: 9.448566599801139e-04
   lr: 9.448566599801139e-05 #1.376644731109111e-05 #6.672588679081452e-05 #9.448566599801139e-05 #0.0004871615200618273 #4.5222376053155144e-07 #0.00022408468425015623 #0.0001366386597351265 #4.5222376053155144e-07 #1.350099421230439e-07 #9.448566599801139e-05 #5.002815035521046e-05 #0.0002
   weight_decay: 2.3714181045620526e-15 #1.8239498271581914e-11 #4.034721886446752e-15 #2.3714181045620526e-15 #1.2186224600118486e-09 #8.400668756748539e-14 #5.6870794872598566e-08 #4.468275237300557e-12 #8.400668756748539e-14 #6.60890902155426e-11 #2.3714181045620526e-15 #3.109630777839333e-14 #4.863656728256105e-07
   num_epochs: 70
   is_apex: 0
-  temperatur: 0.2 #0.6968750970069256 #0.1605494911629317 #0.6968750970069256 #0.2
+  temperatur: 0.1111111111111 #0.2 #0.6968750970069256 #0.1605494911629317 #0.6968750970069256 #0.2
   output_train_enc: "plain"
   output_train_gnn: "plain"
   loss_fn:

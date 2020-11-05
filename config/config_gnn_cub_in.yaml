@@ -1,4 +1,4 @@
-mode: "pseudo_hyper_search" #train/test/hyper_search/pretraining
+mode: "pseudo" #train/test/hyper_search/pretraining
 application: "DML"
 
 models:
@@ -24,7 +24,7 @@ models:
     cat: 0
     every: 0
     gnn:
-      num_layers: 2 
+      num_layers: 2
       aggregator: "add"
       num_heads: 4 
       attention: "dot" #"dot_pygeo"
@@ -36,6 +36,7 @@ models:
       res2: 1
       dropout_1: 0.1
       dropout_2: 0.1
+      mult_attr: 0
     edge:
       fc_dims: [2048]
       dropout_p: 0.4
@@ -72,13 +73,13 @@ dataset:
   nb_workers: 4
 
 train_params:
-  num_classes_iter: 24 
-  num_elements_class: 9 
-  lr: 0.0001563663718906821 
-  weight_decay: 6.059722614369727e-06 
+  num_classes_iter: 6 #24 #12 #24 #6
+  num_elements_class: 9 #9 #3 #9 #9
+  lr: 0.0001563663718906821 #0.0001488349866231485 #0.0003369018908950139 #0.0001488349866231485 #0.0001563663718906821 
+  weight_decay: 6.059722614369727e-06 #6.059722614369727e-06 #3.009943636752097e-14 #6.059722614369727e-06 #6.059722614369727e-06
   num_epochs: 70
   is_apex: 0
-  temperatur: 0.2
+  temperatur: 0.2 #0.2 #0.41226733899858015 #0.2 #0.2
   output_train_enc: "plain" #"plain"
   output_train_gnn: "plain" #"plain"
   loss_fn:
