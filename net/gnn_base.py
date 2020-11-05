@@ -11,7 +11,7 @@ from .dot_attention_pygeo import AttentionLayerDot, gcn_norm
 from .utils import *
 from .attentions import MultiHeadDotProduct, MultiHeadMLP
 import torch.utils.checkpoint as checkpoint
-
+from .proxy_generator import ProxyGen
 logger = logging.getLogger('GNNReID.GNNModule')
 
 
@@ -67,6 +67,7 @@ class GNNReID(nn.Module):
         self.edge_encoder_params = params['edge_encoder']
         self.edge_params = params['edge']
         self.gnn_params = params['gnn']
+        self.proxies = ProxyGen(num_classes, embed_dim) if params['proxies'] else None
 
         red = 4
         self.dim_red = nn.Linear(embed_dim, int(embed_dim/params['red'])) if red != 1 else None
@@ -101,6 +102,11 @@ class GNNReID(nn.Module):
         else:
             layers = [nn.Linear(dim, num_classes) for _ in range(self.gnn_params['num_layers'])] if every else [nn.Linear(dim, num_classes)]
             self.fc = Sequential(*layers)
+            #print("INIT GNN")
+            #layers = [nn.Linear(dim, num_classes, bias=False) for _ in range(self.gnn_params['num_layers'])] if every else [nn.Linear(dim, num_classes, bias=False)]
+            #self.fc = Sequential(*layers)
+            #for layer in self.fc:
+            #    layer.apply(weights_init_classifier)
 
     def _build_GNN_Net(self, embed_dim: int = 2048):
 
@@ -147,7 +153,10 @@ class GNNReID(nn.Module):
 
         return MetaLayer(edge_model=edge_model, node_model=gnn)
 
-    def forward(self, feats, edge_index, edge_attr=None, output_option='norm'):
+    def forward(self, feats, edge_index, edge_attr=None, Y=None, output_option='norm', mode='test'):
+        if self.proxies is not None and mode == 'train':
+            proxies, Y = self.proxies(Y)
+            feats = torch.cat([feats, proxies], dim=0)
         r, c = edge_index[:, 0], edge_index[:, 1]
         
         if self.dim_red is not None:
@@ -189,17 +198,17 @@ class GNNReID(nn.Module):
             x.append(f)
 
         if output_option == 'norm':
-            return x, feats
+            return x, feats, Y
         elif output_option == 'plain':
-            return x, [F.normalize(f, p=2, dim=1) for f in feats]
+            return x, [F.normalize(f, p=2, dim=1) for f in feats], Y
         elif output_option == 'neck' and self.neck:
-            return x, features
+            return x, features, Y
         elif output_option == 'neck' and not self.neck:
             print("Output option neck only avaiable if bottleneck (neck) is "
                   "enabeled - giving back x and fc7")
-            return x, feats
+            return x, feats, Y
 
-        return x, feats
+        return x, feats, Y
 
 
 class GNNNetwork(nn.Module):
@@ -232,7 +241,7 @@ class DotAttentionLayer(nn.Module):
         # try AttentionLayerDot
         if params['attention'] == "dot":
             self.att = MultiHeadDotProduct(embed_dim, num_heads, aggr,
-                                           edge_dim).to(dev)
+                                           edge_dim, mult_attr=params['mult_attr']).to(dev)
         elif params['attention'] == "dot_pygeo":
             self.att = AttentionLayerDot(embed_dim, num_heads).to(dev)
 
@@ -269,8 +278,8 @@ class DotAttentionLayer(nn.Module):
         return custom_forward
     
     def forward(self, feats, egde_index, edge_attr):
-        feats2  = self.att(feats, egde_index, edge_attr)
-        #feats2 = checkpoint.checkpoint(self.custom(), feats, egde_index, edge_attr, preserve_rng_state=True)
+        #feats2  = self.att(feats, egde_index, edge_attr)
+        feats2 = checkpoint.checkpoint(self.custom(), feats, egde_index, edge_attr, preserve_rng_state=True)
 
         feats2 = self.dropout1(feats2)
         feats = feats + feats2 if self.res1 else feats2

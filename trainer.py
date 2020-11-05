@@ -118,6 +118,8 @@ class Trainer():
             
             old_params = list()
             new_params = list()
+            proxies = list()
+            gnn_params = list()
 
             for name, param in list(self.encoder.named_parameters()):
                 if name.split('.')[0] == 'layer5' or name.split('.')[0] == 'layer6':
@@ -125,12 +127,23 @@ class Trainer():
                 else:
                     old_params.append(param)
             
-            params = list(self.gnn.parameters()) + old_params
+            for name, param in list(self.gnn.named_parameters()):
+                if 'proxies' in name:
+                    print("PROOOOOOOOOOOOOXIES")
+                    proxies.append(param)
+                else:
+                    gnn_params.append(param)
+            params = list(gnn_params) + old_params
             # list(set(self.encoder.parameters())) + list(set(self.gnn.parameters()))
             param_groups = [{'params': params,
-                             'lr': self.config['train_params']['lr']}, 
-                             {'params': new_params,
-                                 'lr': self.config['train_params']['lr'] * 10}]
+                             'lr': self.config['train_params']['lr']}]
+            if len(new_params) > 0:
+                param_groups.append({'params': new_params,
+                                 'lr': self.config['train_params']['lr'] * 10})
+
+            if self.config['models']['gnn_params']['proxies']:
+                param_groups.append(
+                        {'params': proxies, 'lr': self.config['train_params']['proxy_lr']})
 
             self.opt = RAdam(param_groups,
                              weight_decay=self.config['train_params'][
@@ -246,7 +259,7 @@ class Trainer():
                                 fc7 = fc7.cuda(self.gnn_dev)
                                 edge_attr = edge_attr.cuda(self.gnn_dev)
                                 edge_index = edge_index.cuda(self.gnn_dev)
-                                pred, feats = self.gnn(fc7, edge_index, edge_attr, train_params['output_train_gnn'])
+                                pred, feats, _ = self.gnn(fc7, edge_index, edge_attr, train_params['output_train_gnn'])
                                 features = feats[0]
                             else: 
                                 features = fc7
@@ -373,14 +386,20 @@ class Trainer():
                 #print("Next Batch")
                 #print(torch.argmax(probs, dim=1), Y)
                 #print(fc7)
-                edge_attr, edge_index, fc7 = self.graph_generator.get_graph(fc7)
+                edge_attr, edge_index, fc7 = self.graph_generator.get_graph(fc7, Y)
                 fc7 = fc7.cuda(self.gnn_dev)
                 edge_attr = edge_attr.cuda(self.gnn_dev)
                 edge_index = edge_index.cuda(self.gnn_dev)
-                loss = loss.cuda(self.gnn_dev)
-                pred, feats = self.gnn(fc7, edge_index, edge_attr, train_params['output_train_gnn'])
+                if type(loss) != int:
+                    loss = loss.cuda(self.gnn_dev)
+                pred, feats, Y = self.gnn(fc7, edge_index, edge_attr, Y, train_params['output_train_gnn'], mode='train')
+                
+                if self.config['models']['gnn_params']['proxies']:
+                    k = torch.unique(Y).shape[0] - 1
+                else:
+                    k = 0
 
-                for path,  pre, f, pre_b, f_b, lab in zip(P, pred[-1], feats[-1], fc7, probs, Y):
+                for path,  pre, f, pre_b, f_b, lab in zip(P, pred[-1][:-k], feats[-1][:-k], fc7, probs, Y):
                     self.preds[path] = pre.detach()
                     self.feats[path] = f.detach()
                     self.preds_before[path] = pre_b.detach()
@@ -411,7 +430,7 @@ class Trainer():
 
             # Compute center loss
             if self.center:
-                loss2 = self.center(fc7, Y)
+                loss2 = self.center(feats[0], Y)
                 loss += train_params['loss_fn']['scaling_center'] * loss2
                 self.losses['Center'].append(loss2.item())
 
@@ -423,7 +442,7 @@ class Trainer():
 
             # Compute MSE regularization
             if self.of:
-                p = feats[0].detach().cuda(self.gnn_dev)
+                p = feats[0].detach().cuda(self.gnn_dev)[:-k] if k != 0 else feats[0].detach().cuda(self.gnn_dev)
                 of_reg = self.of(fc7, p)
                 loss += train_params['loss_fn']['scaling_of'] * of_reg
                 self.losses['OF'].append(of_reg.item())
