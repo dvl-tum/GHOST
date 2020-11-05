@@ -101,7 +101,7 @@ def make_transform_GL_orig(sz_resize = 256, sz_crop = 227, mean = [104, 117, 128
         ScaleIntensities([0, 1], [0, 255]),
         transforms.Normalize(mean=inception_mean, std=inception_std)
        ])
-
+    
     return inception_transform if net_type == 'bn_inception' else resnet_transform
 
 
@@ -143,7 +143,6 @@ def GL_orig_RE(sz_crop=[384, 128], mean=[0.485, 0.456, 0.406],
             transforms.ToTensor(),
             normalize_transform
         ])
-
     return transform
 
 
