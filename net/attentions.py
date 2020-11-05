@@ -11,13 +11,14 @@ class MultiHeadDotProduct(nn.Module):
     nhead: number of attention heads
     """
 
-    def __init__(self, embed_dim, nhead, aggr, edge_dim, dropout=0.1):
+    def __init__(self, embed_dim, nhead, aggr, edge_dim, dropout=0.1, mult_attr=0):
         super(MultiHeadDotProduct, self).__init__()
         print("MultiHeadDotProduct")
         self.embed_dim = embed_dim
         self.hdim = embed_dim // nhead
         self.nhead = nhead
         self.aggr = aggr
+        self.mult_attr = mult_attr
 
         # FC Layers for input
         #print("no lineat layers")
@@ -64,6 +65,9 @@ class MultiHeadDotProduct(nn.Module):
         scores = scores.view(self.nhead, e, 1) / math.sqrt(self.hdim)
         scores = softmax(scores, c, 1, bs)
         scores = self.dropout(scores)
+        
+        if self.mult_attr:
+            scores = scores * edge_attr.unsqueeze(1)
 
         out = scores * v.index_select(1, r)  # H x e x hdim
         out = self.aggr(out, c, 1, bs)  # H x bs x hdim
