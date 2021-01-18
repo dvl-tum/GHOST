@@ -45,13 +45,13 @@ def create_loaders(data_root, num_workers, size_batch, num_classes_iter=None,
 
         with open(os.path.join(data_root, "query_labs.txt"), "r") as f:
             query_labs = f.readlines()
-        query_labs = [int(d.strip("\n")) for d in query_labs]
+        query_labs = [int(d.strip("\n"))-1 for d in query_labs]
         with open(os.path.join(data_root, "gallery_labs.txt"), "r") as f:
             gallery_labs = f.readlines()
-        gallery_labs = [int(d.strip("\n")) for d in gallery_labs]
+        gallery_labs = [int(d.strip("\n"))-1 for d in gallery_labs]
         with open(os.path.join(data_root, "train_labs.txt"), "r") as f:
             labels = f.readlines()
-        labels = [int(d.strip("\n")) for d in labels]
+        labels = [int(d.strip("\n"))-1 for d in labels]
 
         labels_ev = query_labs + gallery_labs
 
@@ -135,9 +135,7 @@ def create_loaders(data_root, num_workers, size_batch, num_classes_iter=None,
         Dataset = dataset.Birds(root=data_root,
                                 labels=labels['bounding_box_train'],
                                 paths=paths['bounding_box_train'],
-                                trans=trans,
-                                magnitude=magnitude,
-                                number_aug=number_aug)
+                                trans=trans)
     elif os.path.basename(data_root) == 'CUB_200_2011' or os.path.basename(
             data_root) == 'CARS' or os.path.basename(
             data_root) == 'Stanford_Online_Products' or os.path.basename(
@@ -359,7 +357,7 @@ def create_loaders(data_root, num_workers, size_batch, num_classes_iter=None,
 
         # sampler = CombineSampler(list_of_indices_for_each_class,
         #                        num_classes_iter, num_elements_class)
-        sampler = PseudoSamplerVIII(num_classes_iter, num_elements_class)
+        sampler = PseudoSamplerV(num_classes_iter, num_elements_class)
         print("evl")
         # sampler = DistanceSampler(num_classes_iter, num_elements_class,
         #                              ddict, distance_sampler, 1)
@@ -368,7 +366,7 @@ def create_loaders(data_root, num_workers, size_batch, num_classes_iter=None,
         print("batch size {}".format(size_batch))
         dl_ev_gnn = torch.utils.data.DataLoader(
             dataset_ev,
-            batch_size=7, #size_batch,
+            batch_size=size_batch,
             shuffle=False,
             sampler=sampler,
             num_workers=1,
@@ -548,7 +546,6 @@ def create_loaders(data_root, num_workers, size_batch, num_classes_iter=None,
         )
 
         dl_ev_gnn = None
-    
     return dl_tr, dl_ev, query, gallery, dl_ev_gnn
 
 

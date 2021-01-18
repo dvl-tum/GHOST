@@ -7,12 +7,13 @@ from collections import defaultdict
 import sklearn.cluster
 import sklearn.metrics.cluster
 import os
+from sklearn.manifold import TSNE
 
 logger = logging.getLogger('GNNReID.Evaluator')
 
 
 class Evaluator_DML():
-    def __init__(self, lamb, k1, k2, output_test_enc='norm', output_test_gnn='norm', re_rank=False, cat=0, nb_clusters=0, dev=0, gnn_dev=0):
+    def __init__(self, lamb, k1, k2, output_test_enc='norm', output_test_gnn='norm', re_rank=False, cat=0, nb_clusters=0, dev=0, gnn_dev=0):        
         self.nb_clusters = nb_clusters
         self.lamb = lamb
         self.k1 = k1
@@ -24,12 +25,10 @@ class Evaluator_DML():
         self.gnn_dev = gnn_dev
         self.dev = dev
 
-    def evaluate(self, model, dataloader, query=None, gallery=None,
+    def evaluate(self, model, dataloader, gallery_dl=None,
             gnn=None, graph_generator=None, dl_ev_gnn=None, net_type='bn_inception',
             dataroot='CARS', nb_classes=None):
         self.dataroot = dataroot
-        self.query = query
-        self.gallery = gallery
         self.nb_classes = nb_classes
         model_is_training = model.training
         model.eval()
@@ -47,13 +46,13 @@ class Evaluator_DML():
                                                         dataloader, dl_ev_gnn)
                 gnn.train(gnn_is_training)
 
-            elif dl_ev_gnn.dataset.labels_train is not None:  # traintest
-                gnn_is_training = gnn.training
-                gnn.eval()
-                X, T, P = self.predict_batchwise_traintest(model, gnn,
-                                                        graph_generator,
-                                                        dataloader, dl_ev_gnn)
-                gnn.train(gnn_is_training)
+                #elif dl_ev_gnn.dataset.labels_train is not None:  # traintest
+                #gnn_is_training = gnn.training
+                #gnn.eval()
+                #X, T, P = self.predict_batchwise_traintest(model, gnn,
+                #                                        graph_generator,
+                #                                        dataloader, dl_ev_gnn)
+                #gnn.train(gnn_is_training)
             else:  # pseudo
                 logger.info("Using {} number of clusters for kmeans sampling".format(self.nb_clusters))
                 gnn_is_training = gnn.training
@@ -68,7 +67,8 @@ class Evaluator_DML():
             X, T, P = self.predict_batchwise_gnn(model, gnn, graph_generator,
                                               dataloader)
             gnn.train(gnn_is_training)
-        if dataroot != 'sop' and dataroot != 'in_shop':
+        if  dataroot != 'in_shop':
+            logger.info("Compute NMI")
             # calculate NMI with kmeans clustering
             nmi = calc_normalized_mutual_information(T, cluster_by_kmeans(X, nb_classes))
             logger.info("NMI: {:.3f}".format(nmi * 100))
@@ -77,14 +77,14 @@ class Evaluator_DML():
 
         recall = []
         if dataroot != 'sop' and dataroot != 'in_shop':
-            Y, T = assign_by_euclidian_at_k(X, T, 8)
+            Y, T = assign_by_euclidian_at_k(X, T, 8, P)
             which_nearest_neighbors = [1, 2, 4, 8]
         elif dataroot == 'in_shop':
             Y, T = assign_by_euclidian_at_k(X, T, 30, P, query, gallery)
-            which_nearest_neighbors = [1, 2, 4, 8]
+            which_nearest_neighbors = [1, 10, 20, 30]
         else:
-            Y, T = assign_by_euclidian_at_k(X, T, 1000)
-            which_nearest_neighbors = [1, 10, 100, 1000]
+            Y, T = assign_by_euclidian_at_k(X, T, 1000, P)
+            which_nearest_neighbors = [1, 10, 100, 1000] 
 
         for k in which_nearest_neighbors:
             r_at_k = calc_recall_at_k(T, Y, k)
@@ -103,17 +103,26 @@ class Evaluator_DML():
             for X, Y, I, P in dataloader:
                 if torch.cuda.is_available(): X = X.cuda(self.dev)
                 _, fc7, _ = model(X, output_option=self.output_test_enc, val=True)
-                fc7s.append(fc7.cpu())
-                L.append(Y)
-                paths.append(P)
+
                 for path, out, y, i in zip(P, fc7, Y, I):
                     feature_dict[i.data.item()] = out
                     ys[i.data.item()] = y
+                    paths.append(path)
+                    fc7s.append(out.unsqueeze(0).cpu())
+                    L.append(y.unsqueeze(0).cpu())
         #fc7, Y = torch.cat(fc7s), torch.cat(L)
 
         fc7 = torch.cat([f.unsqueeze(0).cpu() for f in feature_dict.values()], 0)
         Y = torch.cat([y.unsqueeze(0).cpu() for y in ys.values()], 0)
-
+        ''' 
+        X_embedded = TSNE(n_components=2).fit_transform(fc7)
+        import matplotlib.pyplot as plt
+        fig, ax = plt.subplots(figsize=(20,25))
+        scatter = ax.scatter(X_embedded[:,0], X_embedded[:,1], c=Y.numpy(), s=20)
+        with open('testitest_feats5.json', 'w') as f:
+            json.dump({'feats': X_embedded.tolist(), 'labs': Y.tolist(), 'paths': paths}, f)
+        plt.savefig('testitest5.png')
+        '''
         print(fc7.shape, Y.shape)
         return torch.squeeze(fc7), torch.squeeze(Y), paths
 
@@ -122,6 +131,7 @@ class Evaluator_DML():
         fc7s, L, paths = [], [], []
         feature_dict, feature_dict2 = dict(), dict()
         ys, ys2 = dict(), dict()
+        preds, feats = dict(), dict()
         with torch.no_grad():
             for X, Y, I, P in dataloader:
                 if torch.cuda.is_available(): X = X.cuda(self.dev)
@@ -135,22 +145,35 @@ class Evaluator_DML():
                 fc7 = fc7.cuda(self.gnn_dev)
                 edge_attr = edge_attr.cuda(self.gnn_dev)
                 edge_index = edge_index.cuda(self.gnn_dev) 
-                _, fc7, _ = gnn(fc7, edge_index, edge_attr,
+                pred, fc7, _ = gnn(fc7, edge_index, edge_attr,
                              output_option=self.output_test_gnn)
-                
+
                 if self.cat:
                     fc7 = torch.cat(fc7, dim=1)
                 else:
                     fc7 = fc7[-1]
+                pred = pred[-1]
                 
                 fc7s.append(fc7.cpu())
                 L.append(Y)
                 paths.append(P)
-                for path, out, y, i in zip(P, fc7, Y, I):
+                for path, out, y, i, pr in zip(P, fc7, Y, I, pred):
                     feature_dict2[i.data.item()] = out
                     ys2[i.data.item()] = y
+                    preds[path] = pr.detach()
+                    feats[path] = out.detach()
         #fc7, Y = torch.cat(fc7s), torch.cat(L)
+        ''' 
+        import os.path as osp
+        results_dir = 'teacher_student'
+        with open(osp.join(results_dir, "preds.json"), "w") as f:
+            save = {k: v.tolist() for k, v in preds.items()}
+            json.dump(save, f)
 
+        with open(osp.join(results_dir, "feats.json"), "w") as f:
+            save = {k: v.tolist() for k, v in feats.items()}
+            json.dump(save, f)
+        '''
         fc7 = torch.cat([f.unsqueeze(0).cpu() for f in feature_dict2.values()], 0)
         Y = torch.cat([y.unsqueeze(0).cpu() for y in ys2.values()], 0)
         
@@ -360,7 +383,7 @@ class Evaluator_DML():
                 else:
                     fc7 = fc7[-1]
                 
-                if dl_ev_gnn.sampler.__class__.__name__ == 'PseudoSampler':
+                if dl_ev_gnn.sampler.__class__.__name__ == 'PseudoSampler' or dl_ev_gnn.sampler.__class__.__name__ == 'PseudoSamplerVIII':
                     
                     labels_new[P[0]] = labels[P[0]]
                     features_new[P[0]] = fc7[0]
@@ -430,16 +453,16 @@ class Evaluator_DML():
 
 
 class Evaluator():
-    def __init__(self, lamb, k1, k2, output_test='norm', re_rank=False):
+    def __init__(self, lamb, k1, k2, output_test_enc='norm', output_test_gnn='norm', re_rank=False, cat=0):
         self.lamb = lamb
         self.k1 = k1
         self.k2 = k2
-        self.output_test = output_test
+        self.output_test = output_test_enc
         self.re_rank = re_rank
 
     def evaluate(self, model, dataloader, query=None, gallery=None, 
             gnn=None, graph_generator=None, dl_ev_gnn=None, net_type='bn_inception',
-            dataroot='CARS', nb_classes=None):
+            dataroot='CARS', nb_classes=None, gallery_dl=None):
         model_is_training = model.training
         model.eval()
 
