@@ -1,0 +1,108 @@
+mode: "hyper_search" #train/test/hyper_search/pretraining
+application: "reid"
+
+models:
+  encoder_params:
+    pretrained_path: "no" #"best_weights/0.8861117951243536resnet50_cars.pth" #"0.8266303675287712resnet50_cars.pth" #"0.8324929282991022resnet50_cars.pth" #"0.8937908496732027neck_resnet50_cars.pth" #"pretrained/0.835444594760792neck_resnet50_cars.pth" #"pretrained/0.8101094576312876neck_resnet50_cars.pth" #"pretrained_gnn/0.9390158582089553neck_resnet50_cars.pth" 
+    net_type: "resnet50"
+    neck: 0
+    red: 4
+    last_stride: 0
+    final_drop: 0 #0.5
+    stoch_depth: 1 #0.8
+    weight_norm: 0
+    bn_inception:
+      embed: 1
+      sz_embedding: 512
+
+  gnn_params:
+    pretrained_path: "no" #"best_weights/0.8861117951243536gnn_resnet50_cars.pth" #"0.8266303675287712gnn_resnet50_cars.pth" #"0.8324929282991022gnn_resnet50_cars.pth" #"0.8937908496732027gnn_neck_resnet50_cars.pth" #"pretrained_gnn/0.9390158582089553gnn_neck_resnet50_cars.pth" 
+    use_edge_encoder: 0
+    use_edge_model: 0
+    use_node_encoder: 0
+    red: 1
+    cat: 0
+    every: 0
+    proxies: 0
+    gnn:
+      num_layers: 2 #1 #4 #2 #2 #1 #2
+      aggregator: "add"
+      num_heads: 8 #4 #8 #2 #2 #2 #2
+      attention: "dot" #"dot_pygeo"
+      mlp: 1
+      dropout_mlp: 0.1
+      norm1: 1
+      norm2: 1
+      res1: 1
+      res2: 1
+      dropout_1: 0.1
+      dropout_2: 0.1
+      mult_attr: 0
+    edge:
+      fc_dims: [2048]
+      dropout_p: 0.4
+      use_batchnorm: 0
+    node_encoder:
+      fc_dims: [2048]
+      dropout_p: 0.4
+      use_batchnorm: 0
+    edge_encoder:
+      fc_dims: [2048]
+      dropout_p: 0.4
+      use_batchnorm: 0
+    classifier:
+      neck: 1
+      num_classes: 767
+      dropout_p: 0.4
+      use_batchnorm: 0
+
+graph_params:
+  sim_type: "correlation"
+  thresh: 0
+  set_negative: "hard"
+
+dataset:
+  dataset_path: "../../datasets/cuhk03-np/detected"
+  dataset_short: "cuhk03-np"
+  num_classes: 767
+  trans: "bot"
+  number_aug: 2
+  magnitude: 27
+  sampling: "no"
+  bssampling: "no" #"NumberSampler"
+  val: 0
+  nb_workers: 4
+
+train_params:
+  num_classes_iter: 6 #12 #70 #32 #70 #12 #4 #12 #9 #4 #6 #4 #5 #6 #5
+  num_elements_class: 6 #7 #5 #5 #5 #7 #8 #8 #4 #5 #8 #10 #7 #4 #7
+  proxy_lr: 9.448566599801139e-04
+  lr: 0.00036683239911604993 #9.448566599801139e-05 #1.376644731109111e-05 #6.672588679081452e-05 #9.448566599801139e-05 #0.0004871615200618273 #4.5222376053155144e-07 #0.00022408468425015623 #0.0001366386597351265 #4.5222376053155144e-07 #1.350099421230439e-07 #9.448566599801139e-05 #5.002815035521046e-05 #0.0002
+  weight_decay: 2.551918610962277e-09 #2.3714181045620526e-15 #1.8239498271581914e-11 #4.034721886446752e-15 #2.3714181045620526e-15 #1.2186224600118486e-09 #8.400668756748539e-14 #5.6870794872598566e-08 #4.468275237300557e-12 #8.400668756748539e-14 #6.60890902155426e-11 #2.3714181045620526e-15 #3.109630777839333e-14 #4.863656728256105e-07
+  num_epochs: 70
+  is_apex: 0
+  temperatur: 0.1111111111111 #0.2 #0.6968750970069256 #0.1605494911629317 #0.6968750970069256 #0.2
+  output_train_enc: "plain"
+  output_train_gnn: "plain"
+  loss_fn:
+    fns: "lsgnn_lsce" #ce/focalce can be used instead of lsce and lsgnn/focalgnn instead of gnn, rest can be added by ce_gnn_center...
+    scaling_ce: 1
+    scaling_gnn: 1
+    scaling_distance: 0.01
+    scaling_center: 0.5
+    scaling_triplet: 1
+    scaling_of: 1
+    scaling_of_pre: 1
+    scaling_distill: 1
+    soft_temp: 10
+    preds: "teacher_student/preds_cars.json" #"results/0.8266303675287712_cars_1603570836.727446/preds.json" #"results/0.8324929282991022_cars_1603089151.0771358/preds.json" #"results/0.9390158582089553_cars_1601197472.0445573/preds.json" #"results/0.949393656716418_cars_1601195553.3563294/preds.json" #"results/0.9390158582089553_cars_1601197472.0445573/preds.json"
+    feats: "teacher_student/feats_cars.json" #"results/0.8266303675287712_cars_1603570836.727446/feats.json" #"results/0.8324929282991022_cars_1603089151.0771358/feats.json" #"results/0.9390158582089553_cars_1601197472.0445573/feats.json" #"results/0.949393656716418_cars_1601195553.3563294/feats.json" #"results/0.9390158582089553_cars_1601197472.0445573/feats.json"
+
+eval_params:
+  re_rank: 0
+  lamb: 0.3
+  k1: 20
+  k2: 6
+  output_test_enc: "plain"
+  output_test_gnn: "plain"
+  cat: 0
