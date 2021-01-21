@@ -4,6 +4,7 @@ from torch.utils.model_zoo import load_url as load_state_dict_from_url
 import torch.nn.functional as F
 import torch.utils.checkpoint as checkpoint
 from .utils import Sequential
+from .utils import weights_init_kaiming, weights_init_classifier
 
 
 __all__ = ['ResNet', 'resnet18', 'resnet34', 'resnet50', 'resnet101',
@@ -41,7 +42,8 @@ class BasicBlock(nn.Module):
     __constants__ = ['downsample']
 
     def __init__(self, inplanes, planes, stride=1, downsample=None, groups=1,
-                 base_width=64, dilation=1, norm_layer=None):
+                 base_width=64, dilation=1, norm_layer=None, stoch_depth=None):
+        
         super(BasicBlock, self).__init__()
         if norm_layer is None:
             norm_layer = nn.BatchNorm2d
@@ -60,7 +62,7 @@ class BasicBlock(nn.Module):
         self.downsample = downsample
         self.stride = stride
 
-    def forward(self, x):
+    def forward(self, x, val=False):
         identity = x
 
         out = self.conv1(x)
@@ -136,29 +138,6 @@ class Bottleneck(nn.Module):
         return out
 
 
-def weights_init_kaiming(m):
-    classname = m.__class__.__name__
-    if classname.find('Linear') != -1:
-        nn.init.kaiming_normal_(m.weight, a=0, mode='fan_out')
-        nn.init.constant_(m.bias, 0.0)
-    elif classname.find('Conv') != -1:
-        nn.init.kaiming_normal_(m.weight, a=0, mode='fan_in')
-        if m.bias is not None:
-            nn.init.constant_(m.bias, 0.0)
-    elif classname.find('BatchNorm') != -1:
-        if m.affine:
-            nn.init.constant_(m.weight, 1.0)
-            nn.init.constant_(m.bias, 0.0)
-
-
-def weights_init_classifier(m):
-    classname = m.__class__.__name__
-    if classname.find('Linear') != -1:
-        nn.init.normal_(m.weight, std=0.001)
-        if m.bias:
-            nn.init.constant_(m.bias, 0.0)
-
-
 class ModuleWrapperIgnores2ndArg(nn.Module):
     def __init__(self, module):
         super().__init__()
@@ -215,14 +194,6 @@ class ResNet(nn.Module):
         self.layer4 = self._make_layer(block, 512, layers[3], stride=last,
                                        dilate=replace_stride_with_dilation[2])
         
-        #self.layer5 = self._make_layer(block, 512, layers[3], stride=last,
-        #                               dilate=replace_stride_with_dilation[2])
-
-        #self.layer6 = self._make_layer(block, 512, layers[3], stride=last,
-        #                               dilate=replace_stride_with_dilation[2])
-
-
-        #self.avgpool = nn.AdaptiveAvgPool2d((1, 1))
         self.avgpool = nn.AdaptiveMaxPool2d((1, 1))
         self.final_drop = nn.Dropout(final_drop)
         
@@ -243,15 +214,6 @@ class ResNet(nn.Module):
             self.fc = nn.Linear(int((512 * block.expansion)/red), num_classes)
 
         # student blocks
-        '''d_embed = 512 * block.expansion
-        d_hid = 4 * d_embed
-        dropout = 0.4
-        self.linear1 = nn.Linear(d_embed, d_hid)
-        self.dropout = nn.Dropout(dropout)
-        #self.linear2 = nn.Linear(d_hid, d_hid)
-        self.linear2 = nn.Linear(d_hid, d_embed)
-        self.activation = F.relu'''
-
         for m in self.modules():
             if isinstance(m, nn.Conv2d):
                 nn.init.kaiming_normal_(m.weight, mode='fan_out',
@@ -310,54 +272,46 @@ class ResNet(nn.Module):
         x = self.relu(x)
         x = self.maxpool(x)
         
-        x = self.layer1(x, val)
-        #x = checkpoint.checkpoint(self.layer1, x, val)
-        
-        x = self.layer2(x, val)
-        #x = checkpoint.checkpoint(self.layer2, x, val)
-        
-        x = self.layer3(x, val)
-        #x = checkpoint.checkpoint(self.layer3, x, val)
-        
-        x = self.layer4(x, val)
-        #x = checkpoint.checkpoint(self.layer4, x, val)
-        
-        #x = self.layer5(x, val)
-        #x = checkpoint.checkpoint(self.layer5, x, val)
-        
-        #x = self.layer6(x, val)
-        #x = checkpoint.checkpoint(self.layer6, x, val)
+        # if you dont want to use gradient checkpointing: uncomment first lines, comment second
 
+        #x = self.layer1(x, val)
+        x = checkpoint.checkpoint(self.layer1, x, val)
+        
+        #x = self.layer2(x, val)
+        x = checkpoint.checkpoint(self.layer2, x, val)
+        
+        #x = self.layer3(x, val)
+        x = checkpoint.checkpoint(self.layer3, x, val)
+        
+        #x = self.layer4(x, val)
+        x = checkpoint.checkpoint(self.layer4, x, val)
+         
         x = self.avgpool(x)
+
         fc7 = torch.flatten(x, 1)
 
         if self.red:
             fc7 = self.red(fc7)
 
-        # student
-        #feats = self.linear2(self.dropout(self.activation(self.linear1(fc7))))
-        feats = fc7
-
         if self.neck:
-            feats_after = self.bottleneck(feats)
+            feats_after = self.bottleneck(fc7)
         else:
-            feats_after = feats
+            feats_after = fc7
 
         feats_after = self.final_drop(feats_after)
 
         x = self.fc(feats_after)
         
         if output_option == 'norm':
-            return x, fc7, feats
+            return x, fc7
         elif output_option == 'plain':
-            return x, F.normalize(fc7, p=2, dim=1), F.normalize(feats, p=2,
-                                                                dim=1)
+            return x, F.normalize(fc7, p=2, dim=1)
         elif output_option == 'neck' and self.neck:
-            return x, fc7, feats_after
+            return x, feats_after
         elif output_option == 'neck' and not self.neck:
             print("Output option neck only avaiable if bottleneck (neck) is "
                   "enabeled - giving back x and fc7")
-            return x, fc7, feats
+            return x, fc7
 
     # Allow for accessing forward method in a inherited class
     forward = _forward
@@ -378,16 +332,6 @@ def _resnet(arch, block, layers, pretrained, progress, last_stride=0, neck=0,
         else:
             state_dict = load_state_dict_from_url(model_urls[arch],
                                                   progress=progress)
-            '''
-            state_dict_new = dict()
-            for k, v in state_dict.items():
-                if k.split('.')[0][:-1] != 'layer':
-                    state_dict_new[k] = v
-                else:
-                    state_dict_new[k.split('.')[0] +  '.module.' + ('.').join(k.split('.')[1:])] = v
-            state_dict = state_dict_new
-            del state_dict_new
-            '''
             for i in state_dict:
                 if 'fc' in i:
                     continue
@@ -395,7 +339,7 @@ def _resnet(arch, block, layers, pretrained, progress, last_stride=0, neck=0,
     return model
 
 
-def resnet18(pretrained=False, progress=True, **kwargs):
+def resnet18(pretrained=False, progress=True, last_stride=0, neck=0, final_drop=0.5, stoch_depth=0.8, red=1, **kwargs):
     r"""ResNet-18 model from
     `"Deep Residual Learning for Image Recognition" <https://arxiv.org/pdf/1512.03385.pdf>`_
     Args:
@@ -403,10 +347,10 @@ def resnet18(pretrained=False, progress=True, **kwargs):
         progress (bool): If True, displays a progress bar of the download to stderr
     """
     return _resnet('resnet18', BasicBlock, [2, 2, 2, 2], pretrained, progress,
-                   **kwargs)
+                   last_stride, neck, final_drop, stoch_depth, red=red, **kwargs)
 
 
-def resnet34(pretrained=False, progress=True, **kwargs):
+def resnet34(pretrained=False, progress=True, last_stride=0, neck=0, final_drop=0.5, stoch_depth=0.8, red=1, **kwargs):
     r"""ResNet-34 model from
     `"Deep Residual Learning for Image Recognition" <https://arxiv.org/pdf/1512.03385.pdf>`_
     Args:

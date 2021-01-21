@@ -167,14 +167,6 @@ def weights_init_classifier(m):
             nn.init.constant_(m.bias, 0.0)
 
 
-'''def softmax(src, index, dim, dim_size):
-    src = src - scatter_max(src.float(), index, dim=dim, dim_size=dim_size)[
-        0].index_select(dim, index)
-    denom = scatter_add(torch.exp(src), index, dim=dim, dim_size=dim_size)
-    src = torch.exp(src) / denom.index_select(dim, index)
-
-    return src'''
-
 def softmax(src, index, dim, dim_size, margin: float = 0.):
     src_max = torch.clamp(scatter_max(src.float(), index, dim=dim, dim_size=dim_size)[0], min=0.)
     src = (src - src_max.index_select(dim=dim, index=index)).exp()

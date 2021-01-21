@@ -6,23 +6,7 @@ import os
 from collections import defaultdict
 
 
-def dist_traintest(features, query=None, gallery=None):
-    dist = torch.zeros(len(query), len(gallery))
-    for i, qu in enumerate(query):
-        for j, gal in enumerate(gallery):
-            #dist[i, j] = features[qu][gal][qu] @ features[qu][gal][qu] + \
-            #                features[qu][gal][gal] @ features[qu][gal][gal] - \
-            #                2 * (features[qu][gal][gal] @ features[qu][gal][qu])
-            if gal in features[qu].keys():
-                dist[i, j] = features[qu][gal]
-            else:
-                dist[i, j] = -1000
-
-    return dist
-
-
 def pairwise_distance(features, query=None, gallery=None):
-
     x = torch.cat([features[f].unsqueeze(0) for f in query], 0)
     y = torch.cat([features[f].unsqueeze(0) for f in gallery], 0)
     m, n = x.size(0), y.size(0)
@@ -48,7 +32,7 @@ def cmc(distmat, query_ids=None, gallery_ids=None,
         separate_camera_set=False,
         single_gallery_shot=False,
         first_match_break=False):
-    #junk = gallery_ids != -1
+    # junk = gallery_ids != -1
     if type(distmat) != np.ndarray:
         distmat = distmat.cpu().numpy()
     m, n = distmat.shape
@@ -65,7 +49,7 @@ def cmc(distmat, query_ids=None, gallery_ids=None,
         # Filter out the same id and same camera
         pos = ((gallery_ids[indices[i]] != query_ids[i]) |
                (gallery_cams[indices[i]] != query_cams[i]))
-        pos2 = (distmat[i][indices[i]] != -1000) # because of train test
+        pos2 = (distmat[i][indices[i]] != -1000)  # because of train test
         pos &= pos2
         # filter out samples of class -1 (distractors)
         junk = gallery_ids[indices[i]] != -1
@@ -122,7 +106,7 @@ def mean_ap(dist, ql, qc, gl, gc):
     for k in range(dist.shape[0]):
         # Filter out the same id and same camera
         pos = (gl[indices[k]] != ql[k]) | (gc[indices[k]] != qc[k])
-        pos2 = (dist[k][indices[k]] != -1000) # because of train test
+        pos2 = (dist[k][indices[k]] != -1000)  # because of train test
         pos &= pos2
         # filter out samples of class -1 (distractors)
         junk = gl[indices[k]] != -1
@@ -173,6 +157,7 @@ def evaluate_all(distmat, query=None, gallery=None):
     # Use the allshots cmc top-1 score for validation criterion
     return mAP, cmc_scores
 
+
 """
 Created on Fri, 25 May 2018 20:29:09
 @author: luohao
@@ -205,11 +190,13 @@ def re_ranking(features, query, gallery, k1=20, k2=6, lambda_value=0.3,
     if only_local:
         original_dist = local_distmat
     else:
-        feat = torch.cat([probFea,galFea])
+        feat = torch.cat([probFea, galFea])
         print('using GPU to compute original distance')
-        distmat = torch.pow(feat,2).sum(dim=1, keepdim=True).expand(all_num,all_num) + \
-                      torch.pow(feat, 2).sum(dim=1, keepdim=True).expand(all_num, all_num).t()
-        distmat.addmm_(1,-2,feat,feat.t())
+        distmat = torch.pow(feat, 2).sum(dim=1, keepdim=True).expand(all_num,
+                                                                     all_num) + \
+                  torch.pow(feat, 2).sum(dim=1, keepdim=True).expand(all_num,
+                                                                     all_num).t()
+        distmat.addmm_(1, -2, feat, feat.t())
         original_dist = distmat.cpu().numpy()
         del feat
         if not local_distmat is None:
@@ -230,14 +217,20 @@ def re_ranking(features, query, gallery, k1=20, k2=6, lambda_value=0.3,
         k_reciprocal_expansion_index = k_reciprocal_index
         for j in range(len(k_reciprocal_index)):
             candidate = k_reciprocal_index[j]
-            candidate_forward_k_neigh_index = initial_rank[candidate, :int(np.around(k1 / 2)) + 1]
-            candidate_backward_k_neigh_index = initial_rank[candidate_forward_k_neigh_index,
+            candidate_forward_k_neigh_index = initial_rank[candidate,
+                                              :int(np.around(k1 / 2)) + 1]
+            candidate_backward_k_neigh_index = initial_rank[
+                                               candidate_forward_k_neigh_index,
                                                :int(np.around(k1 / 2)) + 1]
-            fi_candidate = np.where(candidate_backward_k_neigh_index == candidate)[0]
-            candidate_k_reciprocal_index = candidate_forward_k_neigh_index[fi_candidate]
-            if len(np.intersect1d(candidate_k_reciprocal_index, k_reciprocal_index)) > 2 / 3 * len(
+            fi_candidate = \
+            np.where(candidate_backward_k_neigh_index == candidate)[0]
+            candidate_k_reciprocal_index = candidate_forward_k_neigh_index[
+                fi_candidate]
+            if len(np.intersect1d(candidate_k_reciprocal_index,
+                                  k_reciprocal_index)) > 2 / 3 * len(
                     candidate_k_reciprocal_index):
-                k_reciprocal_expansion_index = np.append(k_reciprocal_expansion_index, candidate_k_reciprocal_index)
+                k_reciprocal_expansion_index = np.append(
+                    k_reciprocal_expansion_index, candidate_k_reciprocal_index)
 
         k_reciprocal_expansion_index = np.unique(k_reciprocal_expansion_index)
         weight = np.exp(-original_dist[i, k_reciprocal_expansion_index])
@@ -262,13 +255,15 @@ def re_ranking(features, query, gallery, k1=20, k2=6, lambda_value=0.3,
         indNonZero = np.where(V[i, :] != 0)[0]
         indImages = [invIndex[ind] for ind in indNonZero]
         for j in range(len(indNonZero)):
-            temp_min[0, indImages[j]] = temp_min[0, indImages[j]] + np.minimum(V[i, indNonZero[j]],
-                                                                               V[indImages[j], indNonZero[j]])
+            temp_min[0, indImages[j]] = temp_min[0, indImages[j]] + np.minimum(
+                V[i, indNonZero[j]],
+                V[indImages[j], indNonZero[j]])
         # jaccard_in = size_in / (size_s1 + size_s2 - size_in)
         # --> normalized size_1=1 and size_2=1 --> 1+1=2
         jaccard_dist[i] = 1 - temp_min / (2 - temp_min)
 
-    final_dist = jaccard_dist * (1 - lambda_value) + original_dist * lambda_value
+    final_dist = jaccard_dist * (
+                1 - lambda_value) + original_dist * lambda_value
     del original_dist
     del V
     del jaccard_dist
@@ -276,79 +271,16 @@ def re_ranking(features, query, gallery, k1=20, k2=6, lambda_value=0.3,
     return final_dist
 
 
-def calc_mean_average_precision(features, query, gallery, re_rank=False, lamb=0.3, k1=20, k2=6):
+def calc_mean_average_precision(features, query, gallery, re_rank=False,
+                                lamb=0.3, k1=20, k2=6):
     if type(features[list(features.keys())[0]]) == dict:
         query = list(features.keys())
-        gallery = set([k2 for k1 in features.keys() for k2 in features[k1].keys()])
+        gallery = set(
+            [k2 for k1 in features.keys() for k2 in features[k1].keys()])
         distmat = dist_traintest(features, query, gallery)
     elif re_rank:
-        distmat = re_ranking(features, query, gallery, k1=k1, k2=k2, lambda_value=lamb)
+        distmat = re_ranking(features, query, gallery, k1=k1, k2=k2,
+                             lambda_value=lamb)
     else:
         distmat = pairwise_distance(features, query, gallery)
     return evaluate_all(distmat, query=query, gallery=gallery)
-
-
-if __name__ == '__main__':
-    features = {'00000084_00_0000.jpg': torch.tensor([1, 2, 3, 4, 5]),
-                '00000129_01_0000.jpg': torch.tensor([2, 3, 4, 5, 6]),
-                '00000129_03_0000.jpg': torch.tensor([3, 4, 5, 6, 7]),
-                '00000084_04_0000.jpg': torch.tensor([1, 2, 3, 4, 5]),
-                '00001451_01_0000.jpg': torch.tensor([6, 6, 6, 6, 6]),
-                '00001451_02_0000.jpg': torch.tensor([1, 2, 3, 4, 5]),
-                }
-    query = ['00000084_00_0000.jpg', '00000129_01_0000.jpg', '00001451_01_0000.jpg', '00000084_04_0000.jpg', '00000129_03_0000.jpg', '00001451_02_0000.jpg']
-    gallery = ['00000084_04_0000.jpg', '00000129_03_0000.jpg', '00001451_02_0000.jpg', '00000084_00_0000.jpg', '00000129_01_0000.jpg', '00001451_01_0000.jpg']
-    '''
-    np.random.seed(50)
-    features = {'00000169_00_0000.jpg': torch.rand(5),
-                '00000169_01_0001.jpg': torch.rand(5),
-                '00000169_01_0000.jpg': torch.rand(5),
-                '00000864_02_0000.jpg': torch.rand(5),
-                '00000864_01_0000.jpg': torch.rand(5),
-                '00000864_02_0001.jpg': torch.rand(5),
-                '00000862_00_0000.jpg': torch.rand(5),
-                '00000862_02_0001.jpg': torch.rand(5),
-                '00000862_02_0000.jpg': torch.rand(5),
-                '00000151_00_0000.jpg': torch.rand(5),
-                '00000151_03_0000.jpg': torch.rand(5),
-                '00000151_00_0001.jpg': torch.rand(5),
-                '00001237_01_0000.jpg': torch.rand(5),
-                '00001237_02_0000.jpg': torch.rand(5),
-                '00001237_00_0000.jpg': torch.rand(5),
-                '00000098_03_0000.jpg': torch.rand(5),
-                '00000098_00_0000.jpg': torch.rand(5),
-                '00000098_03_0001.jpg': torch.rand(5),
-                '00000095_03_0000.jpg': torch.rand(5),
-                '00000095_03_0001.jpg': torch.rand(5),
-                '00000095_01_0000.jpg': torch.rand(5),
-                '00000389_02_0000.jpg': torch.rand(5),
-                '00000389_02_0001.jpg': torch.rand(5),
-                '00000389_01_0000.jpg': torch.rand(5),
-                '00000323_00_0000.jpg': torch.rand(5),
-                '00000323_04_0000.jpg': torch.rand(5),
-                '00000323_00_0001.jpg': torch.rand(5),
-                '00000143_01_0000.jpg': torch.rand(5),
-                '00000143_03_0000.jpg': torch.rand(5),
-                '00000143_03_0001.jpg': torch.rand(5),
-                '00000059_00_0000.jpg': torch.rand(5),
-                '00000059_03_0000.jpg': torch.rand(5),
-                '00000059_01_0000.jpg': torch.rand(5),
-                '00000857_01_0000.jpg': torch.rand(5),
-                '00000857_02_0001.jpg': torch.rand(5),
-                '00000857_02_0000.jpg': torch.rand(5)}
-
-    query = [857, 59, 862]
-    gallery = [857, 59, 143, 323, 389, 98, 95, 1237, 151, 862, 864, 169]
-    '''
-    rootdir = '../../../datasets/Market'
-
-    """for dir in os.listdir(os.path.join(rootdir, 'images')):
-        images = list()
-        person = os.path.join(rootdir, 'images', dir)
-        for img in os.listdir(person):
-            images.append(os.path.join(dir, img))
-        if len(images) == 3:
-            print(images)
-    quit()"""
-
-    calc_mean_average_precision(features, query, gallery, re_rank=True)

@@ -21,7 +21,6 @@ class MultiHeadDotProduct(nn.Module):
         self.mult_attr = mult_attr
 
         # FC Layers for input
-        #print("no lineat layers")
         self.q_linear = nn.Linear(embed_dim + edge_dim, embed_dim)
         self.v_linear = nn.Linear(embed_dim + edge_dim, embed_dim)
         self.k_linear = nn.Linear(embed_dim + edge_dim, embed_dim)
@@ -29,7 +28,6 @@ class MultiHeadDotProduct(nn.Module):
         self.dropout = nn.Dropout(dropout)
 
         # fc layer for concatenated output
-        #print("no out")
         self.out = nn.Linear(embed_dim, embed_dim)
 
         self.reset_parameters()
@@ -43,10 +41,7 @@ class MultiHeadDotProduct(nn.Module):
         k = self.k_linear(k).view(bs, self.nhead, self.hdim).transpose(0, 1)
         q = self.q_linear(q).view(bs, self.nhead, self.hdim).transpose(0, 1)
         v = self.v_linear(v).view(bs, self.nhead, self.hdim).transpose(0, 1)
-        #k = k.view(bs, self.nhead, self.hdim).transpose(0, 1)
-        #q = q.view(bs, self.nhead, self.hdim).transpose(0, 1)
-        #v = v.view(bs, self.nhead, self.hdim).transpose(0, 1)
-
+        
         # perform multi-head attention
         feats = self._attention(q, k, v, edge_index, edge_attr, bs)
         # concatenate heads and put through final linear layer
@@ -88,96 +83,4 @@ class MultiHeadDotProduct(nn.Module):
         nn.init.xavier_uniform_(self.out.weight)
         nn.init.constant_(self.out.bias, 0.)
 
-class MultiHeadMLP(nn.Module):
-    """
-        Multi head attention like in GAT
-        embed_dim: dimension of input embedding
-        nhead: number of attention heads
-        """
 
-    def __init__(self, embed_dim, nhead, aggr, edge_dim=0,
-                 dropout=0.1, bias=True, concat=True):
-        super(MultiHeadMLP, self).__init__()
-        self.embed_dim = embed_dim
-        self.hdim = embed_dim // nhead
-        self.nhead = nhead
-        self.aggr = aggr
-        self.edge_dim = edge_dim
-
-        # from embed dim to nhead * hdim = embed_dim
-        self.fc = LinearFun(embed_dim, embed_dim)
-
-        if edge_dim != 0:
-            self.edge_hdim = int(edge_dim // nhead)
-            self.fc_edge = LinearFun(edge_dim, edge_dim, bias=False)
-        else:
-            self.edge_hdim = 0
-
-        self.att = torch.nn.Parameter(
-            torch.Tensor(self.nhead,
-                         2 * self.hdim + self.edge_hdim, 1))
-
-        if bias and concat:
-            self.bias = nn.Parameter(torch.Tensor(nhead * self.hdim))
-        elif bias and not concat:
-            self.bias = nn.Parameter(torch.Tensor(self.hdim))
-        else:
-            self.register_parameter('bias', None)
-
-        self.dropout = nn.Dropout(dropout)
-        self.act = nn.LeakyReLU()
-        self.out = LinearFun(embed_dim, embed_dim)
-
-        self.reset_parameters()
-
-    def reset_parameters(self):
-        self.fc.reset_parameters()
-        self.out.reset_parameters()
-        glorot(self.att)
-        zeros(self.bias)
-
-    def forward(self, feats: torch.tensor, edge_index: torch.tensor,
-                edge_attr: torch.tensor = None):
-        bs, e = feats.shape[0], edge_attr.shape[0]
-
-        # nhead x bs x hdim
-        feats = self.fc(feats).view(bs, self.nhead, self.hdim).transpose(0, 1)
-
-        if self.edge_hdim:
-            # nhead x e x edge_hdim
-            edge_attr_att = self.fc_edge(edge_attr).view(e, self.nhead,
-                                                         self.edge_hdim)
-            edge_attr_att = edge_attr_att.transpose(0, 1)
-        else:
-            edge_attr_att = edge_attr
-
-        # nhead x bs x out_dim
-        out = self._attention(feats, edge_index, bs, edge_attr_att)
-        out = out.transpose(0, 1).contiguous().view(bs, self.nhead * self.hdim)
-
-        if self.bias is not None:
-            out += self.bias
-
-        out = self.out(out)
-        
-        return out
-
-    def _attention(self, feats, edge_index, bs, edge_attr=None):
-        r, c = edge_index[:, 0], edge_index[:, 1]
-
-        if not self.edge_hdim:  # nhead x edge_index.shape(0) x 2 * C
-            out = torch.cat(
-                [feats.index_select(1, c), feats.index_select(1, r)], dim=2)
-        else:  # nhead x edge_index.shape(0) x 2 * C + edge_hdim
-            out = torch.cat(
-                [feats.index_select(1, c), feats.index_select(1, r),
-                 edge_attr], dim=2)
-
-        alpha = torch.bmm(out, self.att)  # n_heads x edge_ind.shape(0) x 1
-        alpha = self.dropout(softmax(self.act(alpha), c, dim=1, dim_size=bs))
-
-        # H x edge_index.shape(0) x hdim
-        feats = alpha * feats.index_select(1, r)
-        feats = self.aggr(feats, c, 1, bs)
-
-        return feats

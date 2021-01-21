@@ -62,11 +62,8 @@ class DistanceLoss(torch.nn.Module):
 
         teacher_l2s = torch.sum(self.l2_teacher(teacher.index_select(0, i1), teacher.index_select(0, i2)), dim=1)
         teacher_l2s = teacher_l2s/teacher_l2s.mean()
-        #print(teacher_l2s.cpu().tolist()[:num_samps])
         student_l2s = torch.sum(self.l2_student(student.index_select(0, i1), student.index_select(0, i2)), dim=1)
         student_l2s = student_l2s/student_l2s.mean()
-        #print(student_l2s.cpu().tolist()[:num_samps])
-        #quit()
         return torch.sum(torch.abs(teacher_l2s - student_l2s))
         
 
@@ -99,7 +96,6 @@ class CrossEntropyLabelSmooth(torch.nn.Module):
         targets = torch.zeros(log_probs.size()).scatter_(1, targets.unsqueeze(1).data.cpu(), 1)
         if self.use_gpu: targets = targets.cuda(self.dev)
         targets = (1 - self.epsilon) * targets + self.epsilon / self.num_classes
-        #print(targets, log_probs)
         loss = (- targets * log_probs).mean(0).sum()
         return loss
 
@@ -177,13 +173,6 @@ class CenterLoss(torch.nn.Module):
 
         dist = distmat * mask.float()
         loss = dist.clamp(min=1e-12, max=1e+12).sum() / batch_size
-        #dist = []
-        #for i in range(batch_size):
-        #    value = distmat[i][mask[i]]
-        #    value = value.clamp(min=1e-12, max=1e+12)  # for numerical stability
-        #    dist.append(value)
-        #dist = torch.cat(dist)
-        #loss = dist.mean()
         return loss
 
 

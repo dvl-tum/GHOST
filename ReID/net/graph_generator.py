@@ -24,8 +24,7 @@ class GraphGenerator():
     def _get_A(self, W):
         W = torch.where(W > self.thresh, W, torch.tensor(0).float().to(self.dev))
         A = torch.ones_like(W).where(W > self.thresh, torch.tensor(0).float().to(self.dev))
-        #A = A - torch.eye(A.shape[0]).cuda(W.get_device())
-
+        
         return W, A
 
     def _get_W(self, x):
@@ -50,22 +49,8 @@ class GraphGenerator():
 
         return W
 
-    def get_W_y(self, Y):
-        a = Y.unsqueeze(0)
-        b = Y.unsqueeze(1)
-        mask = a == b
-        weight = torch.ones(mask.shape) * -1
-        weight[mask] = 1
-        return weight
-
     def get_graph(self, x, Y=None):
         W = self._get_W(x)
-        #if Y is not None:
-        #    W_y = self.get_W_y(Y.cpu())
-        #    W = W * W_y.cuda(W.get_device())
-        #    W = W_y.cuda(W.get_device())
-        # else:
-        #     W = torch.ones_like(W).cuda(W.get_device())
         W, A = self._get_A(W)
 
         A = torch.nonzero(A)

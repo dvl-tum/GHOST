@@ -4,7 +4,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from collections import OrderedDict
 from torch.utils.model_zoo import load_url as load_state_dict_from_url
-
+from .utils import weights_init_kaiming, weights_init_classifier
 
 __all__ = ['DenseNet', 'densenet121', 'densenet169', 'densenet201', 'densenet161']
 
@@ -58,29 +58,6 @@ class _Transition(nn.Sequential):
         self.add_module('pool', nn.AvgPool2d(kernel_size=2, stride=2))
 
 
-def weights_init_kaiming(m):
-    classname = m.__class__.__name__
-    if classname.find('Linear') != -1:
-        nn.init.kaiming_normal_(m.weight, a=0, mode='fan_out')
-        nn.init.constant_(m.bias, 0.0)
-    elif classname.find('Conv') != -1:
-        nn.init.kaiming_normal_(m.weight, a=0, mode='fan_in')
-        if m.bias is not None:
-            nn.init.constant_(m.bias, 0.0)
-    elif classname.find('BatchNorm') != -1:
-        if m.affine:
-            nn.init.constant_(m.weight, 1.0)
-            nn.init.constant_(m.bias, 0.0)
-
-
-def weights_init_classifier(m):
-    classname = m.__class__.__name__
-    if classname.find('Linear') != -1:
-        nn.init.normal_(m.weight, std=0.001)
-        if m.bias:
-            nn.init.constant_(m.bias, 0.0)
-
-
 class DenseNet(nn.Module):
     r"""Densenet-BC model class, based on
     `"Densely Connected Convolutional Networks" <https://arxiv.org/pdf/1608.06993.pdf>`_
@@ -97,7 +74,7 @@ class DenseNet(nn.Module):
 
     def __init__(self, growth_rate=32, block_config=(6, 12, 24, 16),
                  num_init_features=64, bn_size=4, drop_rate=0, num_classes=1000,
-                 neck=0, last_stride=0):
+                 neck=0, last_stride=0, red=1):
 
         super(DenseNet, self).__init__()
         self.neck = neck
@@ -151,29 +128,47 @@ class DenseNet(nn.Module):
 
             self.bottleneck.apply(weights_init_kaiming)
             self.classifier.apply(weights_init_classifier)
+        
+        if red == 1:
+            self.red = None
+            dim = num_features
+        else:
+            self.red = nn.Linear(num_features, 512)
+            dim = 512
+            print("reduce output dimension resnet to {}".format(512))
+         
+        if self.neck:
+            self.bottleneck = nn.BatchNorm1d(dim)
+            self.bottleneck.bias.requires_grad_(False)  # no shift
+            self.classifier = nn.Linear(dim, num_classes,
+                                bias=False)
 
+            self.bottleneck.apply(weights_init_kaiming)
+            self.classifier.apply(weights_init_classifier)
+        else:
+            self.classifier = nn.Linear(dim, num_classes)
 
-
-    def forward(self, x, output_option='norm'):
+    def forward(self, x, output_option='norm', val=False):
         features = self.features(x)
         out = F.relu(features, inplace=True)
         fc7 = F.adaptive_avg_pool2d(out, (1, 1)).view(features.size(0), -1)
-        #out = self.classifier(fc7)
-        #return out, fc7
+
+        if self.red:
+            fc7 = self.red(fc7)
 
         if self.neck:
-            feat = self.bottleneck(fc7)
+            feats_after = self.bottleneck(fc7)
         else:
-            feat = fc7
-
-        x = self.classifier(feat)
+            feats_after = fc7
+        
+        x = self.classifier(feats_after)
 
         if output_option == 'norm':
             return x, fc7
         elif output_option == 'plain':
             return x, F.normalize(fc7, p=2, dim=1)
         elif output_option == 'neck' and self.neck:
-            return x, feat
+            return x, feats_after
         elif output_option == 'neck' and not self.neck:
             print("Output option neck only avaiable if bottleneck (neck) is "
                   "enabeled - giving back x and fc7")
@@ -196,7 +191,10 @@ def _load_state_dict(model, model_url, progress, neck):
             state_dict[new_key] = state_dict[key]
             del state_dict[key]
     if not neck:
-        model.load_state_dict(state_dict)
+        for i in state_dict:
+            if 'classifier' in i:
+                continue
+            model.state_dict()[i].copy_(state_dict[i])
     else:
         for i in state_dict:
             if 'classifier' in i:

@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 import torch.utils.model_zoo as model_zoo
 import torch.nn.functional as F
-
+from .utils import weights_init_kaiming, weights_init_classifier
 
 __all__ = ['BNInception', 'bn_inception']
 
@@ -551,14 +551,9 @@ class BNInception(nn.Module):
             128, eps=1e-05, momentum=0.9, affine=True
         )
         self.inception_5b_relu_pool_proj = nn.ReLU(inplace)
-        print("Global Avg Pool")
-        self.add_pool = nn.AvgPool2d (
+        self.max_pool = nn.AvgMax2d (
             7, stride=1, padding=0, ceil_mode=True, count_include_pad=True
         )
-        #print("Global Max Pool")
-        #self.max_pool = nn.AvgMax2d (
-        #    7, stride=1, padding=0, ceil_mode=True, count_include_pad=True
-        #)
 
         self.last_linear = nn.Linear(1024, nb_classes)
 
@@ -1313,45 +1308,46 @@ class BNInception(nn.Module):
         x_h = self.features(input)
         x_h, fc7_h = self.logits(x_h)
 
-        #if output_option == 'norm':
-        #    return x_h, fc7_h, None
-        #elif output_option == 'plain':
-        #    return x_h, F.normalize(fc7_h, p=2, dim=1), None
+        return x_h, fc7_h
 
-        return x_h, fc7_h, None
-
-
-# class Inception_embed(nn.Module):
-#     def __init__(self, inception, inception_features_size, embed_features_size, num_classes):
-#         nn.Module.__init__(self)
-#         self.inception = inception
-#         self.embed = nn.Linear(inception_features_size, embed_features_size)
-#         self.fc = nn.Linear(embed_features_size, num_classes)
-#
-#     def forward(self, input):
-#         x, fc7 = self.inception(input)
-#         embedding_features = self.embed(fc7)
-#         x = self.fc(embedding_features)
-#         return x, embedding_features
 
 class Inception_embed(nn.Module):
-    def __init__(self, inception, inception_features_size, embed_features_size, num_classes):
+    def __init__(self, inception, inception_features_size, embed_features_size, num_classes, neck):
         nn.Module.__init__(self)
+        self.neck = neck
         self.inception = inception
         self.embed = nn.Linear(inception_features_size, embed_features_size)
-        self.fc = nn.Linear(embed_features_size, num_classes)
+        if self.neck:
+            self.bottleneck = nn.BatchNorm1d(embed_features_size)
+            self.bottleneck.bias.requires_grad_(False)  # no shift
+            self.fc = nn.Linear(embed_features_size, num_classes,
+                                bias=False)
+
+            self.bottleneck.apply(weights_init_kaiming)
+            self.fc.apply(weights_init_classifier)
+        else:
+            self.fc = nn.Linear(embed_features_size, num_classes)
 
     def forward(self, input, output_option='norm', val=False):
-        x, fc7, _ = self.inception(input)
+        x, fc7 = self.inception(input)
         embedding_features = self.embed(fc7)
-        x = self.fc(embedding_features)
-        
+
+        if self.neck:
+            feats_after = self.bottleneck(embedding_features)
+        else:
+            feats_after = embedding_features
+
+        x = self.fc(feats_after)
+
         if output_option == 'norm':
-            return x, embedding_features, None
+            return x, embedding_features
         elif output_option == 'plain':
-            return x, F.normalize(embedding_features, p=2, dim=1), None
-
-        return x, embedding_features, None
-
+            return x, F.normalize(embedding_features, p=2, dim=1)
+        elif output_option == 'neck' and self.neck:
+            return x, feats_after
+        elif output_option == 'neck' and not self.neck:
+            print("Output option neck only avaiable if bottleneck (neck) is "
+                  "enabeled - giving back x and fc7")
+            return x, embedding_features
 
 
