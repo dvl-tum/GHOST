@@ -2,11 +2,13 @@ import torch
 import torch.nn as nn
 from torch.utils.model_zoo import load_url as load_state_dict_from_url
 import torch.nn.functional as F
+import torch.utils.checkpoint as checkpoint
+from .utils import Sequential
+
 
 __all__ = ['ResNet', 'resnet18', 'resnet34', 'resnet50', 'resnet101',
            'resnet152', 'resnext50_32x4d', 'resnext101_32x8d',
            'wide_resnet50_2', 'wide_resnet101_2']
-
 
 model_urls = {
     'resnet18': 'https://download.pytorch.org/models/resnet18-5c106cde.pth',
@@ -24,12 +26,14 @@ model_urls = {
 def conv3x3(in_planes, out_planes, stride=1, groups=1, dilation=1):
     """3x3 convolution with padding"""
     return nn.Conv2d(in_planes, out_planes, kernel_size=3, stride=stride,
-                     padding=dilation, groups=groups, bias=False, dilation=dilation)
+                     padding=dilation, groups=groups, bias=False,
+                     dilation=dilation)
 
 
 def conv1x1(in_planes, out_planes, stride=1):
     """1x1 convolution"""
-    return nn.Conv2d(in_planes, out_planes, kernel_size=1, stride=stride, bias=False)
+    return nn.Conv2d(in_planes, out_planes, kernel_size=1, stride=stride,
+                     bias=False)
 
 
 class BasicBlock(nn.Module):
@@ -42,9 +46,11 @@ class BasicBlock(nn.Module):
         if norm_layer is None:
             norm_layer = nn.BatchNorm2d
         if groups != 1 or base_width != 64:
-            raise ValueError('BasicBlock only supports groups=1 and base_width=64')
+            raise ValueError(
+                'BasicBlock only supports groups=1 and base_width=64')
         if dilation > 1:
-            raise NotImplementedError("Dilation > 1 not supported in BasicBlock")
+            raise NotImplementedError(
+                "Dilation > 1 not supported in BasicBlock")
         # Both self.conv1 and self.downsample layers downsample the input when stride != 1
         self.conv1 = conv3x3(inplanes, planes, stride)
         self.bn1 = norm_layer(planes)
@@ -78,8 +84,11 @@ class Bottleneck(nn.Module):
     __constants__ = ['downsample']
 
     def __init__(self, inplanes, planes, stride=1, downsample=None, groups=1,
-                 base_width=64, dilation=1, norm_layer=None):
+                 base_width=64, dilation=1, norm_layer=None, stoch_depth=0):
         super(Bottleneck, self).__init__()
+        self.sampler = torch.distributions.bernoulli.Bernoulli(stoch_depth)
+        self.stoch_depth = stoch_depth
+
         if norm_layer is None:
             norm_layer = nn.BatchNorm2d
         width = int(planes * (base_width / 64.)) * groups
@@ -94,7 +103,7 @@ class Bottleneck(nn.Module):
         self.downsample = downsample
         self.stride = stride
 
-    def forward(self, x):
+    def forward(self, x, val=False):
         identity = x
 
         out = self.conv1(x)
@@ -110,8 +119,18 @@ class Bottleneck(nn.Module):
 
         if self.downsample is not None:
             identity = self.downsample(x)
+        
+        # stochastic depth
+        if not val:
+            samples = list()
+            for i in range(out.shape[0]):
+                samples.append(self.sampler.sample())
+            out = out * torch.tensor(samples).unsqueeze(-1).unsqueeze(-1).unsqueeze(-1).cuda()
+        
+            out += identity
+        else:
+            out = out * self.stoch_depth + identity
 
-        out += identity
         out = self.relu(out)
 
         return out
@@ -140,13 +159,27 @@ def weights_init_classifier(m):
             nn.init.constant_(m.bias, 0.0)
 
 
+class ModuleWrapperIgnores2ndArg(nn.Module):
+    def __init__(self, module):
+        super().__init__()
+        self.module = module
+
+    def forward(self,x, dummy_arg=None):
+        assert dummy_arg is not None
+        x = self.module(x)
+        return x
+
+
 class ResNet(nn.Module):
 
     def __init__(self, block, layers, last_stride, neck, num_classes=1000,
                  zero_init_residual=False, groups=1, width_per_group=64,
-                 replace_stride_with_dilation=None, norm_layer=None):
+                 replace_stride_with_dilation=None, norm_layer=None, final_drop=0.5,
+                 stoch_depth=0.8, red=1):
         super(ResNet, self).__init__()
         self.neck = neck
+        self.stoch_depth = stoch_depth
+
         if norm_layer is None:
             norm_layer = nn.BatchNorm2d
         self._norm_layer = norm_layer
@@ -159,10 +192,12 @@ class ResNet(nn.Module):
             replace_stride_with_dilation = [False, False, False]
         if len(replace_stride_with_dilation) != 3:
             raise ValueError("replace_stride_with_dilation should be None "
-                             "or a 3-element tuple, got {}".format(replace_stride_with_dilation))
+                             "or a 3-element tuple, got {}".format(
+                replace_stride_with_dilation))
         self.groups = groups
         self.base_width = width_per_group
-        self.conv1 = nn.Conv2d(3, self.inplanes, kernel_size=7, stride=2, padding=3,
+        self.conv1 = nn.Conv2d(3, self.inplanes, kernel_size=7, stride=2,
+                               padding=3,
                                bias=False)
         self.bn1 = norm_layer(self.inplanes)
         self.relu = nn.ReLU(inplace=True)
@@ -172,23 +207,41 @@ class ResNet(nn.Module):
                                        dilate=replace_stride_with_dilation[0])
         self.layer3 = self._make_layer(block, 256, layers[2], stride=2,
                                        dilate=replace_stride_with_dilation[1])
-        if last_stride: last = 1
-        else: last = 2
+        if last_stride:
+            last = 1
+        else:
+            last = 2
 
         self.layer4 = self._make_layer(block, 512, layers[3], stride=last,
                                        dilate=replace_stride_with_dilation[2])
-        self.avgpool = nn.AdaptiveAvgPool2d((1, 1))
+        
+        #self.layer5 = self._make_layer(block, 512, layers[3], stride=last,
+        #                               dilate=replace_stride_with_dilation[2])
+
+        #self.layer6 = self._make_layer(block, 512, layers[3], stride=last,
+        #                               dilate=replace_stride_with_dilation[2])
+
+
+        #self.avgpool = nn.AdaptiveAvgPool2d((1, 1))
+        self.avgpool = nn.AdaptiveMaxPool2d((1, 1))
+        self.final_drop = nn.Dropout(final_drop)
+        
+        if red == 1:
+            self.red = None
+        else:
+            self.red = nn.Linear(512 * block.expansion, int((512 * block.expansion)/red))
+            print("reduce output dimension resnet by {}".format(red))
         if self.neck:
-            self.bottleneck = nn.BatchNorm1d(512 * block.expansion)
+            self.bottleneck = nn.BatchNorm1d(int((512 * block.expansion)/red))
             self.bottleneck.bias.requires_grad_(False)  # no shift
-            self.fc = nn.Linear(512 * block.expansion, num_classes,
-                                        bias=False)
+            self.fc = nn.Linear(int((512 * block.expansion)/red), num_classes,
+                                bias=False)
 
             self.bottleneck.apply(weights_init_kaiming)
             self.fc.apply(weights_init_classifier)
         else:
-            self.fc = nn.Linear(512 * block.expansion, num_classes)
-        
+            self.fc = nn.Linear(int((512 * block.expansion)/red), num_classes)
+
         # student blocks
         '''d_embed = 512 * block.expansion
         d_hid = 4 * d_embed
@@ -201,7 +254,8 @@ class ResNet(nn.Module):
 
         for m in self.modules():
             if isinstance(m, nn.Conv2d):
-                nn.init.kaiming_normal_(m.weight, mode='fan_out', nonlinearity='relu')
+                nn.init.kaiming_normal_(m.weight, mode='fan_out',
+                                        nonlinearity='relu')
             elif isinstance(m, (nn.BatchNorm2d, nn.GroupNorm)):
                 nn.init.constant_(m.weight, 1)
                 nn.init.constant_(m.bias, 0)
@@ -230,44 +284,74 @@ class ResNet(nn.Module):
             )
 
         layers = []
-        layers.append(block(self.inplanes, planes, stride, downsample, self.groups,
-                            self.base_width, previous_dilation, norm_layer))
+        layers.append(
+            block(self.inplanes, planes, stride, downsample, self.groups,
+                  self.base_width, previous_dilation, norm_layer, self.stoch_depth))
         self.inplanes = planes * block.expansion
         for _ in range(1, blocks):
             layers.append(block(self.inplanes, planes, groups=self.groups,
-                                base_width=self.base_width, dilation=self.dilation,
-                                norm_layer=norm_layer))
+                                base_width=self.base_width,
+                                dilation=self.dilation,
+                                norm_layer=norm_layer, stoch_depth=self.stoch_depth))
 
-        return nn.Sequential(*layers)
+        return Sequential(*layers)
 
-    def _forward(self, x, output_option='norm'):
+    def custom(self, layer):
+        def custom_forward(*inputs):
+            x = layer(inputs[0])
+            return x
+        return custom_forward
+
+    def _forward(self, x, output_option='norm', val=False):
+        val = torch.tensor(val)
+
         x = self.conv1(x)
         x = self.bn1(x)
         x = self.relu(x)
         x = self.maxpool(x)
-
-        x = self.layer1(x)
-        x = self.layer2(x)
-        x = self.layer3(x)
-        x = self.layer4(x)
+        
+        x = self.layer1(x, val)
+        #x = checkpoint.checkpoint(self.layer1, x, val)
+        
+        x = self.layer2(x, val)
+        #x = checkpoint.checkpoint(self.layer2, x, val)
+        
+        x = self.layer3(x, val)
+        #x = checkpoint.checkpoint(self.layer3, x, val)
+        
+        x = self.layer4(x, val)
+        #x = checkpoint.checkpoint(self.layer4, x, val)
+        
+        #x = self.layer5(x, val)
+        #x = checkpoint.checkpoint(self.layer5, x, val)
+        
+        #x = self.layer6(x, val)
+        #x = checkpoint.checkpoint(self.layer6, x, val)
 
         x = self.avgpool(x)
         fc7 = torch.flatten(x, 1)
-        
+
+        if self.red:
+            fc7 = self.red(fc7)
+
         # student
         #feats = self.linear2(self.dropout(self.activation(self.linear1(fc7))))
         feats = fc7
+
         if self.neck:
             feats_after = self.bottleneck(feats)
         else:
             feats_after = feats
-        
-        x = self.fc(feats_after)
 
+        feats_after = self.final_drop(feats_after)
+
+        x = self.fc(feats_after)
+        
         if output_option == 'norm':
             return x, fc7, feats
         elif output_option == 'plain':
-            return x, F.normalize(fc7, p=2, dim=1), F.normalize(feats, p=2, dim=1)
+            return x, F.normalize(fc7, p=2, dim=1), F.normalize(feats, p=2,
+                                                                dim=1)
         elif output_option == 'neck' and self.neck:
             return x, fc7, feats_after
         elif output_option == 'neck' and not self.neck:
@@ -279,22 +363,36 @@ class ResNet(nn.Module):
     forward = _forward
 
 
-def _resnet(arch, block, layers, pretrained, progress, last_stride=0, neck=0, **kwargs):
-    model = ResNet(block, layers, last_stride=last_stride, neck=neck, **kwargs)
+def _resnet(arch, block, layers, pretrained, progress, last_stride=0, neck=0,
+            final_drop=0.5, stoch_depth=0.8, red=1, **kwargs):
+    model = ResNet(block, layers, last_stride=last_stride, neck=neck, 
+            final_drop=final_drop, stoch_depth=stoch_depth, red=red, **kwargs)
     if pretrained:
         if not neck:
             state_dict = load_state_dict_from_url(model_urls[arch],
-                                              progress=progress)
-            model.load_state_dict(state_dict)
+                                                  progress=progress)
+            for i in state_dict:
+                if 'fc' in i:
+                    continue
+                model.state_dict()[i].copy_(state_dict[i])
         else:
             state_dict = load_state_dict_from_url(model_urls[arch],
-                                              progress=progress)
+                                                  progress=progress)
+            '''
+            state_dict_new = dict()
+            for k, v in state_dict.items():
+                if k.split('.')[0][:-1] != 'layer':
+                    state_dict_new[k] = v
+                else:
+                    state_dict_new[k.split('.')[0] +  '.module.' + ('.').join(k.split('.')[1:])] = v
+            state_dict = state_dict_new
+            del state_dict_new
+            '''
             for i in state_dict:
                 if 'fc' in i:
                     continue
                 model.state_dict()[i].copy_(state_dict[i])
     return model
-
 
 
 def resnet18(pretrained=False, progress=True, **kwargs):
@@ -319,7 +417,7 @@ def resnet34(pretrained=False, progress=True, **kwargs):
                    **kwargs)
 
 
-def resnet50(pretrained=False, progress=True, last_stride=0, neck=0, **kwargs):
+def resnet50(pretrained=False, progress=True, last_stride=0, neck=0, final_drop=0.5, stoch_depth=0.8, red=1, **kwargs):
     r"""ResNet-50 model from
     `"Deep Residual Learning for Image Recognition" <https://arxiv.org/pdf/1512.03385.pdf>`_
     Args:
@@ -327,7 +425,7 @@ def resnet50(pretrained=False, progress=True, last_stride=0, neck=0, **kwargs):
         progress (bool): If True, displays a progress bar of the download to stderr
     """
     return _resnet('resnet50', Bottleneck, [3, 4, 6, 3], pretrained, progress,
-                   last_stride, neck, **kwargs)
+                   last_stride, neck, final_drop, stoch_depth, red=red, **kwargs)
 
 
 def resnet101(pretrained=False, progress=True, **kwargs):
@@ -337,7 +435,8 @@ def resnet101(pretrained=False, progress=True, **kwargs):
         pretrained (bool): If True, returns a model pre-trained on ImageNet
         progress (bool): If True, displays a progress bar of the download to stderr
     """
-    return _resnet('resnet101', Bottleneck, [3, 4, 23, 3], pretrained, progress,
+    return _resnet('resnet101', Bottleneck, [3, 4, 23, 3], pretrained,
+                   progress,
                    **kwargs)
 
 
@@ -348,7 +447,8 @@ def resnet152(pretrained=False, progress=True, **kwargs):
         pretrained (bool): If True, returns a model pre-trained on ImageNet
         progress (bool): If True, displays a progress bar of the download to stderr
     """
-    return _resnet('resnet152', Bottleneck, [3, 8, 36, 3], pretrained, progress,
+    return _resnet('resnet152', Bottleneck, [3, 8, 36, 3], pretrained,
+                   progress,
                    **kwargs)
 
 
@@ -408,4 +508,5 @@ def wide_resnet101_2(pretrained=False, progress=True, **kwargs):
     kwargs['width_per_group'] = 64 * 2
     return _resnet('wide_resnet101_2', Bottleneck, [3, 4, 23, 3],
                    pretrained, progress, **kwargs)
+
 
