@@ -1,0 +1,25 @@
+dataset:
+  name: "mot17_test_FRCNN" # mot17_test_FRCNN
+  path: "../../datasets/MOT"
+  tracktor_pre:
+    use: True
+    path: "MOT17Labels"
+
+reid_net:
+  trained_on:
+    name: 'Market'
+    num_classes: 751
+  encoder_params:
+    pretrained_path: "weights/reid.pth"
+    net_type: "resnet50"
+    neck: 0
+    red: 4
+    last_stride: 0
+    final_drop: 0 #0.5
+    stoch_depth: 1 #0.8
+    weight_norm: 0
+    bn_inception:
+      embed: 0
+      sz_embedding: 512
+
+
