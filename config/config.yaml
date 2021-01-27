@@ -1,5 +1,5 @@
 dataset:
-  name: "mot17_test_FRCNN" # mot17_test_FRCNN
+  name: "mot17_train_FRCNN" # mot17_test_FRCNN
   path: "../../datasets/MOT"
   tracktor_pre:
     use: True
@@ -22,4 +22,6 @@ reid_net:
       embed: 0
       sz_embedding: 512
 
-
+tracker:
+  reid_thresh: 1
+  output_dir: 'out'

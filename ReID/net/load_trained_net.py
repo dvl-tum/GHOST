@@ -1,6 +1,12 @@
 import torch
 import os
-import net
+#import net
+from .embed import embed
+from .inception_bn import bn_inception, Inception_embed#, bn_inception_augmented
+from .resnet import resnet18, resnet34, resnet50, resnet101, resnet152
+from .densenet import densenet121, densenet161, densenet169, densenet201
+from .gnn_base import GNNReID
+from .graph_generator import GraphGenerator
 import torch.nn as nn
 import torch.nn.utils.weight_norm as weightNorm
 from .utils import weights_init_kaiming, weights_init_classifier
@@ -69,7 +75,7 @@ def load_net(dataset, nb_classes, mode, net_type, bn_inception={'embed': 0, 'sz_
 
     elif net_type == 'resnet50':
         sz_embed = int(2048/red)
-        model = net.resnet50(pretrained=True, last_stride=last_stride, neck=neck, final_drop=final_drop, stoch_depth=stoch_depth, red=red)
+        model = resnet50(pretrained=True, last_stride=last_stride, neck=neck, final_drop=final_drop, stoch_depth=stoch_depth, red=red)
 
         dim = int(2048/red)
         if neck:

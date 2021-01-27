@@ -6,8 +6,7 @@ import warnings
 import time
 import os.path as osp
 import os
-import utils.utils as utils
-from trainer import Trainer
+from tracker import Tracker
 
 logger = logging.getLogger('Tracker')
 logger.setLevel(logging.INFO)
