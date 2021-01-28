@@ -1,9 +1,8 @@
 dataset:
-  name: "mot17_train_FRCNN" # mot17_test_FRCNN
-  path: "../../datasets/MOT"
-  tracktor_pre:
-    use: True
-    path: "MOT17Labels"
+  mot_dir: "../../datasets/MOT/MOT17" # mot17_test_FRCNN
+  det_dir: "../../datasets/MOT/MOT17Labels"
+  detector: "FRCNN"
+  splits: "mot17_split_1"
 
 reid_net:
   trained_on:
