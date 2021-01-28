@@ -5,7 +5,7 @@ import math
 import torch.nn.functional as F
 import numpy as np
 import torch
-from torch_geometric import nn as nn_geo
+#from torch_geometric import nn as nn_geo
 import logging
 from .utils import *
 from .attentions import MultiHeadDotProduct
