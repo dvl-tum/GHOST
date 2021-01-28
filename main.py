@@ -37,8 +37,9 @@ def main(args):
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     logger.info('Switching to device {}'.format(device))
 
-    trainer = Tracker(config, device, timer=time.time())
-    trainer.track()
+    trainer = Tracker(device, time.time(), config['dataset'],
+                      config['reid_net'], config['tracker'])
+    trainer.train()
 
 
 if __name__ == '__main__':

@@ -4,8 +4,6 @@ import torch
 import random
 import math
 import numpy as np
-import imgaug as ia
-import imgaug.augmenters as iaa
 
 
 def make_transform(sz_resize=[384, 128], sz_crop=[384, 128],

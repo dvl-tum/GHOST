@@ -14,43 +14,50 @@ import sklearn.metrics
 import scipy
 from collections import defaultdict
 import numpy as np
-from tracking_wo_bnw.src.tracktor.utils import interpolate, get_mot_accum, evaluate_mot_accums
+from tracking_wo_bnw.src.tracktor.utils import interpolate, get_mot_accum, \
+    evaluate_mot_accums
+from src.datasets.MOT import MOT17, collate
+from data.splits import _SPLITS
+from src.nets.proxy_gen import ProxyGenMLP, ProxyGenRNN
+
 
 
 class Tracker():
-    def __init__(self, config, device, timer):
-        self.config = config
+    def __init__(self, device, timer, dataset_cfg, reid_net_cfg, tracker_cfg):
         self.device = device
 
         #load ReID net
-        self.encoder, _ = ReID.net.load_net(
-            self.config['reid_net']['trained_on']['name'],
-            self.config['reid_net']['trained_on']['num_classes'], 'test',
-            **self.config['reid_net']['encoder_params'])
+        self.encoder, sz_embed = ReID.net.load_net(
+            reid_net_cfg['trained_on']['name'],
+            reid_net_cfg['trained_on']['num_classes'], 'test',
+            **reid_net_cfg['encoder_params'])
         
-        self.encoder = self.encoder.cuda(self.device)
-        self.reid_thresh = self.config['tracker']['reid_thresh']
+        self.encoder = self.encoder.to(self.device)
+        self.proxy_gen = ProxyGenMLP(sz_embed)
+        self.reid_thresh = tracker_cfg['reid_thresh']
 
         self.tracks = defaultdict(list)
         self.inactive_tracks = defaultdict(list)
 
-        self.dataset = factory.Datasets(self.config['dataset']['name'])
-        
-        '''
-        if self.config['dataset']['tracktor_pre']['use']:
-            self.use_preprocessed()
-        try:
-            self.dataset = factory.Datasets(self.config['dataset'])
-        except Exception as e:
-            print(e)
-            print("HELLO")
-            self.undo_preprocessed()
-            undone = 1
+        self.loaders = self.get_data_loaders(dataset_cfg)
+
+    def get_data_loaders(self, dataset_cfg):
+        loaders = dict()
+        for mode in _SPLITS[dataset_cfg['splits']].keys():
+            seqs = _SPLITS[dataset_cfg['splits']][mode]['seq']
+            dir = _SPLITS[dataset_cfg['splits']][mode]['dir']
+            dataset = MOT17(seqs, dataset_cfg, dir)
+
+            loaders[mode] = DataLoader(dataset, batch_size=1, shuffle=True,
+                                       collate_fn=collate)
+        return loaders
+
+    def train(self):
+        for data in self.loaders['train']:
+            data, target, visibility = data
+            print(data.shape())
             quit()
-        
-        if undone == 0:
-            self.undo_preprocessed()
-        '''
+
     def track(self):
         mot_accums = list()
         self.encoder.eval()
@@ -137,73 +144,6 @@ class Tracker():
             evaluate_mot_accums(mot_accums,
                             [str(s) for s in self.dataset if not s.no_gt],
                             generate_overall=True)
-
-    def build_crops(self, image, rois):
-        res = []
-        #trans = Compose([ToPILImage(), Resize((256,128)), ToTensor()])
-        to_pil = transforms.ToPILImage()
-        trans = make_transform_bot(is_train=False)
-        for r in rois:
-            print(r)
-            x0 = int(r[0])
-            y0 = int(r[1])
-            x1 = int(r[2])
-            y1 = int(r[3])
-            if x0 == x1:
-                if x0 != 0:
-                    x0 -= 1
-                else:
-                    x1 += 1
-            if y0 == y1:
-                if y0 != 0:
-                    y0 -= 1
-                else:
-                    y1 += 1
-            im = image[0,:,y0:y1,x0:x1]
-            im = to_pil(im)
-            im = trans(im)
-            res.append(im)
-        res = torch.stack(res, 0)
-        res = res.cuda()
-        return res
-
-    def use_preprocessed(self):
-        track_paths = self.config['dataset']['tracktor_pre']['path']
-        dataset =  self.config['dataset']['name'].split('_')[0].upper()
-        seq = self.config['dataset']['name'].split('_')[1]
-        detector = self.config['dataset']['name'].split('_')[2]
-        
-        if dataset == 'MOT17':
-            train_sequences = ['MOT17-02', 'MOT17-04', 'MOT17-05', 'MOT17-09',
-                               'MOT17-10', 'MOT17-11', 'MOT17-13']
-            test_sequences = ['MOT17-01', 'MOT17-03', 'MOT17-06', 'MOT17-07',
-                              'MOT17-08', 'MOT17-12', 'MOT17-14']
-
-        if seq == 'train':
-            seq = train_sequences
-            dir = 'train'
-        elif seq == 'test':
-            seq = test_sequences
-            dir = 'test'
-        else:
-            seq = [f"{dataset}-{seq}"]
-            dir = 'test' if seq in test_sequences else 'train'
-
-        for s in seq:
-            s_det = f"{s}-{detector}"
-            self.s_dir = osp.join(self.config['dataset']['path'], dataset, dir, s)
-            self.d_dir = osp.join(self.config['dataset']['path'], dataset, dir, s_det)
-            t_dir = osp.join(self.config['dataset']['path'], track_paths, dir, s_det)
-            self.t_dir = osp.join(t_dir, 'det', 'tracktor_prepr_det.txt')
-
-            shutil.move(osp.join(self.d_dir, 'det', 'det.txt'),
-                        osp.join(self.d_dir, 'det', 'd_o.txt'))
-            shutil.copyfile(self.t_dir, osp.join(self.d_dir, 'det', 'det.txt'))
-
-    def undo_preprocessed(self):
-        shutil.move(osp.join(self.d_dir, 'det', 'det.txt'), self.t_dir)
-        shutil.move(osp.join(self.d_dir, 'det', 'd_o.txt'),
-                    osp.join(self.d_dir, 'det', 'det.txt'))
             
 
     def make_results(self):
