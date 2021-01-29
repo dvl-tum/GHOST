@@ -149,7 +149,7 @@ class MOT17(Dataset):
 
 
 def collate(batch):
-    data = torch.cat([item[0] for item in batch], dim=0)
+    data = [item[0] for item in batch]
     target = [item[1] for item in batch]
     visibility = [item[2] for item in batch]
 

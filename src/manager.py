@@ -19,7 +19,7 @@ from tracking_wo_bnw.src.tracktor.utils import interpolate, get_mot_accum, \
 from src.datasets.MOT import MOT17, collate
 from data.splits import _SPLITS
 from src.nets.proxy_gen import ProxyGenMLP, ProxyGenRNN
-
+from .tracker import Tracker
 
 
 class Manager():
@@ -35,7 +35,7 @@ class Manager():
         self.encoder = self.encoder.to(self.device)
         self.proxy_gen = ProxyGenMLP(sz_embed)
 
-        self.tracker(tracker_cfg)
+        self.tracker = Tracker(tracker_cfg)
 
         self.loaders = self.get_data_loaders(dataset_cfg)
 
@@ -54,6 +54,7 @@ class Manager():
     def train(self):
         for data in self.loaders['train']:
             data, target, visibility = data
+            print(len(data), target[0], len(target))
             
 
     def track(self):
