@@ -22,7 +22,7 @@ from src.nets.proxy_gen import ProxyGenMLP, ProxyGenRNN
 
 
 
-class Tracker():
+class Manager():
     def __init__(self, device, timer, dataset_cfg, reid_net_cfg, tracker_cfg):
         self.device = device
 
@@ -34,16 +34,15 @@ class Tracker():
         
         self.encoder = self.encoder.to(self.device)
         self.proxy_gen = ProxyGenMLP(sz_embed)
-        self.reid_thresh = tracker_cfg['reid_thresh']
 
-        self.tracks = defaultdict(list)
-        self.inactive_tracks = defaultdict(list)
+        self.tracker(tracker_cfg)
 
         self.loaders = self.get_data_loaders(dataset_cfg)
 
     def get_data_loaders(self, dataset_cfg):
         loaders = dict()
         for mode in _SPLITS[dataset_cfg['splits']].keys():
+            print(mode)
             seqs = _SPLITS[dataset_cfg['splits']][mode]['seq']
             dir = _SPLITS[dataset_cfg['splits']][mode]['dir']
             dataset = MOT17(seqs, dataset_cfg, dir)
@@ -55,8 +54,7 @@ class Tracker():
     def train(self):
         for data in self.loaders['train']:
             data, target, visibility = data
-            print(data.shape())
-            quit()
+            
 
     def track(self):
         mot_accums = list()

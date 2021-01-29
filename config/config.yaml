@@ -1,6 +1,7 @@
 dataset:
   mot_dir: "../../datasets/MOT/MOT17" # mot17_test_FRCNN
   det_dir: "../../datasets/MOT/MOT17Labels"
+  det_file: "tracktor_prepr_det.txt"
   detector: "FRCNN"
   splits: "mot17_split_1"
 

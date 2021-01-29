@@ -6,7 +6,7 @@ import warnings
 import time
 import os.path as osp
 import os
-from tracker import Tracker
+from src.manager import Manager
 
 logger = logging.getLogger('Tracker')
 logger.setLevel(logging.INFO)
@@ -37,9 +37,9 @@ def main(args):
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     logger.info('Switching to device {}'.format(device))
 
-    trainer = Tracker(device, time.time(), config['dataset'],
+    manager = Manager(device, time.time(), config['dataset'],
                       config['reid_net'], config['tracker'])
-    trainer.train()
+    manager.train()
 
 
 if __name__ == '__main__':

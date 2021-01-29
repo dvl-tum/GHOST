@@ -5,7 +5,7 @@ import os.path as osp
 import csv
 from collections import defaultdict
 import numpy as np
-from ...ReID.dataset.utils import make_transform_bot
+from ReID.dataset.utils import make_transform_bot
 import PIL.Image as Image
 from torchvision.transforms import ToTensor
 
@@ -13,11 +13,13 @@ from torchvision.transforms import ToTensor
 class MOT17(Dataset):
     def __init__(self, sequences, dataset_cfg, dir):
         self.sequences = self.add_detector(sequences, dataset_cfg['detector'])
-
+        
         self.mot_dir = osp.join(dataset_cfg['mot_dir'], dir)
         self.det_dir = osp.join(dataset_cfg['det_dir'], dir)
+        self.det_file = dataset_cfg['det_file']
 
         self._vis_threshold = 0
+        self.to_tensor = ToTensor()
         self.to_pil = transforms.ToPILImage()
         self.transform = make_transform_bot(is_train=False)
 
@@ -36,20 +38,22 @@ class MOT17(Dataset):
 
     def get_seqs(self):
         sequences = list()
+        
         for s in self.sequences:
             gt_file = osp.join(self.mot_dir, s, 'gt', 'gt.txt')
-            det_file = osp.join(self.det_dir, s, 'det', 'det.txt')
-
+            det_file = osp.join(self.det_dir, s, 'det', self.det_file)
+            
             no_gt, boxes, visibility = self.get_gt(gt_file)
             dets = self.get_dets(det_file)
-            samples = self.get_sample_list()
+            
+            samples = self.get_sample_list(boxes, visibility, dets, s)
             sequences.append(samples)
 
         return sequences
 
     def get_gt(self, gt_file):
         no_gt = False
-        boxes, visibility = defaultdict(dict)
+        boxes, visibility = defaultdict(dict), defaultdict(dict)
         if osp.exists(gt_file):
             with open(gt_file, "r") as inf:
                 reader = csv.reader(inf, delimiter=',')
@@ -88,17 +92,18 @@ class MOT17(Dataset):
 
         return dets
 
-    def get_sample_list(self, boxes, visibility, dets, mot_dir):
-        img_dir = osp.join(mot_dir, 'img1')
+    def get_sample_list(self, boxes, visibility, dets, s):
+        img_dir = osp.join(self.mot_dir, s, 'img1')
         samples = [{'gt': boxes[i],
                     'im_path': osp.join(img_dir, f"{i:06d}.jpg"),
                     'vis': visibility[i],
-                    'dets': dets[i]} for i in range(len(dets))]
-
+                    'dets': dets[i]} for i in range(1, len(dets)+1)]
+        
         return samples
 
     def get_images(self, image, rois):
         # tracktor resize (256,128)
+        
         res = list()
         for r in rois:
             x0 = int(r[0])
@@ -115,10 +120,11 @@ class MOT17(Dataset):
                     y0 -= 1
                 else:
                     y1 += 1
-            im = image[0, :, y0:y1, x0:x1]
+            im = image[:, y0:y1, x0:x1]
             im = self.to_pil(im)
             im = self.transform(im)
             res.append(im)
+        
         res = torch.stack(res, 0)
         res = res.cuda()
         return res
@@ -126,12 +132,13 @@ class MOT17(Dataset):
     def __getitem__(self, idx):
         """Return the ith image converted to blob"""
         seq = self.data[idx]
-
+        
         for frame in seq:
-            img = ToTensor(Image.open(frame['im_path']).convert("RGB"))
+            img = self.to_tensor(Image.open(frame['im_path']).convert("RGB"))
+            
             dets = torch.tensor([det[:4] for det in frame['dets']])
-            imgs = torch.stack(self.get_images(img, dets))
-
+            imgs = self.get_images(img, dets)
+            
             gt = frame['gt']
             vis = frame['vis']
 
@@ -143,8 +150,8 @@ class MOT17(Dataset):
 
 def collate(batch):
     data = torch.cat([item[0] for item in batch], dim=0)
-    target = torch.cat([item[1] for item in batch], dim=0)
-    visibility = torch.cat([item[2] for item in batch], fim=0)
+    target = [item[1] for item in batch]
+    visibility = [item[2] for item in batch]
 
     return [data, target, visibility]
 
