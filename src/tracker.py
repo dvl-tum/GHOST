@@ -1,4 +1,5 @@
 import numpy as np
+from collections import defaultdict
 
 
 class Tracker():
@@ -8,7 +9,7 @@ class Tracker():
         self.tracks = defaultdict(list)
         self.inactive_tracks = defaultdict(list)
 
-        def track(self):
+    def track(self, seq):
         mot_accums = list()
         self.encoder.eval()
         for seq in self.dataset:
