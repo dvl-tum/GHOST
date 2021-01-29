@@ -132,17 +132,19 @@ class MOT17(Dataset):
     def __getitem__(self, idx):
         """Return the ith image converted to blob"""
         seq = self.data[idx]
-        
+
+        seq_imgs = list()
+        seq_gt = list()
+        seq_vis = list()
         for frame in seq:
             img = self.to_tensor(Image.open(frame['im_path']).convert("RGB"))
             
             dets = torch.tensor([det[:4] for det in frame['dets']])
-            imgs = self.get_images(img, dets)
-            
-            gt = frame['gt']
-            vis = frame['vis']
+            seq_imgs.append(self.get_images(img, dets))
+            seq_gt.append(frame['gt'])
+            seq_vis.append(frame['vis'])
 
-        return imgs, gt, vis
+        return seq_imgs, seq_gt, seq_vis
 
     def __len__(self):
         return len(self.data)
