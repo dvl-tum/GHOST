@@ -96,9 +96,14 @@ def load_net(dataset, nb_classes, mode, net_type, bn_inception={'embed': 0, 'sz_
 
         if pretrained_path != 'no':
             if not torch.cuda.is_available(): 
-                model.load_state_dict(torch.load(pretrained_path, map_location=torch.device('cpu')))
+                state_dict = torch.load(pretrained_path, map_location=torch.device('cpu'))
             else:
-                model.load_state_dict(torch.load(pretrained_path))
+                state_dict = torch.load(pretrained_path)
+
+            state_dict = {k: v for k, v in state_dict.items() if 'fc' not in k.split('.')}
+            model_dict = model.state_dict()
+            model_dict.update(state_dict)
+            model.load_state_dict(model_dict)
 
     elif net_type == 'resnet101':
         sz_embed = int(2048/red)
