@@ -18,6 +18,22 @@ class ProxyGenMLP(nn.Module):
         return self.proxy(embed)
 
 
+class GANLayer(nn.Module):
+    def __init__(self, sz_embed):
+        self.gan_layer = nn.Linear(sz_embed, 1)
+
+    def forward(self, embedding):
+        return self.gan_layer(embedding)
+
+
+class ClassificationLayer(nn.Module):
+    def __init__(self, sz_embed, num_classes):
+        self.fc = nn.Linear(sz_embed, num_classes)
+
+    def forward(self, embedding):
+        return self.fc(embedding)
+
+
 class ProxyGenRNN(nn.Module):
     def __init__(self, sz_embed, num_layers):
         super(ProxyGenRNN, self).__init__()
