@@ -2,6 +2,7 @@ import motmetrics as mm
 import logging
 from sklearn.metrics import average_precision_score
 import sklearn.metrics.pairwise
+import numpy as np
 
 
 logger = logging.getLogger('AllReIDTracker.Utils')
