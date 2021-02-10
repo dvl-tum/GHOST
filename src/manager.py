@@ -45,6 +45,10 @@ class Manager():
         #load ReID net
         self._get_models()
 
+        # name of eval criteria for logging
+        self.eval1 = 'MOTA'
+        self.eval2 = 'IDF1'
+
     def _get_models(self):
         self._get_encoder()
         if self.reid_net_cfg['gnn']:
@@ -196,10 +200,10 @@ class Manager():
                 if mota_overall > best_mota_iter:
                     best_mota_iter = mota_overall
                     best_idf1_iter = idf1_overall
-            logger.info("Iteration {}: Best MOTA {} and IDF1 {}".format(i, self.best_mota, self.best_idf1))
+            logger.info("Iteration {}: Best {} {} and {} {}".format(i, self.eval1, best_mota_iter, self.eval2, best_idf1_iter))
 
         # save best
-        logger.info("Overall Results: Best MOTA {} and IDF1 {}".format(self.best_mota, self.best_idf1))
+        logger.info("Overall Results: Best {} {} and {} {}".format(self.eval1, self.best_mota, self.eval2, self.best_idf1))
         self._save_best()
 
     def _train(self, e):
@@ -247,13 +251,3 @@ class Manager():
 
         return None, None 
 
-
-'''
-
-    def make_results(self):
-        results = defaultdict(dict)
-        for id, ts in self.tracks.items():
-            for t in ts:
-                results[id][t['im_index']] = np.concatenate([t['bbox'].numpy(), np.array([-1])])
-
-        return results'''
