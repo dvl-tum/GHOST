@@ -39,7 +39,7 @@ class MOTLoader():
             self.dets['detection_id'] = np.arange(self.dets.shape[0])
             self.assign_gt()
             self.dets.attrs.update(self.seq_info)
-            
+
     def get_gt(self, gt_file):
         if osp.exists(gt_file):
             self.gt = pd.read_csv(gt_file, names = ['frame', 'id', 'bb_left', 'bb_top', 'bb_width', 'bb_height', 'conf', 'label', 'vis'])
@@ -167,6 +167,10 @@ class MOTDataset(Dataset):
     @property
     def preprocessed_paths(self):
         return {s: osp.join(self.preprocessed_dir, s+'.pkl') for s in self.sequences}
+
+    @property
+    def preprocessed_gt_paths(self):
+        return {s: osp.join(self.preprocessed_dir, s+'_gt.pkl') for s in self.sequences}
     
     @property
     def preprocessed_dir(self):
@@ -182,16 +186,20 @@ class MOTDataset(Dataset):
     def process(self):
         self.seqs_by_names = dict()
         self.id_to_y = dict()
-        prior_ids = list()
         for seq in self.sequences:
             #print(seq)
             seq_ids = dict()
             if not self.preprocessed_exists or self.dataset_cfg['prepro_again']:
                 loader = MOTLoader([seq], self.dataset_cfg, self.dir)
                 loader.get_seqs()
+                
                 dets = loader.dets
                 os.makedirs(self.preprocessed_dir, exist_ok=True)
                 dets.to_pickle(self.preprocessed_paths[seq])
+
+                gt = loader.gt
+                os.makedirs(self.preprocessed_dir, exist_ok=True)
+                gt.to_pickle(self.preprocessed_gt_paths[seq])
             else:
                 dets = pd.read_pickle(self.preprocessed_paths[seq])
             
@@ -225,7 +233,7 @@ class MOTDataset(Dataset):
             frame = nodes[nodes['frame'] == i]
             assert len(frame['frame_path'].unique()) == 1
             img = self.to_tensor(Image.open(frame['frame_path'].unique()[0]).convert("RGB"))
-            for inxes, row in frame.iterrows():
+            for ind, row in frame.iterrows():
                 im = img[:, row['bb_top']:row['bb_bot'], row['bb_left']:row['bb_right']]
                 im = self.to_pil(im)
                 im = self.transform(im)
@@ -233,7 +241,6 @@ class MOTDataset(Dataset):
                 ids.append(row['id'])
         
         res = torch.stack(res, 0)
-        res = res
 
         return res, ids
 
@@ -259,16 +266,20 @@ class ReIDDataset(MOTDataset):
     
     def process(self):
         self.id_to_y = dict()
-        prior_ids = list()
         for seq in self.sequences:
             #print(seq)
             seq_ids = dict()
             if not self.preprocessed_exists or self.dataset_cfg['prepro_again']:
                 loader = MOTLoader([seq], self.dataset_cfg, self.dir)
                 loader.get_seqs()
+                
                 dets = loader.dets
                 os.makedirs(self.preprocessed_dir, exist_ok=True)
                 dets.to_pickle(self.preprocessed_paths[seq])
+
+                gt = loader.gt
+                os.makedirs(self.preprocessed_dir, exist_ok=True)
+                gt.to_pickle(self.preprocessed_gt_paths[seq])
             else:
                 dets = pd.read_pickle(self.preprocessed_paths[seq])
 
@@ -315,9 +326,182 @@ class ReIDDataset(MOTDataset):
         return img, y
 
 
+class TrackingDataset(MOTDataset):
+    def __init__(self, split, sequences, dataset_cfg, dir, datastorage='data'):
+        super(TrackingDataset, self).__init__(split, sequences, dataset_cfg, dir, datastorage)
+
+    def process(self):
+        self.data = list()
+        for seq in self.sequences:
+            if not self.preprocessed_exists or self.dataset_cfg['prepro_again']:
+                loader = MOTLoader([seq], self.dataset_cfg, self.dir)
+                loader.get_seqs()
+                
+                dets = loader.dets
+                os.makedirs(self.preprocessed_dir, exist_ok=True)
+                dets.to_pickle(self.preprocessed_paths[seq])
+
+                gt = loader.gt
+                os.makedirs(self.preprocessed_dir, exist_ok=True)
+                gt.to_pickle(self.preprocessed_gt_paths[seq])
+            else:
+                dets = pd.read_pickle(self.preprocessed_paths[seq])
+                gt = pd.read_pickle(self.preprocessed_gt_paths[seq])
+
+            if 'vis' in dets and dets['vis'].unique() != [-1]:
+                dets = dets[dets['vis'] > self.dataset_cfg['gt_training_min_vis']]
+            
+            self.data.append(Sequence(name=seq, dets=dets, gt=gt, 
+                                        to_pil=self.to_pil, 
+                                        to_tensor=self.to_tensor, 
+                                        transform=self.transform))
+            #self.data.append({'name': seq, 'dets': dets, 'gt': gt})
+        
+        self.id += 1
+
+    def _get_images(self, path, dets_frame):
+        img = self.to_tensor(Image.open(path).convert("RGB"))
+        res = list()
+        dets = list()
+        for ind, row in dets_frame.iterrows():
+            im = img[:, row['bb_top']:row['bb_bot'], row['bb_left']:row['bb_right']]
+            im = self.to_pil(im)
+            im = self.transform(im)
+            res.append(im)
+            dets.append(np.array([row['bb_left'], row['bb_top'], row['bb_right'], row['bb_bot']], dtype=np.float32))
+    
+        res = torch.stack(res, 0)
+        res = res.cuda()
+    
+        return res, dets
+
+    def __getitem__(self, idx):
+        """Return the ith image converted to blob"""
+        seq = self.data[idx]
+        '''
+        # seq_dict.keys() = [name, dets, dt]
+        seq_dict = self.data[idx]
+        dets, gt = seq_dict['dets'], seq_dict['gt']
+
+        seq_imgs = list()
+        seq_gt = list()
+        seq_dets = list()
+        seq_paths = list()
+        
+        for frame in dets['frame'].unique():
+            gt_frame = gt[gt['frame']==frame]
+            dets_frame = dets[dets['frame']==frame]
+            print(dets_frame)
+            quit()
+            assert len(dets_frame['frame_path'].unique()) == 1
+            
+            img, dets_f = self._get_images(dets_frame['frame_path'].unique()[0], dets_frame)
+            seq_imgs.append(img)
+            seq_dets.append(dets_f)
+
+            gt_f = {row['id']: np.array([row['bb_left'], row['bb_top'], row['bb_right'], row['bb_bot']], dtype=np.float32) for i, row in gt_frame.iterrows()}
+            seq_gt.append(gt_f)
+
+            seq_paths.append(dets_frame['frame_path'].unique()[0])
+        '''
+
+        return [seq] #seq_imgs, seq_gt, seq_paths, seq_dets
+
+
+class Sequence():
+    def __init__(self, name, dets, gt, to_pil, to_tensor, transform):
+        self.dets = dets
+        self.gt = gt
+        self.name = name
+        self.to_pil = to_pil
+        self.to_tensor = to_tensor
+        self.transform = transform
+        self.num_frames = len(self.dets['frame'].unique())
+
+    def _get_images(self, path, dets_frame):
+        img = self.to_tensor(Image.open(path).convert("RGB"))
+        res = list()
+        dets = list()
+        for ind, row in dets_frame.iterrows():
+
+            im = img[:, row['bb_top']:row['bb_bot'], row['bb_left']:row['bb_right']]
+            im = self.to_pil(im)
+            im = self.transform(im)
+            res.append(im)
+            dets.append(np.array([row['bb_left'], row['bb_top'], row['bb_right'], row['bb_bot']], dtype=np.float32))
+    
+        res = torch.stack(res, 0)
+        res = res.cuda()
+    
+        return res, dets
+    
+    def __iter__(self):
+        self.frames = self.dets['frame'].unique()
+        self.i = 0
+        return self
+    
+    def __next__(self):
+        if self.i < self.num_frames:
+            frame = self.frames[self.i]
+            print(frame)
+            gt_frame = self.gt[self.gt['frame']==frame]
+            dets_frame = self.dets[self.dets['frame']==frame]
+
+            assert len(dets_frame['frame_path'].unique()) == 1
+            
+            img, dets_f = self._get_images(dets_frame['frame_path'].unique()[0], dets_frame)
+
+            gt_f = {row['id']: np.array([row['bb_left'], row['bb_top'], row['bb_right'], row['bb_bot']], dtype=np.float32) for i, row in gt_frame.iterrows()}
+
+            self.i += 1
+            return img, gt_f, dets_frame['frame_path'].unique()[0], dets_f
+        else:
+            raise StopIteration
+
+
 def collate_train(batch):
     data = [item[0] for item in batch]
     target = [item[1] for item in batch]
 
     return [data, target]
+
+
+class Sequence2(Dataset):
+    def __init__(self, name, dets, gt, to_pil, to_tensor, transform):
+        self.dets = dets
+        self.gt = gt
+        self.name = name
+        self.to_pil = to_pil
+        self.to_tensor = to_tensor
+        self.transform = transform
+
+    def _get_images(self, path, dets_frame):
+        img = self.to_tensor(Image.open(path).convert("RGB"))
+        res = list()
+        dets = list()
+        for ind, row in dets_frame.iterrows():
+
+            im = img[:, row['bb_top']:row['bb_bot'], row['bb_left']:row['bb_right']]
+            im = self.to_pil(im)
+            im = self.transform(im)
+            res.append(im)
+            dets.append(np.array([row['bb_left'], row['bb_top'], row['bb_right'], row['bb_bot']], dtype=np.float32))
     
+        res = torch.stack(res, 0)
+        res = res.cuda()
+    
+        return res, dets
+
+    def __getitem__(self, idx):
+        frame = self.frames[idx]
+        gt_frame = self.gt[self.gt['frame']==frame]
+        dets_frame = self.dets[self.dets['frame']==frame]
+
+        assert len(dets_frame['frame_path'].unique()) == 1
+        
+        img, dets_f = self._get_images(dets_frame['frame_path'].unique()[0], dets_frame)
+
+        gt_f = {row['id']: np.array([row['bb_left'], row['bb_top'], row['bb_right'], row['bb_bot']], dtype=np.float32) for i, row in gt_frame.iterrows()}
+
+        return img, gt_f, dets_frame['frame_path'].unique()[0], dets_f
+  

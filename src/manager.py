@@ -16,11 +16,11 @@ from collections import defaultdict
 import numpy as np
 from tracking_wo_bnw.src.tracktor.utils import interpolate, get_mot_accum
 from src.utils import evaluate_mot_accums
-from src.datasets.MOT import MOT17Test, MOT17Train, collate_test
+from src.datasets.MOT import MOT17Test, collate_test
 from data.splits import _SPLITS
 from src.nets.proxy_gen import ProxyGenMLP, ProxyGenRNN
 from .tracker import Tracker
-from src.datasets.MOT17_parser import MOTDataset, collate_train
+from src.datasets.MOT17_parser import MOTDataset, TrackingDataset, collate_train
 import time
 import random
 import logging
@@ -94,13 +94,14 @@ class Manager():
         loaders = dict()
         for mode in _SPLITS[dataset_cfg['splits']].keys():
             seqs = _SPLITS[dataset_cfg['splits']][mode]['seq']
-            dir = _SPLITS[dataset_cfg['splits']][mode]['dir']
+            self.dir = _SPLITS[dataset_cfg['splits']][mode]['dir']
             if mode != 'train':
-                dataset = MOT17Test(seqs, dataset_cfg, dir)
-                loaders[mode] = DataLoader(dataset, batch_size=1, shuffle=True,
+                #dataset = MOT17Test(seqs, dataset_cfg, dir)
+                dataset = TrackingDataset(dataset_cfg['splits'], seqs, dataset_cfg, self.dir)
+                loaders[mode] = DataLoader(dataset, batch_size=1, shuffle=False,
                                         collate_fn=collate_test)
             else:
-                dataset = MOTDataset(dataset_cfg['splits'], seqs, dataset_cfg, dir) #MOT17Train(seqs, dataset_cfg, dir)
+                dataset = MOTDataset(dataset_cfg['splits'], seqs, dataset_cfg, self.dir) #MOT17Train(seqs, dataset_cfg, dir)
                 loaders[mode] = DataLoader(dataset, batch_size=1, shuffle=True,
                                         collate_fn=collate_train)
         return loaders
@@ -208,6 +209,8 @@ class Manager():
 
     def _train(self, e):
         temp = self.reid_net_cfg['train_params']['temperature']
+        losses = defaultdict(list)
+
         for data in self.loaders['train']:
             if e == 31 or e == 51:
                 self._reduce_lr()
@@ -220,25 +223,70 @@ class Manager():
 
             Y, img = Y.to(self.device), img.to(self.device)
             preds1, feats1 = self.encoder(img, output_option='plain')
-            loss = self.loss1(preds1/temp, Y) 
+            loss = self.loss1(preds1/temp, Y)
+            losses['Loss 1'].append(loss)
+
             if self.gnn:
                 edge_attr, edge_ind, feats1 = self.graph_gen.get_graph(feats1)
                 preds2, feats2 = self.gnn(feats1, edge_ind, edge_attr, 'plain')
-                loss += self.loss2(preds2[-1]/temp, Y)
+                loss2 = self.loss2(preds2[-1]/temp, Y)
+                losses['Loss 2'].append(loss2)
+
+                loss += loss2
+                losses['Total'].append(loss)
+
             loss.backward()
             self.optimizer.step()
+
+        logger.info({k: sum(v)/len(v) for k, v in losses.items()})                                                        
 
     def _evaluate(self, mode='val'):
         mot_accums = list()
         names = list()
         for data in self.loaders[mode]:
-            data, target, visibility, im_paths, dets, labs = data
+            data = data[0]
+            #data, target, im_paths, dets = data
             self.tracker.gnn, self.tracker.encoder = self.gnn, self.encoder
-            mot = self.tracker.track(data[0], target[0], visibility[0], im_paths[0], dets[0])
+            seq_name = data.name #im_paths[0][0].split(os.sep)[-3]
+            #mot = self.tracker.track(data[0], target[0], seq_name, dets[0])
+            mot = self.tracker.track(data)
             if mot:
                 mot_accums.append(mot)
-                names.append(im_paths[0][0].split(os.sep)[-3])
+                names.append(data.name) #im_paths[0][0].split(os.sep)[-3])
 
+        import motmetrics as mm
+        from collections import OrderedDict
+        from pathlib import Path
+        def _compare_dataframes(gts, ts):
+            """Builds accumulator for each sequence."""
+            accs = []
+            names = []
+            for k, tsacc in ts.items():
+                if k in gts:
+                    accs.append(mm.utils.compare_to_groundtruth(gts[k], tsacc, 'iou', distth=0.5))
+                    names.append(k)
+
+            return accs, names
+
+        mm.lap.default_solver = 'lapsolver'
+        gt_path = osp.join(self.dataset_cfg['mot_dir'], self.dir)
+        gtfiles = [os.path.join(gt_path, i, 'gt/gt.txt') for i in names]
+        out_mot_files_path = 'out'
+        tsfiles = [os.path.join(out_mot_files_path, '%s' % i) for i in names]
+
+        gt = OrderedDict([(Path(f).parts[-3], mm.io.loadtxt(f, fmt='mot15-2D', min_confidence=1)) for f in gtfiles])
+        ts = OrderedDict([(os.path.splitext(Path(f).parts[-1])[0], mm.io.loadtxt(f, fmt='mot15-2D')) for f in tsfiles])
+
+        mh = mm.metrics.create()
+        accs, names = _compare_dataframes(gt, ts)
+
+        # We will need additional metrics to compute IDF1, etc. from different splits inf CrossValidationEvaluator
+        summary = mh.compute_many(accs, names=names,
+                                metrics=mm.metrics.motchallenge_metrics + ['num_objects',
+                                                                            'idtp', 'idfn', 'idfp', 'num_predictions'],
+                                generate_overall=True)
+        print(mm.io.render_summary(summary, formatters=mh.formatters, namemap=mm.io.motchallenge_metric_names))
+        '''
         if len(mot_accums):
             logger.info("Evaluation:")
             summary = evaluate_mot_accums(mot_accums,
@@ -248,6 +296,6 @@ class Manager():
             mota_overall = summary.iloc[summary.shape[0]-1]['mota']
             idf1_overall = summary.iloc[summary.shape[0]-1]['idf1']
             return mota_overall, idf1_overall
-
+        '''
         return None, None 
 

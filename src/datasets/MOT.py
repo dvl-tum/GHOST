@@ -98,7 +98,7 @@ class MOT17Test(Dataset):
 
     def get_sample_list(self, boxes, visibility, dets, s, labs):
         img_dir = osp.join(self.mot_dir, s, 'img1')
-        
+
         samples = [{'gt': boxes[i],
                     'im_path': osp.join(img_dir, f"{i:06d}.jpg"),
                     'vis': visibility[i],
@@ -155,19 +155,18 @@ class MOT17Test(Dataset):
             seq_vis.append(frame['vis'])
             seq_paths.append(frame['im_path'])
             seq_dets.append(frame['dets'])
-            seq_labs.append(frame['labs'])
-        return seq_imgs, seq_gt, seq_vis, seq_paths, seq_dets, seq_labs
+        print(seq_dets)
+        quit()
+        return seq_imgs, seq_gt, seq_paths, seq_dets
 
     def __len__(self):
         return len(self.data)
 
 
 def collate_test(batch):
-    data = [item[0] for item in batch]
-    target = [item[1] for item in batch]
-    visibility = [item[2] for item in batch]
-    im_path = [item[3] for item in batch]
-    dets = [item[4] for item in batch]
-    labs = [item[5] for item in batch]
-
-    return [data, target, visibility, im_path, dets, labs]
+    #data = [item[0] for item in batch]
+    #target = [item[1] for item in batch]
+    #im_path = [item[2] for item in batch]
+    #dets = [item[3] for item in batch]
+    seq = [item[0] for item in batch]
+    return seq #[data, target, im_path, dets]

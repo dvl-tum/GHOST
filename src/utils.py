@@ -4,7 +4,6 @@ from sklearn.metrics import average_precision_score
 import sklearn.metrics.pairwise
 import numpy as np
 
-
 logger = logging.getLogger('AllReIDTracker.Utils')
 
 def evaluate_mot_accums(accums, names, generate_overall=False):
@@ -19,13 +18,13 @@ def evaluate_mot_accums(accums, names, generate_overall=False):
         summary,
         formatters=mh.formatters,
         namemap=mm.io.motchallenge_metric_names,)
-    logger.info('/n' + str_summary)
+    logger.info(str_summary)
 
     return summary
 
 
 def eval_metrics(X, y, topk=20):
-        X, y = X.cpu(), y.cpu()
+        X, y = X.cpu().numpy(), y.cpu().numpy()
         dist = sklearn.metrics.pairwise.pairwise_distances(X)
         if type(dist) != np.ndarray:
             dist = dist.cpu().numpy()
@@ -40,19 +39,19 @@ def eval_metrics(X, y, topk=20):
         for k in range(dist.shape[0]):
             # map
             y_true = matches[k, :]
-            y_score = -dist[k][indices[k]]
+            y_score = -dist[k][indices[k]] 
             if not np.any(y_true): continue
             aps.append(average_precision_score(y_true, y_score))
 
             # rank
-            index = np.nonzero(matches[i, :])[0]
+            index = np.nonzero(matches[k, :])[0]
             delta = 1. / len(index)
-            for j, k in enumerate(index):
-                if k - j >= topk: break
+            for j, i in enumerate(index):
+                if i - j >= topk: break
                 if first_match_break:
-                    ret[k - j] += 1
+                    ret[i - j] += 1
                     break
-                ret[k - j] += delta
+                ret[i - j] += delta
             num_valid_queries += 1
 
         rank_1 = ret.cumsum() / num_valid_queries

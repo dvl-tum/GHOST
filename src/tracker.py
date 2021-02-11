@@ -27,14 +27,16 @@ class Tracker():
         self.tracks = defaultdict(list)
         self.inactive_tracks = defaultdict(list)
 
-    def track(self, data, gt, vis, im_paths, dets):
+    def track(self, data): #data, gt, seq_name, dets):
         self.tracks = defaultdict(list)
         self.inactive_tracks = defaultdict(list)
-        seq_name = im_paths[0].split(os.sep)[-3]
-        logger.info("Tracking Sequence {} of length {}".format(seq_name, len(data)))
+        logger.info("Tracking Sequence {} of length {}".format(data.name, data.num_frames))#seq_name, len(data)))
        
         i, self.id = 0, 0
-        for frame, boxes, g, v in zip(data, dets, gt, vis):
+        #for frame, boxes in zip(data, dets):
+        gt = list()
+        for frame, g, _, boxes in data:
+            gt.append({'gt': g})
             tracks = list()
             with torch.no_grad():
                 _, feats = self.encoder(frame, output_option='plain')
@@ -58,13 +60,13 @@ class Tracker():
 
         results = interpolate(results)
 
-        self.write_results(results, self.output_dir, seq_name)
+        self.write_results(results, self.output_dir, data.name)
         
         if False:
             logger.info(f"No GT data for evaluation available.")
             return None
         else:
-            gt = [{'gt': g} for g in gt]
+            #gt = [{'gt': g} for g in data.gt]
             return get_mot_accum(results, gt)
 
 
@@ -152,6 +154,8 @@ class Tracker():
                 results[i][t['im_index']] = t['bbox']
 
         return results
+
+    
     
     def write_results(self, all_tracks, output_dir, seq_name):
         """Write the tracks in the format for MOT16/MOT17 sumbission
