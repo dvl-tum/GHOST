@@ -3,7 +3,7 @@ dataset:
   det_dir: "../../datasets/MOT/MOT17Labels"
   det_file: "tracktor_prepr_det.txt"
   detector: "FRCNN"
-  splits: "debug_train" #"mot17_train_test" #"mot17_split_1"
+  splits: "mot17_train_test" #"mot17_split_1"
   gt_assign_min_iou: 0.5
   prepro_again: 0
   gt_training_min_vis: 0
@@ -84,5 +84,5 @@ reid_net:
 
 tracker:
   reid_thresh: 1
-  inact_thresh: 1000
+  inact_thresh: 5
   output_dir: 'out'

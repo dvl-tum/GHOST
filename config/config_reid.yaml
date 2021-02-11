@@ -3,14 +3,14 @@ dataset:
   det_dir: "../../datasets/MOT/MOT17Labels"
   det_file: "tracktor_prepr_det.txt"
   detector: "FRCNN"
-  splits: "mot17_split_1"
+  splits: "debug_train" #"mot17_split_1"
   gt_assign_min_iou: 0.5
   prepro_again: 0
   gt_training_min_vis: 0
 
 reid_net:
-  gnn: 0
-  mode: 'train'
+  gnn: 1
+  mode: 'hyper_search'
   save_folder_nets: 'nets'
   trained_on:
     name: 'mot17_split_1' #'Market'
