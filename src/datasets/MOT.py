@@ -162,11 +162,3 @@ class MOT17Test(Dataset):
     def __len__(self):
         return len(self.data)
 
-
-def collate_test(batch):
-    #data = [item[0] for item in batch]
-    #target = [item[1] for item in batch]
-    #im_path = [item[2] for item in batch]
-    #dets = [item[3] for item in batch]
-    seq = [item[0] for item in batch]
-    return seq #[data, target, im_path, dets]
