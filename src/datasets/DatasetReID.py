@@ -1,17 +1,11 @@
-import copy
-import random
-from torch.utils.data import Dataset
 import torch
-from torchvision import transforms
+import os
 import os.path as osp
-import csv
-from collections import defaultdict
-import numpy as np
-from ReID.dataset.utils import make_transform_bot
+from .MOTDataset import MOTDataset
+from .MOT17_parser import MOTLoader
+import pandas as pd
 import PIL.Image as Image
-from torchvision.transforms import ToTensor
-from torchvision.ops.boxes import clip_boxes_to_image, nms
-from torch.utils.data.sampler import Sampler
+from .utils import ClassBalancedSampler
 
 
 def collate(batch):
@@ -24,90 +18,67 @@ def collate(batch):
     return [data, target, visibility, im_path, dets]
 
 
-class ClassBalancedSampler(Sampler):
-    """
-    l_inds (list of lists)
-    cl_b (int): classes in a batch
-    n_cl (int): num of obs per class inside the batch
-    """
+class ReIDDataset(MOTDataset):
+    def __init__(self, split, sequences, dataset_cfg, dir, datastorage='data'):
+        super(ReIDDataset, self).__init__(split, sequences, dataset_cfg, dir, datastorage)
+    
+    def process(self):
+        self.id_to_y = dict()
+        for seq in self.sequences:
+            #print(seq)
+            seq_ids = dict()
+            if not self.preprocessed_exists or self.dataset_cfg['prepro_again']:
+                loader = MOTLoader([seq], self.dataset_cfg, self.dir)
+                loader.get_seqs()
+                
+                dets = loader.dets
+                os.makedirs(self.preprocessed_dir, exist_ok=True)
+                dets.to_pickle(self.preprocessed_paths[seq])
 
-    def __init__(self, l_inds, num_classes_iter, num_elements_class, batch_sampler=None):
-        print("Class Balanced Sampling")
-        self.l_inds = l_inds
-        self.max = -1
-        self.cl_b = num_classes_iter
-        self.n_cl = num_elements_class
-        self.batch_size = self.cl_b * self.n_cl
-        self.flat_list = []
-        self.feature_dict = None
-        for inds in l_inds:
-            if len(inds) > self.max:
-                self.max = len(inds)
+                gt = loader.gt
+                os.makedirs(self.preprocessed_dir, exist_ok=True)
+                gt.to_pickle(self.preprocessed_gt_paths[seq])
+            else:
+                dets = pd.read_pickle(self.preprocessed_paths[seq])
 
-        if batch_sampler == 'NumberSampler':
-            self.sampler = NumberSampler(cl_b, n_cl)
-        elif batch_sampler == 'BatchSizeSampler':
-            self.sampler = BatchSizeSampler()
-        else:
-            self.sampler = None
+            for i, row in dets.iterrows():
+                if row['id'] not in seq_ids.keys():
+                    seq_ids[row['id']] = self.id
+                    self.id += 1
+                dets.at[i, 'id'] = seq_ids[row['id']]
 
-    def __iter__(self):
-        if self.sampler:
-            self.cl_b, self.n_cl = self.sampler.sample()
+            self.id_to_y[seq] = seq_ids
 
-        # shuffle elements inside each class
-        l_inds = list(map(lambda a: random.sample(a, len(a)), self.l_inds))
+            if 'vis' in dets and dets['vis'].unique() != [-1]:
+                dets = dets[dets['vis'] > self.dataset_cfg['gt_training_min_vis']]
 
-        for inds in l_inds:
-            choose = copy.deepcopy(inds)
-            while len(inds) < self.n_cl:
-                inds += [random.choice(choose)]
+            self.data.append(dets)
 
-        # split lists of a class every n_cl elements
-        split_list_of_indices = []
-        for inds in l_inds:
-            inds = inds + np.random.choice(inds, size=(len(inds) // self.n_cl + 1)*self.n_cl - len(inds), replace=False).tolist()
-            # drop the last < n_cl elements
-            while len(inds) >= self.n_cl:
-                split_list_of_indices.append(inds[:self.n_cl])
-                inds = inds[self.n_cl:]
-            assert len(inds) == 0
-        # shuffle the order of classes --> Could it be that same class appears twice in one batch?
-        random.shuffle(split_list_of_indices)
-        if len(split_list_of_indices) % self.cl_b != 0:
-            b = np.random.choice(np.arange(len(split_list_of_indices)), size=self.cl_b - len(split_list_of_indices) % self.cl_b, replace=False).tolist()
-            [split_list_of_indices.append(split_list_of_indices[m]) for m in b]
+        self.id += 1
+        self.seperate_seqs()
 
-        self.flat_list = [item for sublist in split_list_of_indices for item in sublist]
-        return iter(self.flat_list)
+    def seperate_seqs(self):
+        samples = list()
+        ys = list()
+        for seq in self.data:
+            for index, row in seq.iterrows():
+                samples.append(row)
+                ys.append(row['id'])
+        self.data = samples
+        self.ys = ys
 
-    def __len__(self):
-        return len(self.flat_list)
+    def get_bounding_boxe(self, row):
+        # tracktor resize (256,128))
 
+        img = self.to_tensor(Image.open(row['frame_path']).convert("RGB"))
+        img = img[:, row['bb_top']:row['bb_bot'], row['bb_left']:row['bb_right']]
+        img = self.to_pil(img)
+        img = self.transform(img)
 
-class NumberSampler():
-    def __init__(self, num_classes, num_samples, seed=None):
-        self.bs = num_classes * num_samples
-        self.possible_denominators = [i for i in range(2, int(self.bs/2+1)) if self.bs%i == 0]
-        seed = random.randint(0, 100) if seed is None else seed
-        #seed = 4
-        random.seed(seed)
-        print("Using seed {}".format(seed))
+        return img
 
-    def sample(self):
-        num_classes = random.choice(self.possible_denominators)
-        num_samples = int(self.bs/num_classes)
-        print("Number classes {}, number samples per class {}".format(num_classes, num_samples))
-        return num_classes, num_samples
+    def __getitem__(self, idx):
+        row, y = self.data[idx], self.ys[idx]
+        img = self.get_bounding_boxe(row)
 
-
-class BatchSizeSampler():
-    def __init__():
-        seed = random.randint(0, 100)
-        random.seed(seed)
-        print("Using seed {}".format(seed))
-    def sample(self):
-        num_classes = random.choice(range(2, 20))
-        num_samples = random.choice(range(2, 20))
-        print("Number classes {}, number samples per class {}".format(num_classes, num_samples))
-        return num_classes, num_samples
+        return img, y
