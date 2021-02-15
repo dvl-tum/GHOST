@@ -240,61 +240,54 @@ class Manager():
         logger.info({k: sum(v)/len(v) for k, v in losses.items()})                                                        
 
     def _evaluate(self, mode='val'):
-        mot_accums = list()
         names = list()
-        for data in self.loaders[mode]:
-            data = data[0]
-            #data, target, im_paths, dets = data
+        for seq in self.loaders[mode]:
             self.tracker.gnn, self.tracker.encoder = self.gnn, self.encoder
-            seq_name = data.name #im_paths[0][0].split(os.sep)[-3]
-            #mot = self.tracker.track(data[0], target[0], seq_name, dets[0])
-            mot = self.tracker.track(data)
-            if mot:
-                mot_accums.append(mot)
-                names.append(data.name) #im_paths[0][0].split(os.sep)[-3])
+            self.tracker.track(seq[0])
+            names.append(seq[0].name)
 
-        import motmetrics as mm
-        from collections import OrderedDict
-        from pathlib import Path
-        def _compare_dataframes(gts, ts):
-            """Builds accumulator for each sequence."""
-            accs = []
-            names = []
-            for k, tsacc in ts.items():
-                if k in gts:
-                    accs.append(mm.utils.compare_to_groundtruth(gts[k], tsacc, 'iou', distth=0.5))
-                    names.append(k)
+        accs, names = self._get_results(names)
+        mh = mm.metrics.create()
+        metrics = mm.metrics.motchallenge_metrics + ['num_objects', 'idtp', 
+                        'idfn', 'idfp', 'num_predictions']
+        
+        summary = mh.compute_many(accs, names=names,
+                                metrics=metrics,
+                                generate_overall=True)
 
-            return accs, names
+        print(summary)
 
+        print(mm.io.render_summary(summary, formatters=mh.formatters, 
+                                    namemap=mm.io.motchallenge_metric_names))
+        
+        return None, None 
+    
+    def _get_results(self, names):
         mm.lap.default_solver = 'lapsolver'
         gt_path = osp.join(self.dataset_cfg['mot_dir'], self.dir)
         gtfiles = [os.path.join(gt_path, i, 'gt/gt.txt') for i in names]
-        out_mot_files_path = 'out'
+        out_mot_files_path = os.path.join('out', self.tracker.experiment)
         tsfiles = [os.path.join(out_mot_files_path, '%s' % i) for i in names]
 
-        gt = OrderedDict([(Path(f).parts[-3], mm.io.loadtxt(f, fmt='mot15-2D', min_confidence=1)) for f in gtfiles])
-        ts = OrderedDict([(os.path.splitext(Path(f).parts[-1])[0], mm.io.loadtxt(f, fmt='mot15-2D')) for f in tsfiles])
+        gt = OrderedDict([(Path(f).parts[-3], mm.io.loadtxt(f, fmt='mot15-2D', 
+                            min_confidence=1)) for f in gtfiles])
+        ts = OrderedDict([(os.path.splitext(Path(f).parts[-1])[0], mm.io.loadtxt(f, 
+                            fmt='mot15-2D')) for f in tsfiles])
 
-        mh = mm.metrics.create()
-        accs, names = _compare_dataframes(gt, ts)
+        accs, names = self._compare_dataframes(gt, ts)
 
-        # We will need additional metrics to compute IDF1, etc. from different splits inf CrossValidationEvaluator
-        summary = mh.compute_many(accs, names=names,
-                                metrics=mm.metrics.motchallenge_metrics + ['num_objects',
-                                                                            'idtp', 'idfn', 'idfp', 'num_predictions'],
-                                generate_overall=True)
-        print(mm.io.render_summary(summary, formatters=mh.formatters, namemap=mm.io.motchallenge_metric_names))
-        '''
-        if len(mot_accums):
-            logger.info("Evaluation:")
-            summary = evaluate_mot_accums(mot_accums,
-                            names,
-                            generate_overall=True)
+        return accs, names
 
-            mota_overall = summary.iloc[summary.shape[0]-1]['mota']
-            idf1_overall = summary.iloc[summary.shape[0]-1]['idf1']
-            return mota_overall, idf1_overall
-        '''
-        return None, None 
+    @staticmethod
+    def _compare_dataframes(gts, ts):
+        """Builds accumulator for each sequence."""
+        accs = []
+        names = []
+        for k, tsacc in ts.items():
+            if k in gts:
+                accs.append(mm.utils.compare_to_groundtruth(gts[k], tsacc, 
+                                    'iou', distth=0.5))
+                names.append(k)
+
+        return accs, names
 
