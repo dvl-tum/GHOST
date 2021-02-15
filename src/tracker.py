@@ -29,15 +29,16 @@ class Tracker():
         self.tracks = defaultdict(list)
         self.inactive_tracks = defaultdict(list)
 
-    def track(self, data): #data, gt, seq_name, dets):
+    def track(self, seq):
         self.tracks = defaultdict(list)
         self.inactive_tracks = defaultdict(list)
-        logger.info("Tracking Sequence {} of length {}".format(data.name, data.num_frames))#seq_name, len(data)))
+        logger.info("Tracking Sequence {} of length {}".format(seq.name, 
+                        seq.num_frames))
        
         i, self.id = 0, 0
-        #for frame, boxes in zip(data, dets):
         gt = list()
-        for frame, g, _, boxes in data:
+        for frame, g, _, boxes in seq:
+            print(i)
             gt.append({'gt': g})
             tracks = list()
             with torch.no_grad():
@@ -56,21 +57,13 @@ class Tracker():
             
             i += 1
         
+        # add inactive tracks to active tracks for evaluation
         self.tracks.update(self.inactive_tracks)
-
-        results = self.make_results()
-
-        results = interpolate(results)
-
-        self.write_results(results, self.output_dir, data.name)
         
-        if False:
-            logger.info(f"No GT data for evaluation available.")
-            return None
-        else:
-            #gt = [{'gt': g} for g in data.gt]
-            return get_mot_accum(results, gt)
-
+        # get results
+        results = self.make_results()
+        results = interpolate(results)
+        self.write_results(results, self.output_dir, seq.name)
 
     def get_hungarian(self, tracks):
         x = torch.stack([t['feats'] for t in tracks])
@@ -108,23 +101,26 @@ class Tracker():
         # assign tracks from hungarian
         active_tracks = list()
         for r, c in zip(row, col):
-
+            # assign tracks if reid distance < thresh
             if dist[r, c] < self.reid_thresh:
+
+                # match w active track  
                 if ids[c] in self.tracks.keys():
                     self.tracks[ids[c]].append(tracks[r])
                     active_tracks.append(ids[c])
 
+                # match w inactive track
                 elif ids[c] in self.inactive_tracks.keys():
                     self.tracks[ids[c]] = self.inactive_tracks[ids[c]]
-                    #rm for inactive tracks and rm inact_count
                     del self.inactive_tracks[ids[c]]
                     for i in range(len(self.tracks[ids[c]])):
                         del self.tracks[ids[c]][i]['inact_count']
 
                     self.tracks[ids[c]].append(tracks[r])
                     active_tracks.append(ids[c])
+
+            # new track bc distance too big
             else:
-                #logger.info("Add track bc of low sim {} {}".format(dist[r, c], self.id))
                 self.tracks[self.id].append(tracks[r])
                 self.id += 1
         
@@ -150,14 +146,10 @@ class Tracker():
 
     def make_results(self):
         results = defaultdict(dict)
-        
         for i, ts in self.tracks.items():
             for t in ts:
                 results[i][t['im_index']] = t['bbox']
-
         return results
-
-    
     
     def write_results(self, all_tracks, output_dir, seq_name):
         """Write the tracks in the format for MOT16/MOT17 sumbission
