@@ -72,11 +72,18 @@ class Tracker():
         y = torch.stack([v[-1]['feats'] for v in self.tracks.values()])
         ids = list(self.tracks.keys())
         
-        inactive_tracks = {k: v for k, v in self.inactive_tracks.items() if v[-1]['inact_count'] <= self.inact_thresh}
-        if len(inactive_tracks) > 0:
-            y_inactive = torch.stack([v[-1]['feats'] for v in inactive_tracks.values()])
+        # get tracks to compare to
+        curr_it = {k: v for k, v in self.inactive_tracks.items() 
+                                if v[-1]['inact_count'] <= self.inact_thresh}
+        if len(curr_it) > 0:
+            if self.tracker_cfg['avg_inact']['do']:
+                y_inactive = self.avg_it(curr_it)
+            else:
+                y_inactive = torch.stack([v[-1]['feats'] for v in curr_it.values()])
             y = torch.cat([y, y_inactive])
-            ids += [k for k, v in inactive_tracks.items()]
+            ids += [k for k, v in curr_it.items()]
+
+        # compute gnn features
         if self.gnn:
             x, y = self.get_gnn_feats(x, y, num_detects)
         
@@ -85,6 +92,33 @@ class Tracker():
         row, col = scipy.optimize.linear_sum_assignment(dist)
         
         return dist, row, col, ids
+
+    def avg_it(self, curr_it):
+        feats = list()
+        avg = self.tracker_cfg['avg_inact']['num'] 
+        if avg != 'all':
+            avg = int(avg)
+        for i, it in curr_it.items():
+            print(i, len(it))
+            if avg == 'all' or len(it) < avg:
+                if self.tracker_cfg['avg_inact']['proxy'] == 'mean':
+                    f = torch.mean(torch.stack([t['feats'] for t in it]), dim=0)
+                elif self.tracker_cfg['avg_inact']['proxy'] == 'median':
+                    f = torch.median(torch.stack([t['feats'] for t in it]), dim=0)[0]
+                elif self.tracker_cfg['avg_inact']['proxy'] == 'mode':
+                    print("mode")
+                    f = torch.mode(torch.stack([t['feats'] for t in it]), dim=0)[0]
+            else:
+                if self.tracker_cfg['avg_inact']['proxy'] == 'mean':
+                    f = torch.mean(torch.stack([t['feats'] for t in it][-avg:]), dim=0)
+                elif self.tracker_cfg['avg_inact']['proxy'] == 'median':
+                    f = torch.median(torch.stack([t['feats'] for t in it][-avg:]), dim=0)[0]
+                elif self.tracker_cfg['avg_inact']['proxy'] == 'mode':
+                    f = torch.mode(torch.stack([t['feats'] for t in it][-avg:]), dim=0)[0]
+            feats.append(f)
+
+        return torch.stack(feats)
+
 
     def get_gnn_feats(self, x, y, num_detects):
         feats = torch.cat([x, y])
