@@ -16,7 +16,7 @@ import scipy
 from collections import defaultdict
 import numpy as np
 from src.datasets.DatasetReID import ClassBalancedSampler 
-from src.datasets.MOT17_parser import ReIDDataset
+from src.datasets.DatasetReID import ReIDDataset
 from data.splits import _SPLITS
 from src.nets.proxy_gen import ProxyGenMLP, ProxyGenRNN
 from .tracker import Tracker

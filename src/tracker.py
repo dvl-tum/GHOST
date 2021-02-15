@@ -1,11 +1,8 @@
-import numpy as np
 from collections import defaultdict
-from torchvision.ops.boxes import clip_boxes_to_image, nms
 import torch
 import sklearn.metrics
 import scipy
-from tracking_wo_bnw.src.tracktor.utils import interpolate, get_mot_accum, \
-    evaluate_mot_accums
+from tracking_wo_bnw.src.tracktor.utils import interpolate
 import os
 import numpy as np
 import os.path as osp

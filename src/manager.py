@@ -1,46 +1,41 @@
-from tracking_wo_bnw.src.tracktor.datasets import factory
-from ReID import net
-import os.path as osp
-import os
-import shutil
-from torch.utils.data import DataLoader
 import ReID
-from torchvision.ops.boxes import clip_boxes_to_image, nms
-from ReID.dataset.utils import make_transform_bot
-import PIL.Image
-from torchvision import transforms
+import os.path as osp
+from .nets.proxy_gen import ProxyGenMLP, ProxyGenRNN
+import os
+from torch.utils.data import DataLoader
 import torch
-import sklearn.metrics
-import scipy
 from collections import defaultdict
-import numpy as np
-from tracking_wo_bnw.src.tracktor.utils import interpolate, get_mot_accum
-from src.utils import evaluate_mot_accums
-from src.datasets.MOT import MOT17Test, collate_test
+from src.datasets.utils import collate_test, collate_train
 from data.splits import _SPLITS
-from src.nets.proxy_gen import ProxyGenMLP, ProxyGenRNN
 from .tracker import Tracker
-from src.datasets.MOT17_parser import MOTDataset, TrackingDataset, collate_train
+from src.datasets.MOTDataset import MOTDataset
+from src.datasets.TrackingDataset import TrackingDataset
 import time
 import random
 import logging
+import motmetrics as mm
+from collections import OrderedDict
+from pathlib import Path
 
 logger = logging.getLogger('AllReIDTracker.Manager')
 
 
 class Manager():
-    def __init__(self, device, timer, dataset_cfg, reid_net_cfg, tracker_cfg, train=False):
+    def __init__(self, device, timer, dataset_cfg, reid_net_cfg, 
+                tracker_cfg, train=False):
+
         self.device = device
         self.reid_net_cfg = reid_net_cfg
         self.dataset_cfg = dataset_cfg
         self.tracker_cfg = tracker_cfg
         
         self.loaders = self._get_loaders(dataset_cfg)
+
         if 'train' in self.loaders.keys():
             self.num_classes = self.loaders['train'].dataset.id
+            self.num_iters = 30 if self.reid_net_cfg['mode'] == 'hyper_search' else 1
         else:
             self.num_classes = self.reid_net_cfg['trained_on']['num_classes']
-        self.num_iters = 30 if self.reid_net_cfg['mode'] == 'hyper_search' else 1
         
         #load ReID net
         self._get_models()
@@ -53,7 +48,8 @@ class Manager():
         self._get_encoder()
         if self.reid_net_cfg['gnn']:
             self._get_gnn()
-            self.tracker = Tracker(self.tracker_cfg, self.encoder, self.gnn, self.graph_gen)
+            self.tracker = Tracker(self.tracker_cfg, self.encoder, 
+                                        self.gnn, self.graph_gen)
         else:
             self.gnn, self.graph_gen = None, None
             self.tracker = Tracker(self.tracker_cfg, self.encoder)
@@ -79,7 +75,8 @@ class Manager():
                 self.reid_net_cfg['gnn_params']['pretrained_path'],
                 map_location='cpu')
 
-            load_dict = {k: v for k, v in load_dict.items() if 'fc' not in k.split('.')}
+            load_dict = {k: v for k, v in load_dict.items() if 'fc' 
+                            not in k.split('.')}
             gnn_dict = self.gnn.state_dict()
             gnn_dict.update(load_dict)
                 
@@ -88,7 +85,8 @@ class Manager():
         self.graph_gen = ReID.net.GraphGenerator(self.device,
                                                     **self.reid_net_cfg[
                                                       'graph_params'])
-        self.tracker = Tracker(self.tracker_cfg, self.encoder, self.gnn, self.graph_gen)
+        self.tracker = Tracker(self.tracker_cfg, self.encoder, self.gnn, 
+                                self.graph_gen)
     
     def _get_loaders(self, dataset_cfg):
         loaders = dict()
@@ -96,12 +94,13 @@ class Manager():
             seqs = _SPLITS[dataset_cfg['splits']][mode]['seq']
             self.dir = _SPLITS[dataset_cfg['splits']][mode]['dir']
             if mode != 'train':
-                #dataset = MOT17Test(seqs, dataset_cfg, dir)
-                dataset = TrackingDataset(dataset_cfg['splits'], seqs, dataset_cfg, self.dir)
+                dataset = TrackingDataset(dataset_cfg['splits'], seqs, 
+                                            dataset_cfg, self.dir)
                 loaders[mode] = DataLoader(dataset, batch_size=1, shuffle=False,
                                         collate_fn=collate_test)
             else:
-                dataset = MOTDataset(dataset_cfg['splits'], seqs, dataset_cfg, self.dir) #MOT17Train(seqs, dataset_cfg, dir)
+                dataset = MOTDataset(dataset_cfg['splits'], seqs, 
+                                        dataset_cfg, self.dir) 
                 loaders[mode] = DataLoader(dataset, batch_size=1, shuffle=True,
                                         collate_fn=collate_train)
         return loaders
