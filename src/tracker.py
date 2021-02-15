@@ -17,9 +17,14 @@ class Tracker():
         self.encoder = encoder
         self.gnn = gnn
         self.graph_gen = graph_gen
+        self.tracker_cfg = tracker_cfg
+
         self.inact_thresh = tracker_cfg['inact_thresh']
         self.reid_thresh = tracker_cfg['reid_thresh']
         self.output_dir = tracker_cfg['output_dir']
+        
+        avg = self.tracker_cfg['avg_inact']['num'] if self.tracker_cfg['avg_inact']['do'] else 'last_frame'
+        self.experiment = 'mode' + '_' + avg  + '_' + str(self.inact_thresh)
 
         self.tracks = defaultdict(list)
         self.inactive_tracks = defaultdict(list)
@@ -164,10 +169,10 @@ class Tracker():
         """
 
         #format_str = "{}, -1, {}, {}, {}, {}, {}, -1, -1, -1"
-
+        output_dir = os.path.join(output_dir, self.experiment)
         if not os.path.exists(output_dir):
             os.makedirs(output_dir)
-
+         
         with open(osp.join(output_dir, seq_name), "w") as of:
             writer = csv.writer(of, delimiter=',')
             for i, track in all_tracks.items():
@@ -184,3 +189,4 @@ class Tracker():
                          x2 - x1 + 1,
                          y2 - y1 + 1,
                          -1, -1, -1, -1])
+
