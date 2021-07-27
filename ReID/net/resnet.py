@@ -121,7 +121,7 @@ class Bottleneck(nn.Module):
 
         if self.downsample is not None:
             identity = self.downsample(x)
-        
+        '''
         # stochastic depth
         if not val:
             samples = list()
@@ -132,7 +132,8 @@ class Bottleneck(nn.Module):
             out += identity
         else:
             out = out * self.stoch_depth + identity
-
+        '''
+        out += identity
         out = self.relu(out)
 
         return out
@@ -194,6 +195,8 @@ class ResNet(nn.Module):
         self.layer4 = self._make_layer(block, 512, layers[3], stride=last,
                                        dilate=replace_stride_with_dilation[2])
         
+        #print("Using avg pool")
+        #self.avgpool = nn.AdaptiveAvgPool2d((1, 1))
         self.avgpool = nn.AdaptiveMaxPool2d((1, 1))
         self.final_drop = nn.Dropout(final_drop)
         

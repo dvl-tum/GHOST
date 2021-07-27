@@ -4,6 +4,8 @@ import os
 from .embed import embed
 from .inception_bn import bn_inception, Inception_embed#, bn_inception_augmented
 from .resnet import resnet18, resnet34, resnet50, resnet101, resnet152
+from .resnet_fpn import ResNetFPN
+from .resnet_attention import resnet50 as resnet50_attention
 from .densenet import densenet121, densenet161, densenet169, densenet201
 from .gnn_base import GNNReID
 from .graph_generator import GraphGenerator
@@ -78,6 +80,7 @@ def load_net(dataset, nb_classes, mode, net_type, bn_inception={'embed': 0, 'sz_
         model = resnet50(pretrained=True, last_stride=last_stride, neck=neck, final_drop=final_drop, stoch_depth=stoch_depth, red=red)
 
         dim = int(2048/red)
+        print("Dimension of Resnet output {}".format(dim))
         if neck:
             model.bottleneck = nn.BatchNorm1d(dim)
             model.bottleneck.bias.requires_grad_(False)  # no shift
@@ -101,10 +104,36 @@ def load_net(dataset, nb_classes, mode, net_type, bn_inception={'embed': 0, 'sz_
                 state_dict = torch.load(pretrained_path)
 
             state_dict = {k: v for k, v in state_dict.items() if 'fc' not in k.split('.')}
+            #state_dict = {k[7:]: v for k, v in state_dict.items()}
             model_dict = model.state_dict()
             model_dict.update(state_dict)
             model.load_state_dict(model_dict)
 
+    elif net_type == 'resnet50_attention':
+        sz_embed = int(2048/red)
+        model = resnet50_attention(pretrained=True, last_stride=last_stride, neck=neck, final_drop=final_drop, stoch_depth=stoch_depth, red=red)
+        
+        dim = int(2048/red)
+        if neck:
+            model.bottleneck = nn.BatchNorm1d(dim)
+            model.bottleneck.bias.requires_grad_(False)  # no shift
+            model.fc = nn.Linear(dim, nb_classes, bias=False)
+
+            model.bottleneck.apply(weights_init_kaiming)
+            model.fc.apply(weights_init_classifier)
+        else: 
+            model.fc = nn.Linear(dim, nb_classes)
+
+        if not mode  == 'pretraining' and pretrained_path != 'no':
+            no_load = ['fc.bias', 'fc.weight']
+            load_dict = {k: v for k, v in torch.load(pretrained_path).items() if k not in no_load}
+            for k, v in load_dict.items():
+                print(k, v.shape)
+            print(model)
+            model_dict = model.state_dict()
+            model_dict.update(load_dict)
+            model.load_state_dict(model_dict)
+            #model.load_state_dict(torch.load(pretrained_path))
     elif net_type == 'resnet101':
         sz_embed = int(2048/red)
         model = net.resnet101(pretrained=True, last_stride=last_stride, neck=neck, final_drop=final_drop, stoch_depth=stoch_depth, red=red)
@@ -243,6 +272,38 @@ def load_net(dataset, nb_classes, mode, net_type, bn_inception={'embed': 0, 'sz_
 
         if pretrained_path != 'no':
             model.load_state_dict(torch.load(pretrained_path))
+
+    elif net_type == 'resnet50FPN':
+        sz_embed = int(256/red)
+        model = ResNetFPN(pretrained=True, neck=neck, red=red)
+
+        dim = int(256/red)
+        fcs = []
+        neck = []
+        for _ in range(4):
+            if model.neck:
+                bottleneck = nn.BatchNorm1d(int(256/red))
+                bottleneck.bias.requires_grad_(False)  # no shift
+                fc = nn.Linear(int(256/red), nb_classes,
+                                    bias=False)
+
+                bottleneck.apply(weights_init_kaiming)
+                fc.apply(weights_init_classifier)
+                neck.append(bottleneck)
+            else:
+                fc = nn.Linear(int(256/red), nb_classes)
+            fcs.append(fc)
+        if model.neck:
+            model.necks = nn.Sequential(*neck)
+        model.fcs = nn.Sequential(*fcs)
+
+        if not mode  == 'pretraining' and pretrained_path != 'no':
+            no_load = []
+            load_dict = {k: v for k, v in torch.load(pretrained_path).items() if k not in no_load}
+
+            model_dict = model.state_dict()
+            model_dict.update(load_dict)
+            model.load_state_dict(model_dict)
 
     return model, sz_embed
 

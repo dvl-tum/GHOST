@@ -49,11 +49,27 @@ class GraphGenerator():
 
         return W
 
-    def get_graph(self, x, Y=None):
-        W = self._get_W(x)
-        W, A = self._get_A(W)
-
+    def get_graph(self, x, Y=None, num_dets=None):
+        #W = self._get_W(x)
+        #W, A = self._get_A(W)
+        A = torch.ones((x.shape[0], x.shape[0])).to(x.get_device())
+        W = A
+        n = W.shape[0]
+        
+        A += 0.000001
         A = torch.nonzero(A)
+        if num_dets is not None:
+            A_self = torch.eye(n)
+            A_self = torch.nonzero(A_self).to(self.dev)
+            W_self = W[A_self[:, 0], A_self[:, 1]].to(self.dev)
+
         W = W[A[:, 0], A[:, 1]]
+        if num_dets is not None:
+            W = W[A[:, 0] >= num_dets]
+            A = A[A[:, 0] >= num_dets]
+            W = W[A[:, 1] < num_dets]
+            A = A[A[:, 1] < num_dets]
+            A = torch.cat([A, A_self], dim=0)
+            W = torch.cat([W, W_self], dim=0)
 
         return W, A, x

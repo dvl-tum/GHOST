@@ -44,6 +44,7 @@ def cmc(distmat, query_ids=None, gallery_ids=None,
     # Compute CMC for each query
     ret = np.zeros(topk)
     num_valid_queries = 0
+    all_cmc = list()
 
     for i in range(m):
         # Filter out the same id and same camera
@@ -70,7 +71,7 @@ def cmc(distmat, query_ids=None, gallery_ids=None,
                 ids_dict[x].append(j)
         else:
             repeat = 1
-
+        '''
         for _ in range(repeat):
             if single_gallery_shot:  # cuhk03 old testing protocol
                 # Randomly choose one instance for each id
@@ -78,13 +79,20 @@ def cmc(distmat, query_ids=None, gallery_ids=None,
                 index = np.nonzero(matches[i, sampled])[0]
             else:
                 index = np.nonzero(matches[i, pos])[0]
+
+            
             delta = 1. / (len(index) * repeat)
+
             for j, k in enumerate(index):
                 if k - j >= topk: break
                 if first_match_break:
                     ret[k - j] += 1
                     break
                 ret[k - j] += delta
+        '''
+        cmc = orig_cmc.cumsum()
+        cmc[cmc > 1] = 1
+        all_cmc.append(cmc[:topk])        
         num_valid_queries += 1
 
     if num_valid_queries == 0:

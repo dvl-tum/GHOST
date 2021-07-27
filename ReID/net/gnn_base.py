@@ -187,7 +187,11 @@ class GNNReID(nn.Module):
 class GNNNetwork(nn.Module):
     def __init__(self, embed_dim, aggr, dev, edge_dim, gnn_params, num_layers):
         super(GNNNetwork, self).__init__()
-        
+        #print("Repeat same layer")
+        #gnn = DotAttentionLayer(embed_dim, aggr, dev,
+        #                            edge_dim, gnn_params)
+        #layers = [gnn for _ in range(num_layers)]
+
         layers = [DotAttentionLayer(embed_dim, aggr, dev,
                                     edge_dim, gnn_params) for _
                   in range(num_layers)]
