@@ -8,7 +8,8 @@ import warnings
 import time
 import os.path as osp
 import os
-from src.reid_manager import ManagerReID
+import src.reid_manager
+#from src.reid_manager import ManagerReID
 import numpy as np
 import random
 from torchreid import models
@@ -25,7 +26,7 @@ ch.setFormatter(formatter)
 
 logger.addHandler(ch)
 
-warnings.filterwarnings("ignore")
+warnings.filterwarnings("ignore") 
 
 
 def init_args():
@@ -42,39 +43,77 @@ def main(args):
         config = yaml.load(f, Loader=yaml.FullLoader)
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     logger.info('Switching to device {}'.format(device))
+    print(config)
 
-    vis_thresh =  [(v-0.1, v) for v in np.linspace(0.9, 1.0, num=2)] #[(v-0.1, v) for v in np.linspace(0.1, 1, num=10)]
-    size_thresh = [(v, v+25) for v in np.linspace(25, 775, num=31)]
-    frame_dist_thresh = [(v, v+1) for v in np.linspace(0, 40, num=41)]
-    size_diff_thresh = [(v, v-0.1) for v in np.linspace(3, 0.1, num=30)]
-    
-    var_dict = {'vis': vis_thresh, 'size': size_thresh, 'frame_dist': frame_dist_thresh, 'size_diff': size_diff_thresh}
-    variables = list(var_dict.keys())
+    vis_thresh =  [[np.round(v-0.1, decimals=1), np.round(v, decimals=1)] for v in np.linspace(0.1, 1.0, num=10)]
+    vis_thresh[-1][-1] = 1.1
+    vis_thresh = [tuple(v) for v in vis_thresh]
+    size_thresh = [(0, 128), (128, 256), (256, 4000)] #[(np.round(v, decimals=1), np.round(v+25, decimals=1)) for v in np.linspace(25, 775, num=31)]
+    frame_dist_thresh = [(0, 1.01/14), (1.01/14, 4/14), (4/14, 7/14), (7/14, 10/14), (10/14, 1), (1, 2), (2, 20)] #[(v, v+1) for v in np.linspace(0, 40, num=41)]
+    size_diff_thresh =  [(0.0, 0.05), (0.05, 0.1), (0.1, 0.15), (0.15, 0.2), (0.2, 0.25), (0.25, 5.0)] #[(5.0, 2.0)] + [(np.round(v, decimals=1), np.round(v-0.1, decimals=1)) for v in np.linspace(2, -0.9, num=30)]
+    gallery_vis_thresh = [[np.round(v-0.1, decimals=1), np.round(v, decimals=1)] for v in np.linspace(0.1, 1.0, num=10)]
+    gallery_vis_thresh[-1][-1] = 1.1
+    gallery_vis_thresh = [tuple(v) for v in gallery_vis_thresh]
+    rel_gallery_vis_thresh = [(np.round(v-0.1, decimals=1), np.round(v, decimals=1)) for v in np.linspace(-0.9, 2, num=30)]
+    only_next_frame = [1]
+    occluder_thresh = [(np.round(v, decimals=1)-0.0001, np.round(v+1, decimals=1)-0.0001) for v in np.linspace(0, 3, num=4)]
+    jaccard_thresh = [(np.round(v-0.2, decimals=1)-0.0001, np.round(v, decimals=1)-0.0001) for v in np.linspace(0.2, 1.2, num=6)]
 
-    # choose which ones to use
-    use = ['vis', 'size_diff']
+    var_dict = {'vis': vis_thresh, 'size': size_thresh, 'frame_dist': frame_dist_thresh, 'size_diff': size_diff_thresh, 
+                'gallery_vis': gallery_vis_thresh, 'rel_gallery_vis': rel_gallery_vis_thresh, 'only_next_frame': only_next_frame,
+                'occluder': occluder_thresh, 'jaccard': jaccard_thresh}
+
+    variables = list(var_dict.keys()) 
+
+    # choose which ones to use 
+    use = ['jaccard'] 
     for v in var_dict.keys():
         if v not in use:
             var_dict[v] = [0]
-    
+
     several = len(var_dict) - list(var_dict.values()).count(0)
     several = 1
 
-    if several:
+    precomp_dist, precomp_ys, precomp = None, None, None
+
+    if several: 
         for v1 in var_dict[variables[0]]:
             for v2 in var_dict[variables[1]]: #size_diff_thresh: #frame_dist_thresh:
                 for v3 in var_dict[variables[2]]:
                     for v4 in var_dict[variables[3]]:
-                        print("{}, {}, {}, {}".format(v1, v2, v3, v4))
-                        #print(val1, size_thresh, frame_dist_thresh, val)
-                        config['tracker']['iou_thresh'] = v1
-                        config['tracker']['size_thresh'] = v2
-                        config['tracker']['frame_dist_thresh'] = v3 #frame_dist_thresh #val
-                        config['tracker']['size_diff_thresh'] = v4 #val
+                        for v5 in var_dict[variables[4]]:
+                            for v6 in var_dict[variables[5]]:
+                                for v7 in var_dict[variables[6]]:
+                                    for v8 in var_dict[variables[7]]:
+                                        for v9 in var_dict[variables[8]]:
+                                            
+                                            logger.info("{}, {}, {}, {}, {}, {}, {}, {}, {}".format(v1, v2, v3, v4, v5, v6, v7, v8, v9))
+                                            #print(val1, size_thresh, frame_dist_thresh, val)
+                                            config['tracker']['iou_thresh'] = v1
+                                            config['tracker']['size_thresh'] = v2
+                                            config['tracker']['frame_dist_thresh'] = v3 #frame_dist_thresh #val
+                                            config['tracker']['size_diff_thresh'] = v4 #val
+                                            config['tracker']['gallery_vis_thresh'] = v5 #val
+                                            config['tracker']['rel_gallery_vis_thresh'] = v6
+                                            config['tracker']['only_next_frame'] = v7
+                                            config['tracker']['occluder_thresh'] = v8
+                                            config['tracker']['jaccard_thresh'] = v9
 
-                        manager = ManagerReID(device, time.time(), config['dataset'],
-                                            config['reid_net'], config['tracker'])
-                        manager._evaluate()
+
+                                            manager = src.reid_manager.ManagerReID(device, time.time(), config['dataset'],
+                                                                config['reid_net'], config['tracker'], experiment_name='analysis_torchreid_jaccard_test')
+                                            if precomp is not None:
+                                                manager.ys = precomp_ys
+                                                manager.dist = precomp_dist
+                                                manager.computed = precomp
+
+                                            manager._evaluate()
+
+                                            if precomp is None:
+                                                precomp_ys = manager.ys
+                                                precomp_dist = manager.dist
+                                                precomp = manager.computed
+
     else:
         for val in size_diff_thresh: #size_diff_thresh: #frame_dist_thresh:
             print("{}, {}, {}, {}".format(vis_thresh, size_thresh, frame_dist_thresh, val))

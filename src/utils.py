@@ -23,24 +23,24 @@ def evaluate_mot_accums(accums, names, generate_overall=False):
     return summary
 
 
-def eval_metrics(X, y, X_g=None, y_g=None, topk=20, first_match_break=True, gallery_mask=None):
-        X, y = X.cpu().numpy(), y.cpu().numpy()
-        if X_g is not None:
-            X_g, y_g = X_g.cpu().numpy(), y_g.cpu().numpy()
-        else:
-            X_g = X
-            y_g = y
-        dist = sklearn.metrics.pairwise.pairwise_distances(X, X_g)
+def eval_metrics(X=None, y=None, X_g=None, y_g=None, topk=1, first_match_break=True, gallery_mask=None, dist=None):
+        # only compute dist if not precomputed
+        if dist is None:
+            X, y = X.cpu().numpy(), y.cpu().numpy()
+            if X_g is not None:
+                X_g, y_g = X_g.cpu().numpy(), y_g.cpu().numpy()
+            else:
+                X_g = X
+                y_g = y
+            dist = sklearn.metrics.pairwise.pairwise_distances(X, X_g)
+        
         if type(dist) != np.ndarray:
             dist = dist.cpu().numpy()
-        #indices = np.argsort(dist, axis=1)
-        #indices = indices[:, 1:]
-        #matches = (y_g[indices] == y[:, np.newaxis])
 
         aps = []
         ret = np.zeros(topk)
         num_valid_queries = 0
-        topk = 1
+        #all_cmc = list()
         for k in range(dist.shape[0]):
             # map
             if gallery_mask is not None:
@@ -53,14 +53,15 @@ def eval_metrics(X, y, X_g=None, y_g=None, topk=20, first_match_break=True, gall
                 indices = np.argsort(valid_dist)[1:]
 
             y_true = (valid_ys[indices] == y[k])
-            #y_true = matches[k, :]
-
             y_score = -valid_dist[indices] 
+
             if not np.any(y_true): continue
+
             aps.append(average_precision_score(y_true, y_score))
 
             # rank
             index = np.nonzero(y_true)[0]#matches[k, :])[0]
+
             delta = 1. / len(index)
             for j, i in enumerate(index):
                 if i - j >= topk: break
@@ -68,14 +69,24 @@ def eval_metrics(X, y, X_g=None, y_g=None, topk=20, first_match_break=True, gall
                     ret[i - j] += 1
                     break
                 ret[i - j] += delta
+            
+            #cmc = y_true.cumsum()
+            #cmc[cmc > 1] = 1
+            #all_cmc.append(cmc[:topk])        
+            
             num_valid_queries += 1
 
         rank_1 = ret.cumsum() / num_valid_queries
+
+        #all_cmc = np.asarray(all_cmc).astype(np.float32)
+        #all_cmc = all_cmc.sum(0) / num_valid_queries
+        #print(all_cmc)
+        
         mAP = np.mean(aps)
 
         logger.info("Rank-1: {}, mAP: {}".format(rank_1, mAP))
 
-        return rank_1, mAP
+        return rank_1, mAP, num_valid_queries
 
 
 def update(oids, hids, dists, indices, events, m):

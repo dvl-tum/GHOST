@@ -35,25 +35,48 @@ from collections import defaultdict
 logger = logging.getLogger('AllReIDTracker.ReIDManager')
 
 class ManagerReID(Manager):
-    def __init__(self, device, timer, dataset_cfg, reid_net_cfg, tracker_cfg, separate_seqs=True):
-        self.tracker_cfg = tracker_cfg
+    def __init__(self, device, timer, dataset_cfg, reid_net_cfg, tracker_cfg, separate_seqs=True, experiment_name='experiment'):
+        self.tracker_cfg = tracker_cfg 
+        print("Eval mode {}".format(self.tracker_cfg['eval_bb']))
         self.dataset_cfg = dataset_cfg
+        print("Experiment: {}".format(experiment_name))
         self.separate_seqs = separate_seqs
-        self.features = defaultdict(dict)
+        self.experiment_name = experiment_name
+
+        # compute ys and dists only once
+        self.ys = dict()
+        self.dist = dict()
+        self.computed = dict()
+
         super(ManagerReID, self).__init__(device, timer, dataset_cfg, reid_net_cfg, tracker_cfg)
         self.eval1 = 'rank-1'
         self.eval2 = 'mAP'
-        if not os.path.isfile('experiments.csv'):
-            columns = ['date', 'Sequence', 'vis thresh 1', 'vis thresh 2', 'size thresh 1', 'size thresh 2', 'frame dist thresh 1', 'frame dist thresh 2', 'rel size thresh 1', 'rel size thresh 2', 'number of samples', 'mAP', 'rank-1']
-            with open('experiments.csv', 'w', newline='') as write_obj:
+        if not os.path.isfile(self.experiment_name +'.csv'):
+            columns = ['date', 'Sequence', 'vis thresh 1', 'vis thresh 2', 'size thresh 1', 'size thresh 2', 'frame dist thresh 1', 'frame dist thresh 2', 'rel size thresh 1', 'rel size thresh 2', 'gallery vis thresh 1', 'gallery vis thresh 2', 'only next frame', 'number of samples', 'mAP', 'rank-1']
+            with open(self.experiment_name + '.csv', 'w', newline='') as write_obj:
                 csv_writer = writer(write_obj)
                 csv_writer.writerow(columns)
+        
+        if self.tracker_cfg['eval_bb']:
+            self.encoder.eval()
+
+    def add_detector(self, sequence, detector='all'):
+        if detector == 'all':
+            dets = ('DPM', 'FRCNN', 'SDP')
+            sequence = ['-'.join([s, d]) for s in sequence for d in dets]
+        elif detector == '':
+            pass
+        else:
+            sequence = ['-'.join([s, detector]) for s in sequence]
+
+        return sequence
 
     def _get_loaders(self, dataset_cfg):
         loaders = dict()
         seqs = list()
         for mode in _SPLITS[dataset_cfg['splits']].keys():
             seqs = _SPLITS[dataset_cfg['splits']][mode]['seq']
+            seqs = self.add_detector(seqs)
             dir = _SPLITS[dataset_cfg['splits']][mode]['dir']
 
             if mode == 'train':
@@ -76,7 +99,7 @@ class ManagerReID(Manager):
                     shuffle=False,
                     sampler=sampler,
                     num_workers=4,
-                    pin_memory=True)
+                    pin_memory=True) 
             else:
                 if self.separate_seqs:
                     query_dls = list()
@@ -87,7 +110,7 @@ class ManagerReID(Manager):
                         query_dataset = dataset = ReIDDataset(dataset_cfg['splits'], [seq], dataset_cfg, self.tracker_cfg, dir, 'query')
                         query_dl = torch.utils.data.DataLoader(
                             query_dataset,
-                            batch_size=265,
+                            batch_size=256,
                             shuffle=False,
                             num_workers=1,
                             pin_memory=True
@@ -105,11 +128,11 @@ class ManagerReID(Manager):
                             gallery_dls.append(gallery_dl)
                         else:
                             gallery_dls.append([])
-                        break
                         
                     loaders['query'] = query_dls
                     loaders['gallery'] = gallery_dls
                     loaders['seqs_test'] = seq_list
+
                 else:
                     query_dataset = dataset = ReIDDataset(dataset_cfg['splits'], seqs, dataset_cfg, self.tracker_cfg, dir, 'query')
                     query_dl = torch.utils.data.DataLoader(
@@ -128,69 +151,69 @@ class ManagerReID(Manager):
                             pin_memory=True
                         )
                         gallery_dataset = dataset = ReIDDataset(dataset_cfg['splits'], seqs, dataset_cfg, self.tracker_cfg, dir, 'gallery')
-                    loaders['query'] = [query_dl]
+                    loaders['query'] = [query_dl    ]
                     loaders['gallery'] = []
 
         return loaders
 
-    def get_distance_once(self, i):
-
+    def get_distance_once(self, i, seq):
         if len(self.loaders['gallery'][i]) != 0:
             loader = self.loaders['gallery'][i]
         else:
             loader = self.loaders['query'][i]
+        
+        feats, ys = list(), list()
+        for img, idx, Y in loader:
+            Y, img = Y.to(self.device), img.to(self.device)
+            with torch.no_grad():
+                f = self.encoder(img)
+            if type(f) == tuple:
+                f = f[1]
+            if type(f) == list:
+                f = torch.cat(f, dim=1)
+            feats.extend(f)
+            ys.extend(Y)
+        
+        # get dist
+        feats = torch.stack(feats).cpu()
+        print(feats.shape, torch.stack(ys).cpu().numpy().shape)
+        dist = sklearn.metrics.pairwise.pairwise_distances(feats)
 
+        self.dist[seq] = dist
+        self.ys[seq] = torch.stack(ys).cpu().numpy()
+        self.computed[seq] = True
 
+        if len(self.loaders['gallery'][i]) != 0:
+            self.loaders['gallery'][i].dataset.dist_computed = True
+            self.loaders['query'][i].dataset.dist_computed = True
+        else:
+            self.loaders['query'][i].dataset.dist_computed = True
 
     def _evaluate(self, mode='test'):
+        print("Started evaluating")
         seqs = _SPLITS[self.dataset_cfg['splits']][mode]['seq']
         for i, seq in enumerate(self.loaders['seqs_test']):
+            
+            if seq not in self.computed.keys():
+                self.get_distance_once(i, seq)
 
-            print("Sequence {}, num query samples {}".format(seq, len(self.loaders['query'][i].dataset))) #, len(self.loaders['gallery'][i].dataset) if len(self.loaders['gallery']) > 0 else len(self.loaders['query'][i].dataset)))
+            logger.info("Sequence {}, num query samples {}".format(seq, len(self.loaders['query'][i].dataset))) #, len(self.loaders['gallery'][i].dataset) if len(self.loaders['gallery']) > 0 else len(self.loaders['query'][i].dataset)))
             if len(self.loaders['query'][i].dataset) == 0:
-                print("Sequence has no query samples fulfilling the current constraint {}".format(len(self.loaders['query'][i])))
+                logger.info("Sequence has no query samples fulfilling the current constraint {}".format(len(self.loaders['query'][i])))
                 continue
 
-            import time
-            s = time.time()
-            q_feats = list()
-            q_ys = list()
-            for img, idx, Y in self.loaders['query'][i]:
-                Y, img = Y.to(self.device), img.to(self.device)
-                with torch.no_grad():
-                    f = self.encoder(img)
-                q_feats.extend(f)
-                q_ys.extend(Y)
-            q_feats = torch.stack(q_feats)
-            q_ys = torch.stack(q_ys)
-            print(q_feats.shape, q_ys.shape)
+            query_indices = self.loaders['query'][i].dataset.query_indices
+            gallery_mask = self.loaders['query'][i].dataset.gallery_mask
 
-            s = time.time()
-            if len(self.loaders['gallery'][i]) != 0:
-                g_feats = list()
-                g_ys = list()
-                for img, idx, Y in self.loaders['gallery'][i]:
-                    Y, img = Y.to(self.device), img.to(self.device)
-                    with torch.no_grad():
-                        f = self.encoder(img)
-                    g_feats.extend(f)
-                    g_ys.extend(Y)
-                g_feats = torch.stack(g_feats)
-                g_ys = torch.stack(g_ys)
+            rank, mAP, num_valid_queries = eval_metrics(y=self.ys[seq][query_indices], y_g=self.ys[seq], 
+                            gallery_mask=gallery_mask, dist=self.dist[seq][query_indices, :])
 
-                gallery_mask = self.loaders['query'][i].dataset.gallery_mask
-                rank, mAP = eval_metrics(q_feats, q_ys, g_feats, g_ys, gallery_mask=gallery_mask)
-            else:
-                gallery_mask = self.loaders['query'][i].dataset.gallery_mask
-                rank, mAP = eval_metrics(q_feats, q_ys, gallery_mask=gallery_mask)
-            print("Time for galleries {}".format(time.time()-s))
-            row = self.get_row(q_feats.shape[0], mAP, rank, seq)
+            row = self.get_row(num_valid_queries, mAP, rank, seq)
 
-            with open('experiments.csv', 'a+', newline='') as write_obj:
+            with open(self.experiment_name + '.csv', 'a+', newline='') as write_obj:
                 csv_writer = writer(write_obj)
                 csv_writer.writerow(row)
             
-
     def get_row(self, num_samps, mAP, rank, seq):
         new_row = [date.today().strftime("%d.%m.%Y"), seq]
         def add_row(val):  
@@ -201,11 +224,20 @@ class ManagerReID(Manager):
                     new_row.extend([val, 'open'])
             else:
                 new_row.extend([val[0], val[1]])
+        
+        def add_row_single(val):
+            if val == 0:
+                new_row.extend(['-'])
+            else:
+                new_row.extend([val])
 
         add_row(self.tracker_cfg['iou_thresh'])
         add_row(self.tracker_cfg['size_thresh'])
         add_row(self.tracker_cfg['frame_dist_thresh'])
         add_row(self.tracker_cfg['size_diff_thresh'])
+        add_row(self.tracker_cfg['gallery_vis_thresh'])
+        add_row_single(self.tracker_cfg['only_next_frame'])
+        
         new_row.extend([num_samps, mAP, rank[0]])
 
         return new_row

@@ -12,6 +12,11 @@ from lapsolver import solve_dense
 from torchvision.transforms import ToTensor
 from torchvision import transforms
 from ReID.dataset.utils import make_transform_bot
+from copy import deepcopy
+import logging
+
+
+logger = logging.getLogger('AllReIDTracker.Parser')
 
 
 class MOTLoader():
@@ -24,21 +29,27 @@ class MOTLoader():
         self.det_file = dataset_cfg['det_file']
 
     def get_seqs(self):
-
         for s in self.sequence:
             gt_file = osp.join(self.mot_dir, s, 'gt', 'gt.txt')
+            exist_gt = os.path.isfile(gt_file)
             det_file = osp.join(self.det_dir, s, 'det', self.det_file)
             seq_file = osp.join(self.mot_dir, s, 'seqinfo.ini')
             
             self.get_seq_info(seq_file, gt_file, det_file)
             self.get_dets(det_file, s)
-            self.get_gt(gt_file)
-            
+            if exist_gt:
+                self.get_gt(gt_file)
+            self.dets_unclipped = deepcopy(self.dets)
             self.clip_boxes_to_image(df=self.dets)
             self.dets.sort_values(by = 'frame', inplace = True)
+            self.dets_unclipped.sort_values(by='frame', inplace=True)
+            
             self.dets['detection_id'] = np.arange(self.dets.shape[0])
-            self.assign_gt()
+            if exist_gt:
+                self.assign_gt()
             self.dets.attrs.update(self.seq_info)
+
+        return exist_gt
 
     def get_gt(self, gt_file):
         if osp.exists(gt_file):
@@ -59,8 +70,8 @@ class MOTLoader():
             self.dets = pd.read_csv(det_file, names = ['frame', 'id', 'bb_left', 'bb_top', 'bb_width', 'bb_height', 'conf', 'label', 'vis', '?'])
             self.dets['bb_left'] -= 1 # Coordinates are 1 based
             self.dets['bb_top'] -= 1
-            self.dets['bb_right'] = (self.dets['bb_left'] + self.dets['bb_width']).values
-            self.dets['bb_bot'] = (self.dets['bb_top'] + self.dets['bb_height']).values
+            self.dets['bb_right'] = (self.dets['bb_left'] + self.dets['bb_width']).values #- 1
+            self.dets['bb_bot'] = (self.dets['bb_top'] + self.dets['bb_height']).values #- 1
 
             if len(self.dets['id'].unique()) > 1:
                 self.dets['tracktor_id'] = self.dets['id']
@@ -110,6 +121,8 @@ class MOTLoader():
         return df
 
     def assign_gt(self):
+        cols = ['frame', 'id', 'bb_left', 'bb_top', 'bb_width', 'bb_height', 'conf', 'label', 'vis']
+        self.corresponding_gt = pd.DataFrame(columns=cols)
         if self.seq_info['has_gt']:
             for frame in self.dets['frame'].unique():
                 # get df entries of current frame 
@@ -129,9 +142,29 @@ class MOTLoader():
                 unassigned_detect_index = frame_detects.iloc[unassigned_detect].index
                 
                 # get IDs of assigned gt
-                corresponding_gt = frame_gt.iloc[corresponding_gt]['id'].values
+                self.corresponding_gt = self.corresponding_gt.append(frame_gt.iloc[corresponding_gt])
+                corresponding_id = frame_gt.iloc[corresponding_gt]['id'].values
+                corresponding_vis = frame_gt.iloc[corresponding_gt]['vis'].values
                 
-                # set IDs of assigned and unassigned
-                self.dets.loc[assigned_detect_index, 'id'] = corresponding_gt
+                # set IDs and vis of assigned and unassigned
+                self.dets.loc[assigned_detect_index, 'id'] = corresponding_id
                 self.dets.loc[unassigned_detect_index, 'id'] = -1  # False Positives
-  
+
+                self.dets.loc[assigned_detect_index, 'vis'] = corresponding_vis
+                self.dets.loc[unassigned_detect_index, 'vis'] = -1  # False Positives
+
+        
+        #pd.set_option('display.max_columns', None)
+        #print(self.dets[self.dets['id'] == -1])
+        #self.dets[self.dets['id'] == -1].to_csv('unassigned_check.csv')
+        
+        if self.dataset_cfg['drop_unassigned']:
+            mask = self.dets['id'] != -1
+            self.dets = self.dets[mask]
+            self.dets_unclipped = self.dets_unclipped[mask]
+        
+        #print(self.dets.shape)
+        #print(self.dets_unclipped.shape)
+        #print(self.dets)
+        #print(self.dets_unclipped)
+        #quit() 

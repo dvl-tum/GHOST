@@ -35,27 +35,34 @@ class ClassificationLayer(nn.Module):
 
 
 class ProxyGenRNN(nn.Module):
-    def __init__(self, sz_embed, num_layers):
+    def __init__(self, sz_embed, num_layers=1):
         super(ProxyGenRNN, self).__init__()
         self.num_layers = num_layers
-        h_dim = int(0.5 * sz_embed)
-        self.w_h = [nn.Linear(h_dim, h_dim)]
-        self.w_i = [nn.Linear(sz_embed, h_dim)]
+        self.h_dim = int(0.5 * sz_embed)
+        '''
+        self.w_h = [nn.Linear(self.h_dim, self.h_dim)]
+        self.w_i = [nn.Linear(sz_embed, self.h_dim)]
         for i in range(num_layers-1):
-            self.w_h.append(nn.Linear(h_dim, h_dim))
-            self.w_i.append(nn.Linear(h_dim, h_dim))
+            self.w_h.append(nn.Linear(self.h_dim, self.h_dim))
+            self.w_i.append(nn.Linear(self.h_dim, self.h_dim))
         self.relu = [nn.ReLU() for _ in range(num_layers)]
         self.dropout = [nn.Dropout(0.2) for _ in range(num_layers)]
+        '''
+        self.w_h = nn.Linear(self.h_dim, self.h_dim)
+        self.w_i = nn.Linear(sz_embed, self.h_dim)
+        self.relu = nn.ReLU()
+        self.dropout = nn.Dropout(0.2)
+        self.final = nn.Linear(self.h_dim, sz_embed)
 
-        self.final = nn.Linear(h_dim, sz_embed)
-
-    def forward(self, h, x):
-        h_new = self.relu1[0](self.dropout[0](self.w_h[0](h[0]) + self.w_i[0](x)))
-        h_list = [h]
-        for i in range(1, self.num_layers):
-            sum = self.w_h[i](h[i]) + self.w_i[i](h_new)
-            h_new = self.relu1[i](self.dropout[i](sum))
-            h_list.append(h_new)
+    def forward(self, x, h):
+        #h_new = self.relu[0](self.dropout[0](self.w_h[0](h[0]) + self.w_i[0](x)))
+        #h_list = [h]
+        #for i in range(1, self.num_layers):
+        #    sum = self.w_h[i](h[i]) + self.w_i[i](h_new)
+        #    h_new = self.relu[i](self.dropout[i](sum))
+        #    h_list.append(h_new)
+        h_new = self.relu(self.dropout(self.w_h(h) + self.w_i(x)))
+        h_list = h
         x = self.final(h_new)
 
-        return h, x
+        return x, h_list
