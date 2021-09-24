@@ -3,6 +3,129 @@ from torch import nn
 import torch.nn.functional as F
 from torch.autograd import Variable
 
+def reduce_loss(loss, reduction):
+    """Reduce loss as specified.
+    
+    https://mmdetection.readthedocs.io/en/v2.2.0/_modules/mmdet/models/losses/utils.html#weight_reduce_loss
+
+    Args:
+        loss (Tensor): Elementwise loss tensor.
+        reduction (str): Options are "none", "mean" and "sum".
+
+    Return:
+        Tensor: Reduced loss tensor.
+    """
+    reduction_enum = F._Reduction.get_enum(reduction)
+    # none: 0, elementwise_mean:1, sum: 2
+    if reduction_enum == 0:
+        return loss
+    elif reduction_enum == 1:
+        return loss.mean()
+    elif reduction_enum == 2:
+        return loss.sum()
+
+
+def weight_reduce_loss(loss, weight=None, reduction='mean', avg_factor=None):
+    """
+    
+    https://mmdetection.readthedocs.io/en/v2.2.0/_modules/mmdet/models/losses/utils.html#weight_reduce_loss
+
+    Apply element-wise weight and reduce loss.
+
+    Args:
+        loss (Tensor): Element-wise loss.
+        weight (Tensor): Element-wise weights.
+        reduction (str): Same as built-in losses of PyTorch.
+        avg_factor (float): Avarage factor when computing the mean of losses.
+
+    Returns:
+        Tensor: Processed loss values.
+    """
+
+    # if weight is specified, apply element-wise weight
+    if weight is not None:
+        loss = loss * weight
+
+    # if avg_factor is not specified, just reduce the loss
+    if avg_factor is None:
+        loss = reduce_loss(loss, reduction)
+    else:
+        # if reduction is mean, then average the loss by avg_factor
+        if reduction == 'mean':
+            loss = loss.sum() / avg_factor
+        # if reduction is 'none', then do nothing, otherwise raise an error
+        elif reduction != 'none':
+            raise ValueError('avg_factor can not be used with reduction="sum"')
+    return loss
+
+# MultiPositiveContrastive
+class MultiPositiveContrastive(torch.nn.Module):
+    """Cross entropy loss with label smoothing regularizer.
+    Reference:
+    Szegedy et al. Rethinking the Inception Architecture for Computer Vision. CVPR 2016.
+    Equation: y = (1 - epsilon) * y + epsilon / K.
+    Args:
+        num_classes (int): number of classes.
+        epsilon (float): weight.
+    """
+    def __init__(self):
+        super(MultiPositiveContrastive, self).__init__()
+
+    def forward(self, inputs, targets, weight=None,
+                    reduction='mean', avg_factor=None):
+        """
+        Args:
+            inputs: prediction matrix (before softmax) with shape (batch_size, num_classes)
+            targets: ground truth labels with shape (batch_size, num_classes)
+        """
+        
+        targets = torch.atleast_2d(targets)
+        mask = targets == targets.T
+
+        #test without for loop 
+        inp = inputs[:, targets[0]].T # without transpose each row contains one samples prob but we need other way round 
+
+        pos_inds = mask
+        neg_inds = ~mask
+        pos = pos_inds.float()
+        neg = neg_inds.float()
+
+        _pos = inp * pos
+        _neg = inp * neg
+
+        _pos[neg_inds] = _pos[neg_inds] + float('inf')
+        _neg[pos_inds] = _neg[pos_inds] + float('-inf')
+
+        _pos_expand = torch.repeat_interleave(_pos, inputs.shape[0], dim=1)
+        _neg_expand = _neg.repeat(1, inputs.shape[0])
+
+        x = torch.nn.functional.pad((_neg_expand - _pos_expand), (0, 1), "constant", 0)
+        loss = torch.logsumexp(x, dim=1)
+
+        '''for i in range(inputs.shape[0]):
+            inp = inputs[:, targets[0, i]]
+
+            pos_inds = mask[i]
+            neg_inds = ~mask[i]
+            pos = pos_inds.float()
+            neg = neg_inds.float()
+
+            _pos = inp * pos
+            _neg = inp * neg
+
+            _pos[neg_inds] = _pos[neg_inds] + float('inf')
+            _neg[pos_inds] = _neg[pos_inds] + float('-inf')
+
+            _pos_expand = torch.repeat_interleave(_pos, inp.shape[0])
+            _neg_expand = _neg.repeat(1, inp.shape[0])
+
+            x = torch.nn.functional.pad((_neg_expand - _pos_expand), (0, 1), "constant", 0)
+            loss = torch.logsumexp(x, dim=1)'''
+
+        loss = weight_reduce_loss(loss, weight=weight, reduction=reduction, avg_factor=avg_factor)
+
+        return loss
+
 
 # cross entropy and center loss
 class CrossEntropyDistill(torch.nn.Module):

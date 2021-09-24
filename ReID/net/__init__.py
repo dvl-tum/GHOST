@@ -6,5 +6,5 @@ from .densenet import densenet121, densenet161, densenet169, densenet201
 from .load_trained_net import load_net
 from .gnn_base import GNNReID
 from .graph_generator import GraphGenerator
-from .query_guided_attention import SpatialGNNReID
+from .query_guided_attention import SpatialGNNReID, Query_Guided_Attention_Layer
 from .resnet_attention import resnet50 as resnet50_attention

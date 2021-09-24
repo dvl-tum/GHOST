@@ -10,6 +10,7 @@ import matplotlib.pyplot as plt
 from collections import defaultdict, Counter
 import copy
 import logging
+import random 
 
 logger = logging.getLogger('GNNReID.Dataset')
 
@@ -32,7 +33,7 @@ class Birds(torch.utils.data.Dataset):
     def __init__(self, root, labels, paths, trans=None,
                  eval_reid=False, magnitude=15, number_aug=0,
                  labels_train=None, paths_train=None, labels_gallery=None,
-                 paths_gallery=None):
+                 paths_gallery=None, rand_scales=False):
         self.trans = trans
         self.magnitude = magnitude
         self.number_aug = number_aug
@@ -45,7 +46,8 @@ class Birds(torch.utils.data.Dataset):
         self.paths_train = paths_train
         self.labels_gallery = labels_gallery
         self.paths_gallery = paths_gallery
-
+        self.rand_scales = rand_scales
+        print('Randomly scales images {}'.format(rand_scales))
         # when cuhk03 detected and labeled should be used
         if os.path.basename(root) == 'cuhk03' or os.path.basename(root) == 'cuhk03-np':
             typ = ['labeled', 'detected']
@@ -100,6 +102,7 @@ class Birds(torch.utils.data.Dataset):
             trans = utils.make_transform(is_train=not self.eval_reid)
         elif self.trans == 'bot':
             trans = utils.make_transform_bot(is_train=not self.eval_reid)
+        print(trans)
         return trans
 
     def nb_classes(self):
@@ -112,12 +115,15 @@ class Birds(torch.utils.data.Dataset):
 
     def __getitem__(self, index):
         im = pil_loader(self.im_paths[index])
-        #show_dataset(im, self.ys[index])
-        if self.trans == 'appearance':
-            im = self.transform[self.occurance[self.ys[index]]](im)
-        else:
-            im = self.transform(im)
-        #show_dataset(im, self.ys[index])
+        
+        if not self.eval_reid and self.rand_scales:
+            if random.randint(0, 1):
+                r = random.randint(2, 4)
+                #print(im.size)
+                im = im.resize((int(im.size[0]/r), int(im.size[1]/r)))
+                #print(r, im.size) 
+        im = self.transform(im)
+
         if self.labels_train is not None:
             return im, self.ys[index], index, self.im_paths[index]
         if self.eval_reid:

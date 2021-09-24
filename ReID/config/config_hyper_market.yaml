@@ -4,9 +4,9 @@ application: "reid"
 models:
   encoder_params:
     pretrained_path: "no" #"best_weights/0.8861117951243536resnet50_cars.pth" #"0.8266303675287712resnet50_cars.pth" #"0.8324929282991022resnet50_cars.pth" #"0.8937908496732027neck_resnet50_cars.pth" #"pretrained/0.835444594760792neck_resnet50_cars.pth" #"pretrained/0.8101094576312876neck_resnet50_cars.pth" #"pretrained_gnn/0.9390158582089553neck_resnet50_cars.pth" 
-    net_type: "resnet50"
+    net_type: "resnet50FPN"
     neck: 0
-    red: 4
+    red: 1
     last_stride: 0
     final_drop: 0 #0.5
     stoch_depth: 1 #0.8
@@ -62,7 +62,7 @@ graph_params:
   set_negative: "hard"
 
 dataset:
-  dataset_path: "../../datasets/Market-1501-v15.09.15"
+  dataset_path: "/storage/slurm/seidensc/datasets/Market-1501-v15.09.15"
   dataset_short: "Market"
   num_classes: 751
   trans: "bot"
@@ -82,10 +82,10 @@ train_params:
   num_epochs: 70
   is_apex: 0
   temperatur: 0.1111111111111 #0.2 #0.6968750970069256 #0.1605494911629317 #0.6968750970069256 #0.2
-  output_train_enc: "plain"
+  output_train_enc: "norm"
   output_train_gnn: "plain"
   loss_fn:
-    fns: "lsgnn_lsce" #ce/focalce can be used instead of lsce and lsgnn/focalgnn instead of gnn, rest can be added by ce_gnn_center...
+    fns: "lsce" #ce/focalce can be used instead of lsce and lsgnn/focalgnn instead of gnn, rest can be added by ce_gnn_center...
     scaling_ce: 1
     scaling_gnn: 1
     scaling_distance: 0.01

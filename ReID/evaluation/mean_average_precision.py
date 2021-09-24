@@ -71,7 +71,6 @@ def cmc(distmat, query_ids=None, gallery_ids=None,
                 ids_dict[x].append(j)
         else:
             repeat = 1
-        '''
         for _ in range(repeat):
             if single_gallery_shot:  # cuhk03 old testing protocol
                 # Randomly choose one instance for each id
@@ -89,10 +88,10 @@ def cmc(distmat, query_ids=None, gallery_ids=None,
                     ret[k - j] += 1
                     break
                 ret[k - j] += delta
-        '''
-        cmc = orig_cmc.cumsum()
+        
+        '''cmc = orig_cmc.cumsum()
         cmc[cmc > 1] = 1
-        all_cmc.append(cmc[:topk])        
+        all_cmc.append(cmc[:topk])'''      
         num_valid_queries += 1
 
     if num_valid_queries == 0:

@@ -13,7 +13,7 @@ import torch.nn as nn
 import torch.nn.utils.weight_norm as weightNorm
 from .utils import weights_init_kaiming, weights_init_classifier
 
-def load_net(dataset, nb_classes, mode, net_type, bn_inception={'embed': 0, 'sz_embedding': 512},
+def load_net(dataset, nb_classes, mode, attention, net_type, bn_inception={'embed': 0, 'sz_embedding': 512},
              last_stride=0, neck=0, pretrained_path=None, weight_norm=0, final_drop=0.5, stoch_depth=0.8, red=1):
     if net_type == 'bn_inception':
         sz_embed = 1024
@@ -77,7 +77,7 @@ def load_net(dataset, nb_classes, mode, net_type, bn_inception={'embed': 0, 'sz_
 
     elif net_type == 'resnet50':
         sz_embed = int(2048/red)
-        model = resnet50(pretrained=True, last_stride=last_stride, neck=neck, final_drop=final_drop, stoch_depth=stoch_depth, red=red)
+        model = resnet50(pretrained=True, last_stride=last_stride, neck=neck, final_drop=final_drop, stoch_depth=stoch_depth, red=red, attention=attention)
 
         dim = int(2048/red)
         print("Dimension of Resnet output {}".format(dim))
@@ -275,36 +275,100 @@ def load_net(dataset, nb_classes, mode, net_type, bn_inception={'embed': 0, 'sz_
 
     elif net_type == 'resnet50FPN':
         sz_embed = int(256/red)
-        model = ResNetFPN(pretrained=True, neck=neck, red=red)
+        model = ResNetFPN(pretrained=True, neck=neck, red=red, attention=attention)
 
         dim = int(256/red)
-        fcs = []
-        neck = []
-        for _ in range(4):
+        if model.combine or model.conv_combi or model.last_only:
+            '''if model.combine:
+                if model.squeeze_ext and model.layer_norm:
+                    if model.combi_big:
+                        model.combi_layer = nn.Sequential(
+                            nn.Linear(int(4 * 256/red), int(2 * 256/red)),
+                            nn.Linear(int(2 * 256/red), 2048),
+                            nn.LayerNorm(2048))
+                    else:
+                        model.combi_layer = nn.Sequential(
+                            nn.Linear(int(4 * 256/red), int(2 * 256/red)),
+                            nn.Linear(int(2 * 256/red), int(4 * 256/red)),
+                            nn.LayerNorm(int(4 * 256/red)))
+                elif model.squeeze_ext:
+                    if model.combi_big:
+                        model.combi_layer = nn.Sequential(
+                            nn.Linear(int(4 * 256/red), int(2 * 256/red)),
+                            nn.Linear(int(2 * 256/red), 2048))
+                    else:
+                        model.combi_layer = nn.Sequential(
+                            nn.Linear(int(4 * 256/red), int(2 * 256/red)),
+                            nn.Linear(int(2 * 256/red), int(4 * 256/red)))
+                else:
+                    if model.combi_big:
+                        model.combi_layer = nn.Linear(4 * dim, 2048)
+                    else:
+                        model.combi_layer = nn.Linear(4 * dim, 4 * dim)'''
+            if model.combi_big and model.last_only:
+                model.last_linear = nn.Linear(int(256/red), 2048)
+            if model.make_small and model.last_only:
+                model.last_linear = nn.Linear(int(256/red), 128)
             if model.neck:
-                bottleneck = nn.BatchNorm1d(int(256/red))
-                bottleneck.bias.requires_grad_(False)  # no shift
-                fc = nn.Linear(int(256/red), nb_classes,
-                                    bias=False)
-
+                if model.combi_big:
+                    bottleneck = nn.BatchNorm1d(2048)
+                    bottleneck.bias.requires_grad_(False)  # no shift
+                    fc = nn.Linear(2048, nb_classes,
+                                        bias=False)
+                elif model.last_only:
+                    bottleneck = nn.BatchNorm1d(256)
+                    bottleneck.bias.requires_grad_(False)  # no shift
+                    fc = nn.Linear(256, nb_classes,
+                                        bias=False)
+                else:
+                    bottleneck = nn.BatchNorm1d(4 * dim)
+                    bottleneck.bias.requires_grad_(False)  # no shift
+                    fc = nn.Linear(4 * dim, nb_classes,
+                                        bias=False)
                 bottleneck.apply(weights_init_kaiming)
                 fc.apply(weights_init_classifier)
-                neck.append(bottleneck)
+                model.necks = bottleneck
+                model.fcs = fc
             else:
-                fc = nn.Linear(int(256/red), nb_classes)
-            fcs.append(fc)
-        if model.neck:
-            model.necks = nn.Sequential(*neck)
-        model.fcs = nn.Sequential(*fcs)
+                if model.combi_big:
+                    fc = nn.Linear(2048, nb_classes)
+                elif model.last_only:
+                    if model.make_small:
+                        fc = nn.Linear(128, nb_classes)
+                    else:
+                        fc = nn.Linear(256, nb_classes)
+                else:
+                    fc = nn.Linear(4 * dim, nb_classes)
+                model.fcs = fc
+        else:
+            fcs = []
+            neck = []
+            for _ in range(4):
+                if model.neck:
+                    bottleneck = nn.BatchNorm1d(dim)
+                    bottleneck.bias.requires_grad_(False)  # no shift
+                    fc = nn.Linear(dim, nb_classes,
+                                        bias=False)
 
+                    bottleneck.apply(weights_init_kaiming)
+                    fc.apply(weights_init_classifier)
+                    neck.append(bottleneck)
+                else:
+                    fc = nn.Linear(dim, nb_classes)
+                fcs.append(fc)
+            if model.neck:
+                model.necks = nn.Sequential(*neck)
+            model.fcs = nn.Sequential(*fcs)
+        
         if not mode  == 'pretraining' and pretrained_path != 'no':
-            no_load = []
+            print("loading from {}".format(pretrained_path))
+            no_load = [k for k in torch.load(pretrained_path).keys() if 'fc' in k]
             load_dict = {k: v for k, v in torch.load(pretrained_path).items() if k not in no_load}
 
             model_dict = model.state_dict()
             model_dict.update(load_dict)
             model.load_state_dict(model_dict)
-
+    print(model)
     return model, sz_embed
 
 

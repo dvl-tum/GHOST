@@ -15,13 +15,13 @@ import time
 import torch.nn.functional as F
 import copy
 import sys
-from evaluation import Evaluator, Evaluator_DML
+from evaluation import Evaluator
 import utils.utils as utils
 import matplotlib.pyplot as plt
 import os
 import json
 from torch import autograd
-
+import numpy as np
 autograd.set_detect_anomaly(True)
 
 logger = logging.getLogger('GNNReID.Training')
@@ -32,7 +32,24 @@ torch.manual_seed(0)
 class Trainer():
     def __init__(self, config, save_folder_nets, save_folder_results,
                  device, timer):
+        
+        torch.manual_seed(1)
+        random.seed(1)
+        np.random.seed(1)
+        torch.cuda.manual_seed(1)
+        torch.cuda.manual_seed_all(1)
+        os.environ['PYTHONHASHSEED'] = str(1)
+        #torch.set_deterministic(True)
+        torch.backends.cudnn.benchmark = False
+        torch.backends.cudnn.deterministic = True
+        #torch.use_deterministic_algorithms(True)
+        os.environ["CUBLAS_WORKSPACE_CONFIG"]=":4096:2"
+
         self.config = config
+        if 'attention' in self.config['train_params']['loss_fn']['fns']:
+            self.config['models']['attention'] = 1
+        else:
+            self.config['models']['attention'] = 0
         self.device = device
         self.save_folder_results = save_folder_results
         self.save_folder_nets = save_folder_nets
@@ -61,6 +78,7 @@ class Trainer():
                 self.config['dataset']['dataset_short'],
                 self.config['dataset']['num_classes'],
                 self.config['mode'],
+                self.config['models']['attention'],
                 **self.config['models']['encoder_params'])
 
             self.device = 0
@@ -69,26 +87,45 @@ class Trainer():
                 self.gnn_dev = 1
             else:
                 self.gnn_dev = 0
-            print(self.device, self.gnn_dev)
-            # 1 == dev
-            self.gnn = net.GNNReID(self.gnn_dev,
-                                   self.config['models']['gnn_params'],
-                                   sz_embed).cuda(self.gnn_dev)
 
-            if self.config['models']['gnn_params']['pretrained_path'] != "no":
-                load_dict = torch.load(
-                    self.config['models']['gnn_params']['pretrained_path'],
-                    map_location='cpu')
-                self.gnn.load_state_dict(load_dict)
+            if 'gnn' in self.config['train_params']['loss_fn']['fns']:
+                print(self.device, self.gnn_dev)
+                # 1 == dev
+                self.gnn = net.GNNReID(self.gnn_dev,
+                                    self.config['models']['gnn_params'],
+                                    sz_embed).cuda(self.gnn_dev)
 
-            self.graph_generator = net.GraphGenerator(self.device,
-                                                      **self.config[
-                                                          'graph_params'])
+                if self.config['models']['gnn_params']['pretrained_path'] != "no":
+                    load_dict = torch.load(
+                        self.config['models']['gnn_params']['pretrained_path'],
+                        map_location='cpu')
+                    self.gnn.load_state_dict(load_dict)
 
-            self.evaluator = Evaluator(**self.config['eval_params'])
+                self.graph_generator = net.GraphGenerator(self.device,
+                                                        **self.config[
+                                                            'graph_params'])
 
-            params = list(set(self.encoder.parameters())) + list(
-                set(self.gnn.parameters()))
+                params = list(set(self.encoder.parameters())) + list(set(self.gnn.parameters()))
+            elif self.config['models']['attention']:
+                if self.net_type == 'resnet50FPN':
+                    in_channels = 1024
+                else:
+                    in_channels = sz_embed
+
+                self.query_guided_attention = net.Query_Guided_Attention_Layer(in_channels, inter_channels=128, gnn_params=self.config['models']['gnn_params']['gnn'], postprocessing=False, num_classes=self.config['dataset']['num_classes']).cuda(self.gnn_dev)
+                if self.config['models']['gnn_params']['pretrained_path'] != "no":
+                    load_dict = torch.load(
+                        self.config['models']['gnn_params']['pretrained_path'],
+                        map_location='cpu')
+                    self.query_guided_attention.load_state_dict(load_dict)
+
+                params = list(set(self.encoder.parameters())) + list(set(self.query_guided_attention.parameters()))
+                self.gnn = None
+            else:
+                params = list(set(self.encoder.parameters()))
+                self.gnn = None
+            
+            self.evaluator = Evaluator(**self.config['eval_params'])    
 
             param_groups = [{'params': params,
                              'lr': self.config['train_params']['lr']}]
@@ -126,10 +163,11 @@ class Trainer():
                 os.rename(osp.join(self.save_folder_nets, self.fn + '.pth'),
                           str(best_rank_iter) + mode + self.net_type + '_' +
                           self.dataset_short + '.pth')
-                os.rename(
-                    osp.join(self.save_folder_nets, 'gnn_' + self.fn + '.pth'),
-                    str(best_rank_iter) + 'gnn_' + mode + self.net_type + '_' +
-                    self.dataset_short + '.pth')
+                if self.gnn is not None:
+                    os.rename(
+                        osp.join(self.save_folder_nets, 'gnn_' + self.fn + '.pth'),
+                        str(best_rank_iter) + 'gnn_' + mode + self.net_type + '_' +
+                        self.dataset_short + '.pth')
                 best_rank = best_rank_iter
                 best_hypers = ', '.join(
                     [str(k) + ': ' + str(v) for k, v in self.config.items()])
@@ -165,84 +203,50 @@ class Trainer():
                     logger.info("reduce learning rate")
                     self.encoder.load_state_dict(torch.load(
                         osp.join(self.save_folder_nets, self.fn + '.pth')))
-                    self.gnn.load_state_dict(
-                        torch.load(osp.join(self.save_folder_nets,
-                                            'gnn_' + self.fn + '.pth')))
+                    if self.gnn is not None:
+                        self.gnn.load_state_dict(
+                            torch.load(osp.join(self.save_folder_nets,
+                                                'gnn_' + self.fn + '.pth')))
                     for g in self.opt.param_groups:
                         g['lr'] = train_params['lr'] / 10.
 
                 if e == 51:
                     logger.info("reduce learning rate")
-                    self.gnn.load_state_dict(
-                        torch.load(osp.join(self.save_folder_nets,
-                                            'gnn_' + self.fn + '.pth')))
+                    if self.gnn is not None:
+                        self.gnn.load_state_dict(
+                            torch.load(osp.join(self.save_folder_nets,
+                                                'gnn_' + self.fn + '.pth')))
 
                     self.encoder.load_state_dict(torch.load(
                         osp.join(self.save_folder_nets, self.fn + '.pth')))
                     for g in self.opt.param_groups:
                         g['lr'] = train_params['lr'] / 10.
 
-                self.check_sampling_strategy(e)
+                
+                self.dl_tr.sampler.epoch = e
+                for x, Y, I, P in self.dl_tr:
+                    loss = self.forward_pass(x, Y, I, P, train_params)
+                    
+                    # Check possible net divergence
+                    if torch.isnan(loss):
+                        logger.error("We have NaN numbers, closing\n\n\n")
+                        return 0.0, self.encoder
 
-                # If distance_sampling == only, use first epoch to get features
-                if (self.distance_sampling != 'no' and e == 1):
-                    model_is_training = self.encoder.training
-                    gnn_is_training = self.gnn.training
-                    self.encoder.eval()
-                    self.gnn.eval()
-                    with torch.no_grad():
-                        for x, Y, I, P in self.dl_tr:
-                            Y = Y.cuda(self.device)
-                            probs, fc7, student_feats = self.encoder(
-                                x.cuda(self.device),
-                                train_params['output_train_enc'])
-                            if self.gnn_loss or self.of:
-                                edge_attr, edge_index, fc7 = self.graph_generator.get_graph(
-                                    fc7)
-                                fc7 = fc7.cuda(self.gnn_dev)
-                                edge_attr = edge_attr.cuda(self.gnn_dev)
-                                edge_index = edge_index.cuda(self.gnn_dev)
+                    if train_params['is_apex']:
+                        with amp.scale_loss(loss, self.opt) as scaled_loss:
+                            scaled_loss.backward()
+                    else:
+                        loss.backward()
 
-                                pred, feats, _ = self.gnn(fc7, edge_index,
-                                                          edge_attr,
-                                                          train_params[
-                                                              'output_train_gnn'])
-                                features = feats[0]
-                            else:
-                                features = fc7
+                    self.opt.step()
 
-                            for y, f, i in zip(Y, features, I):
-                                self.feature_dict[y.data.item()][i.item()] = f
-
-                    self.encoder.train(model_is_training)
-                    self.gnn.train(gnn_is_training)
-
-                # Normal training with backpropagation
-                else:
-                    self.dl_tr.sampler.epoch = e
-                    for x, Y, I, P in self.dl_tr:
-                        loss = self.forward_pass(x, Y, I, P, train_params)
-
-                        # Check possible net divergence
-                        if torch.isnan(loss):
-                            logger.error("We have NaN numbers, closing\n\n\n")
-                            return 0.0, self.encoder
-
-                        if train_params['is_apex']:
-                            with amp.scale_loss(loss, self.opt) as scaled_loss:
-                                scaled_loss.backward()
-                        else:
-                            loss.backward()
-
-                        self.opt.step()
-
-                        if self.center:
-                            for param in self.center.parameters():
-                                param.grad.data *= (
-                                        1. /
-                                        self.config['train_params']['loss_fn'][
-                                            'scaling_center'])
-                            self.opt_center.step()
+                    if self.center:
+                        for param in self.center.parameters():
+                            param.grad.data *= (
+                                    1. /
+                                    self.config['train_params']['loss_fn'][
+                                        'scaling_center'])
+                        self.opt_center.step()
 
                 best_rank_iter = self.evaluate(eval_params, scores, e,
                                                best_rank_iter)
@@ -266,22 +270,62 @@ class Trainer():
         self.opt.zero_grad()
         if self.center:
             self.opt_center.zero_grad()
-        probs, fc7 = self.encoder(x.cuda(self.device),
-                                output_option=train_params['output_train_enc'])
 
+        if self.config['models']['attention']:
+            probs, fc7, attention_features = self.encoder(x.cuda(self.device),
+                                output_option=train_params['output_train_enc'])
+        else:
+            probs, fc7 = self.encoder(x.cuda(self.device),
+                                output_option=train_params['output_train_enc'])
+        
         # Add feature vectors to dict if distance sampling
         if self.distance_sampling != 'no':
             for y, f, i in zip(Y, fc7, I):
                 self.feature_dict[y.data.item()][i.item()] = f.detach()
+        
+        if self.config['models']['attention']:
+            # x = gallery features attended by query
+            if self.bceattention:
+                attended_feats, qs, gs = self.query_guided_attention(attention_features, aggregate=False)
+                # attended_feats[0] = image 0 attended by image 0
+                # attended_feats[1] = image 0 attended by image 1
+                ql = Y[qs]
+                gl = Y[gs]
+                same_class = (ql == gl).float().cuda(self.device)
+            if self.multiattention:
+                aggr_attended_feats = self.query_guided_attention(attention_features, aggregate=True, classify=True)
 
         # Compute CE Loss
         loss = 0
         if self.ce:
-            probs = probs.cuda(self.gnn_dev)
-            Y = Y.cuda(self.gnn_dev)
-            loss0 = self.ce(probs/self.config['train_params']['temperatur'], Y)
-            loss += train_params['loss_fn']['scaling_ce'] * loss0
-            self.losses['Cross Entropy'].append(loss.item())
+            if type(probs) != list:
+                probs = [probs]
+
+            for i, p in enumerate(probs):
+                p = p.cuda(self.gnn_dev)
+                Y = Y.cuda(self.gnn_dev)
+                loss0 = self.ce(p/self.config['train_params']['temperatur'], Y)
+                loss += train_params['loss_fn']['scaling_ce'] * loss0
+                self.losses['Cross Entropy ' + str(i)].append(loss.item())
+
+        if self.bceattention:
+            loss0 = self.bceattention(attended_feats.squeeze(), same_class.squeeze())
+            loss += train_params['loss_fn']['scaling_bce'] * loss0
+            self.losses['BCE Loss Atttention ' + str(i)].append(loss.item())
+        
+        if self.multiattention:
+            loss0 = self.multiattention(aggr_attended_feats, Y)
+            loss += train_params['loss_fn']['scaling_multiattention'] * loss0
+            self.losses['CE Loss Atttention ' + str(i)].append(loss.item())
+        
+        # Compute MultiPositiveContrastive
+        if self.multposcont:
+            for i, p in enumerate(probs):
+                p = p.cuda(self.gnn_dev)
+                Y = Y.cuda(self.gnn_dev)
+                loss0 = self.multposcont(p/self.config['train_params']['temperatur'], Y)
+                loss += train_params['loss_fn']['scaling_multiposcont'] * loss0
+                self.losses['Multi Positive Contrastive ' + str(i)].append(loss.item())
 
         # Add other losses of not pretraining
         if not self.config['mode'] == 'pretraining':
@@ -448,9 +492,9 @@ class Trainer():
                     torch.save(self.encoder.state_dict(),
                                osp.join(self.save_folder_nets,
                                         self.fn + '.pth'))
-                    torch.save(self.gnn.state_dict(),
+                    '''torch.save(self.gnn.state_dict(),
                                osp.join(self.save_folder_nets,
-                                        'gnn_' + self.fn + '.pth'))
+                                        'gnn_' + self.fn + '.pth'))'''
 
         else:
             logger.info(
@@ -604,6 +648,26 @@ class Trainer():
         else:
             self.ce = None
 
+        # Add MultiPositiveContrastive
+        if 'multposcont' in params['fns'].split('_'):
+            self.multposcont = losses.MultiPositiveContrastive().cuda(self.gnn_dev)
+        else:
+            self.multposcont = None
+
+        if 'bceattention' in params['fns'].split('_'):
+            self.bceattention = nn.BCELoss()
+        else:
+            self.bceattention = None
+        
+        if 'multiattention' in params['fns'].split('_'):
+            self.multiattention = nn.CrossEntropyLoss().cuda(self.gnn_dev)
+        elif 'lsmultiattention' in params['fns'].split('_'):
+            self.multiattention = losses.CrossEntropyLabelSmooth(
+                num_classes=num_classes, dev=self.gnn_dev).cuda(
+                self.gnn_dev)
+        else:
+            self.multiattention = None
+
         # Add Center Loss
         if 'center' in params['fns'].split('_'):
             self.center = losses.CenterLoss(num_classes=num_classes).cuda(
@@ -733,4 +797,5 @@ class Trainer():
                 trans=config['trans'],
                 distance_sampler=config['sampling'],
                 val=config['val'],
-                bssampling=self.config['dataset']['bssampling'])
+                bssampling=self.config['dataset']['bssampling'],
+                rand_scales=config['rand_scales'])

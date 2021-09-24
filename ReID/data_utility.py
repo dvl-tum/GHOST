@@ -1,3 +1,4 @@
+import random
 import dataset
 import torch
 from collections import defaultdict
@@ -14,7 +15,7 @@ logger = logging.getLogger('GNNReID.DataUtility')
 
 def create_loaders(data_root, num_workers, num_classes_iter=None, 
         num_elements_class=None, mode='single', trans='norm', 
-        distance_sampler='only', val=0, seed=0, bssampling=None):
+        distance_sampler='only', val=0, seed=0, bssampling=None, rand_scales=False):
 
     config = {'bss': bssampling,'num_workers': num_workers,
               'nci': num_classes_iter, 'nec': num_elements_class,
@@ -27,19 +28,20 @@ def create_loaders(data_root, num_workers, num_classes_iter=None,
     data, data_root = get_validation_images(mode, labels, paths, data_root)
     query, gallery = data[2], data[3]
 
-    dl_tr = get_train_dataloader(config, labels, paths, data_root)
-    dl_ev, dl_ev_gnn = get_val_dataloader(config, data, data_root)
+    dl_tr = get_train_dataloader(config, labels, paths, data_root, rand_scales)
+    print("ATTENTION ALSO USING RAND SCALES IN EVAL!!!!!!!!!!!!!!!!!!!!!!!!")
+    dl_ev, dl_ev_gnn = get_val_dataloader(config, data, data_root, rand_scales)
 
     return dl_tr, dl_ev, query, gallery, dl_ev_gnn
 
 
-def get_train_dataloader(config, labels, paths, data_root):
+def get_train_dataloader(config, labels, paths, data_root, rand_scales):
     # get dataset
     if config['mode'] != 'all':
         Dataset = dataset.Birds(root=data_root,
                                 labels=labels['bounding_box_train'],
                                 paths=paths['bounding_box_train'],
-                                trans=config['trans'])
+                                trans=config['trans'], rand_scales=rand_scales)
     else:
         Dataset = dataset.All(root=data_root,
                               labels=labels['bounding_box_train'],
@@ -55,13 +57,17 @@ def get_train_dataloader(config, labels, paths, data_root):
     for key in ddict:
         list_of_indices_for_each_class.append(ddict[key])
 
-    if distance_sampler != 'no':
-        sampler = DistanceSampler(config['nci'], config['nce'], ddict,
-                                  config['ds'], batch_sampler=config['bss'])
-    else:
-        sampler = CombineSampler(list_of_indices_for_each_class,
-                                 config['nci'], config['nce'],
-                                 batch_sampler=config['bss'])
+    sampler = CombineSampler(list_of_indices_for_each_class,
+                                config['nci'], config['nec'],
+                                batch_sampler=config['bss'])
+    
+    def seed_worker(worker_id):
+        worker_seed = torch.initial_seed() % 2**32
+        np.random.seed(worker_seed)
+        random.seed(worker_seed)
+
+    g = torch.Generator()
+    g.manual_seed(0)
     
     # get dataloader
     dl_tr = torch.utils.data.DataLoader(
@@ -69,15 +75,17 @@ def get_train_dataloader(config, labels, paths, data_root):
         batch_size=config['nci']*config['nec'],
         shuffle=False,
         sampler=sampler,
-        num_workers=config['num_workers'],
+        num_workers=0, #config['num_workers'],
         drop_last=True,
-        pin_memory=True
+        pin_memory=True,
+        worker_init_fn=seed_worker,
+        #generator=g
     )
     
     return dl_tr
 
 
-def get_val_dataloader(config, data, data_root, trans):
+def get_val_dataloader(config, data, data_root, rand_scales=False):
     labels_ev, paths_ev, query, gallery = data
     
     # get dataset
@@ -87,7 +95,8 @@ def get_val_dataloader(config, data, data_root, trans):
             labels=labels_ev,
             paths=paths_ev,
             trans=config['trans'],
-            eval_reid=True)
+            eval_reid=True,
+            rand_scales=rand_scales)
 
     else:
         dataset_ev = dataset.All(

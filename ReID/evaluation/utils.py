@@ -47,7 +47,9 @@ class Evaluator():
         with torch.no_grad():
             for X, Y, I, P in dataloader:
                 if torch.cuda.is_available(): X = X.cuda()
-                _, _, fc7 = model(X, output_option=self.output_test, val=True)
+                _, fc7 = model(X, output_option=self.output_test, val=True)
+                if type(fc7) == list:
+                    fc7 = torch.cat(fc7, dim=1)
                 for path, out, y in zip(P, fc7, Y):
                     features[path] = out
                     labels[path] = y

@@ -6,5 +6,5 @@
 #SBATCH --mem=128G
 #SBATCH --time=120:00:00
 
-source activate gnn_reid
+source activate gnn_reid_new
 python train.py

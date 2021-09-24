@@ -6,7 +6,7 @@ import math
 import numpy as np
 
 
-def make_transform(sz_resize=[384, 128], sz_crop=[384, 128],
+def make_transform(sz_resize=[256, 128], sz_crop=[256, 128],
                    mean=[0.485, 0.456, 0.406], std=[0.299, 0.224, 0.225],
                    is_train=True):
     return transforms.Compose([
@@ -74,6 +74,7 @@ class RandomErasing(object):
 # transformations for paper Bag of Tricks
 def make_transform_bot(sz_crop=[384, 128], mean=[0.485, 0.456, 0.406],
                        std=[0.299, 0.224, 0.225], is_train=True):
+    sz_crop = [256, 128]
     #if is_train:
     #    sz_crop = [450, 128]
     #    print(sz_crop)
