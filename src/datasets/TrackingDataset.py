@@ -131,6 +131,7 @@ class Sequence():
         self.device = dev
         self.num_frames = len(self.dets['frame'].unique())
         self.zero_pad = zero_pad
+        self.random_patches = False
         print("Zero padding of images {}".format(self.zero_pad))
 
     def _get_random_patches(self, img, height_max: int = 256, 
@@ -160,8 +161,11 @@ class Sequence():
         ids = list()
         vis = list()
 
-        #random_patches = list()
-        random_patches = self._get_random_patches(img)
+        if self.random_patches:
+            random_patches = self._get_random_patches(img)
+        else:
+            random_patches = None
+            
         for ind, row in dets_frame.iterrows():
             row_unclipped = dets_uncl_frame.loc[ind]
 
