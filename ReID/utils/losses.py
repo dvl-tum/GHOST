@@ -101,26 +101,9 @@ class MultiPositiveContrastive(torch.nn.Module):
 
         x = torch.nn.functional.pad((_neg_expand - _pos_expand), (0, 1), "constant", 0)
         loss = torch.logsumexp(x, dim=1)
-
-        '''for i in range(inputs.shape[0]):
-            inp = inputs[:, targets[0, i]]
-
-            pos_inds = mask[i]
-            neg_inds = ~mask[i]
-            pos = pos_inds.float()
-            neg = neg_inds.float()
-
-            _pos = inp * pos
-            _neg = inp * neg
-
-            _pos[neg_inds] = _pos[neg_inds] + float('inf')
-            _neg[pos_inds] = _neg[pos_inds] + float('-inf')
-
-            _pos_expand = torch.repeat_interleave(_pos, inp.shape[0])
-            _neg_expand = _neg.repeat(1, inp.shape[0])
-
-            x = torch.nn.functional.pad((_neg_expand - _pos_expand), (0, 1), "constant", 0)
-            loss = torch.logsumexp(x, dim=1)'''
+        
+        if weight is not None:
+            weight = weight.float()
 
         loss = weight_reduce_loss(loss, weight=weight, reduction=reduction, avg_factor=avg_factor)
 
@@ -336,3 +319,112 @@ class TripletLoss(nn.Module):
         loss = self.ranking_loss(dist_an, dist_ap, y)
         prec = (dist_an.data > dist_ap.data).sum() * 1. / y.size(0)
         return loss, prec
+
+
+class TripletLoss(nn.Module):
+    def __init__(self, margin=0.1):
+        super(TripletLoss, self).__init__()
+        self.margin = margin
+        self.ranking_loss = nn.MarginRankingLoss(margin=margin)
+
+    def forward(self, inputs, targets):
+        # Compute pairwise distance
+        m, n = inputs.size(0), inputs.size(0)
+        x = inputs.view(m, -1)
+        y = inputs.view(n, -1)
+        dist = torch.pow(x, 2).sum(dim=1, keepdim=True).expand(m, n) + \
+               torch.pow(y, 2).sum(dim=1, keepdim=True).expand(n, m).t()
+
+        dist.addmm_(1, -2, x, y.t())
+
+        mask = targets.type(torch.ByteTensor).cuda()
+
+        # for numerical stability
+        # For each anchor, find the hardest positive and negative
+        #mask = targets.expand(n, n).eq(targets.expand(n, n).t())
+        dist_ap, dist_an = [], []
+        for i in range(n):
+            mask = targets == targets[i]
+            dist_ap.append(dist[i][mask].max().unsqueeze(dim=0)) #hp
+            dist_an.append(dist[i][mask == 0].min().unsqueeze(dim=0)) #hn
+        dist_ap = torch.cat(dist_ap)
+        dist_an = torch.cat(dist_an)
+        # Compute ranking hinge loss
+        y = dist_an.data.new()
+
+        y.resize_as_(dist_an.data)
+        y.fill_(1)
+        y = Variable(y)
+        loss = self.ranking_loss(dist_an, dist_ap, y)
+        prec = (dist_an.data > dist_ap.data).sum() * 1. / y.size(0)
+        return loss, prec
+
+
+# Multi positive contrastive from QD-Track
+
+def multi_pos_cross_entropy(pred,
+                            label,
+                            weight=None,
+                            reduction='mean',
+                            avg_factor=None):
+    #Multi positive contrastive from QD-Track
+
+    # element-wise losses
+    # pos_inds = (label == 1).float()
+    # neg_inds = (label == 0).float()
+    # exp_pos = (torch.exp(-1 * pred) * pos_inds).sum(dim=1)
+    # exp_neg = (torch.exp(pred.clamp(max=80)) * neg_inds).sum(dim=1)
+    # loss = torch.log(1 + exp_pos * exp_neg)
+
+    # a more numerical stable implementation.
+    pos_inds = (label == 1)
+    neg_inds = (label == 0)
+    pred_pos = pred * pos_inds.float()
+    pred_neg = pred * neg_inds.float()
+    # use -inf to mask out unwanted elements.
+    pred_pos[neg_inds] = pred_pos[neg_inds] + float('inf')
+    pred_neg[pos_inds] = pred_neg[pos_inds] + float('-inf')
+
+    _pos_expand = torch.repeat_interleave(pred_pos, pred.shape[1], dim=1)
+    _neg_expand = pred_neg.repeat(1, pred.shape[1])
+
+    x = torch.nn.functional.pad((_neg_expand - _pos_expand), (0, 1), "constant", 0)
+    loss = torch.logsumexp(x, dim=1)
+
+
+    # apply weights and do the reduction
+    if weight is not None:
+        weight = weight.float()
+    loss = weight_reduce_loss(
+        loss, weight=weight, reduction=reduction, avg_factor=avg_factor)
+
+    return loss
+
+
+class MultiPosCrossEntropyLoss(nn.Module):
+    #Multi positive contrastive from QD-Track
+
+    def __init__(self, reduction='mean', loss_weight=1.0):
+        super(MultiPosCrossEntropyLoss, self).__init__()
+        self.reduction = reduction
+        self.loss_weight = loss_weight
+
+    def forward(self,
+                cls_score,
+                label,
+                weight=None,
+                avg_factor=None,
+                reduction_override=None,
+                **kwargs):
+        assert cls_score.size() == label.size()
+        assert reduction_override in (None, 'none', 'mean', 'sum')
+        reduction = (
+            reduction_override if reduction_override else self.reduction)
+        loss_cls = self.loss_weight * multi_pos_cross_entropy(
+            cls_score,
+            label,
+            weight,
+            reduction=reduction,
+            avg_factor=avg_factor,
+            **kwargs)
+        return loss_cls

@@ -183,6 +183,7 @@ class MultiScaleRoIAlign(nn.Module):
         x: Dict[str, Tensor],
         boxes: List[Tensor],
         image_shapes: List[Tuple[int, int]],
+        every_box: bool=False
     ) -> Tensor:
         """
         Arguments:
@@ -194,6 +195,7 @@ class MultiScaleRoIAlign(nn.Module):
             image_shapes (List[Tuple[height, width]]): the sizes of each image before they
                 have been fed to a CNN to obtain feature maps. This allows us to infer the
                 scale factor for each one of the levels to be pooled.
+            every level: if true apply proposals to every level (JENNY)
         Returns:
             result (Tensor)
         """
@@ -226,18 +228,27 @@ class MultiScaleRoIAlign(nn.Module):
         num_channels = x_filtered[0].shape[1]
 
         dtype, device = x_filtered[0].dtype, x_filtered[0].device
-        result = torch.zeros(
-            (num_rois, num_channels,) + self.output_size,
-            dtype=dtype,
-            device=device,
-        )
+        if every_box:
+            result = [torch.zeros(
+                        (num_rois, num_channels,) + self.output_size,
+                        dtype=dtype,
+                        device=device, ) for i in range(num_levels)]
+        else:
+            result = torch.zeros(
+                (num_rois, num_channels,) + self.output_size,
+                dtype=dtype,
+                device=device,
+            )
 
         tracing_results = []
 
 
         for level, (per_level_feature, scale) in enumerate(zip(x_filtered, scales)):
             idx_in_level = torch.where(levels == level)[0]
-            rois_per_level = rois[idx_in_level]
+            if every_box:
+                rois_per_level = rois
+            else:
+                rois_per_level = rois[idx_in_level]
 
             result_idx_in_level = roi_align(
                 per_level_feature, rois_per_level,
@@ -254,7 +265,10 @@ class MultiScaleRoIAlign(nn.Module):
                 # before copying elements from result_idx_in_level in the following op.
                 # We need to cast manually (can't rely on autocast to cast for us) because
                 # the op acts on result in-place, and autocast only affects out-of-place ops.
-                result[idx_in_level] = result_idx_in_level.to(result.dtype)
+                if every_box:
+                    result[level] = result_idx_in_level.to(result.dtype)
+                else:
+                    result[idx_in_level] = result_idx_in_level.to(result.dtype)
 
         if torchvision._is_tracing():
             result = _onnx_merge_levels(levels, tracing_results)

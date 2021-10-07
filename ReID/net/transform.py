@@ -109,6 +109,8 @@ class GeneralizedRCNNTransform(nn.Module):
                 raise ValueError("images is expected to be a list of 3d tensors "
                                  "of shape [C, H, W], got {}".format(image.shape))
             image = self.normalize(image)
+            
+            # public preds are also resized here
             image, target_index = self.resize(image, target_index)
             images[i] = image
             if targets is not None and target_index is not None:
@@ -163,6 +165,8 @@ class GeneralizedRCNNTransform(nn.Module):
         bbox = target["boxes"]
         bbox = resize_boxes(bbox, (h, w), image.shape[-2:])
         target["boxes"] = bbox
+
+        # also resize public preds
         if "public_preds" in target.keys():
             bbox_pub = target["public_preds"]
             bbox_pub = resize_boxes(bbox_pub, (h, w), image.shape[-2:])

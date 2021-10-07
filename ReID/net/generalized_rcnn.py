@@ -38,8 +38,8 @@ class GeneralizedRCNN(nn.Module):
             return losses
         return detections
 
-    def forward(self, images, targets=None):
-        # type: (List[Tensor], Optional[List[Dict[str, Tensor]]]) -> Tuple[Dict[str, Tensor], List[Dict[str, Tensor]]]
+    def forward(self, images, targets=None, every_box=False):
+        # type: (List[Tensor], Optional[List[Dict[str, Tensor]]], bool) -> Tuple[Dict[str, Tensor], List[Dict[str, Tensor]]]
         """
         Args:
             images (list[Tensor]): images to be processed
@@ -104,7 +104,7 @@ class GeneralizedRCNN(nn.Module):
 
         # Jenny: this is where ROI pooling, regression, classification is happeing
         # added embedding computation here!!!
-        detections, detector_losses = self.roi_heads(features, proposals, images.image_sizes, targets)
+        detections, detector_losses = self.roi_heads(features, proposals, images.image_sizes, targets, every_box=every_box)
         detections = self.transform.postprocess(detections, images.image_sizes, original_image_sizes)
 
         losses = {}

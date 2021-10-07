@@ -292,10 +292,15 @@ class Manager():
         # initialize losses
         self._get_loss_fns()
 
-    def _get_loss_fns(self):
-        self.loss1 = ReID.utils.losses.CrossEntropyLabelSmooth(
-                        num_classes=self.num_classes, dev=self.device).to(self.device) 
+    def _get_loss_fns(self, ce=True, trip=False, mult_pos_contr=False):
+        if ce:
+            self.loss1 = ReID.utils.losses.CrossEntropyLabelSmooth(
+                            num_classes=self.num_classes, dev=self.device).to(self.device) 
+        if trip:
+            self.loss2 = ReID.utils.losses.TripletLoss() # inputs, targets --> loss, prec
         
+        if mult_pos_contr:
+            self.loss3 = ReID.utils.losses.MultiPositiveContrastive() # inputs, targets --> loss        
     
     def _check_best(self, mota_overall, idf1_overall):
         # check if current mota better than previous

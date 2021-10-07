@@ -3,18 +3,19 @@ dataset:
   det_dir: "/storage/slurm/seidensc/datasets/MOT/MOT17Labels"
   det_file: "tracktor_prepr_det.txt"
   detector: "all"
-  splits: "mot17_split_1" #"mot17_split_1"
+  splits: "mot17_split_3" #"mot17_split_1"
   gt_assign_min_iou: 0.5
   prepro_again: 0
   drop_unassigned: 0
   gt_training_min_vis: 0
 
 reid_net:
+  every_box: 'no' #'trip' 'mult_pos_contr'
   gnn: 0
   mode: 'hyper_search'
   save_folder_nets: 'nets'
   trained_on:
-    name: 'mot17_split_3' #'Market'
+    name: 'mot17_split_1' #'Market'
     num_classes: 158 #751
   dl_params:
     batch_size: 8

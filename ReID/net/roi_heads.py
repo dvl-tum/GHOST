@@ -12,6 +12,7 @@ from torchvision.ops import roi_align
 from . import _utils as det_utils
 
 from typing import Optional, List, Dict, Tuple
+import sklearn
 
 
 def fastrcnn_loss(class_logits, box_regression, labels, regression_targets):
@@ -554,6 +555,8 @@ class RoIHeads(nn.Module):
         self.keypoint_predictor = keypoint_predictor
         
         self.embedding_loss = None
+        self.embedding_loss_trip = None
+        self.embedding_loss_mult = None
 
     def has_mask(self):
         if self.mask_roi_pool is None:
@@ -684,7 +687,17 @@ class RoIHeads(nn.Module):
             pass
 
     def get_embedding_loss(self, embeddings=None, id_labels=None, id_scores=None):
-        return self.embedding_loss(id_scores, id_labels)
+        loss = self.embedding_loss(id_scores, id_labels)
+        if type(embeddings) == list():
+            all_embeddings = torch.cat(embeddings)
+            id_indicator = torch.cat([id_labels] * len(embeddings))
+            
+            if self.embedding_loss_trip:
+                loss += self.embedding_loss_trip(all_embeddings, id_indicator)
+            if self.embedding_loss_mult:
+                loss += self.embedding_loss_mult(all_embeddings, id_indicator)
+
+        return loss
 
     def postprocess_detections(self,
                                class_logits,    # type: Tensor
@@ -752,7 +765,7 @@ class RoIHeads(nn.Module):
                 proposals,     # type: List[Tensor]
                 image_shapes,  # type: List[Tuple[int, int]]
                 targets=None,   # type: Optional[List[Dict[str, Tensor]]]
-                ):
+                every_box=False):
         # type: (...) -> Tuple[List[Dict[str, Tensor]], Dict[str, Tensor]]
         """
         Args:
@@ -774,7 +787,7 @@ class RoIHeads(nn.Module):
                 if self.has_keypoint():
                     assert t["keypoints"].dtype == torch.float32, 'target keypoints must of float type'
 
-        if self.training and "ids" not in targets[0].keys(): # TODO: maybe go not into here!!
+        if self.training and "ids" not in targets[0].keys(): # Jenny: nothing to do here!!
             proposals, matched_idxs, labels, regression_targets = self.select_training_samples(proposals, targets)
         elif "ids" in targets[0].keys():
             id_targets = torch.stack([ti for t in targets for ti in t["ids"]])
@@ -786,11 +799,28 @@ class RoIHeads(nn.Module):
 
         # features are pooled from different levels given the proposal bounding box size
         # output is concatenated bounding boxes for all frames in the batch
-        box_features, img_indicator = self.box_roi_pool(features, proposals, image_shapes)
+        # image indicator to  separate embeddings later
+        box_features, img_indicator = self.box_roi_pool(features, proposals, image_shapes, every_box=every_box)
 
-        box_features = self.box_head(box_features)
+        if every_box:
+            _box_features = list()
+            for feats in box_features:
+                _box_features.append(self.box_head(feats))
+            box_features = _box_features
+        else:
+            box_features = self.box_head(box_features)
+
         if self.box_predictor.additional_embedding:
-            class_logits, box_regression, embeddings, id_scores = self.box_predictor(box_features)
+            if every_box:
+                _all_res = list()
+                for feats in box_features:
+                    _all_res.append(self.box_predictor(feats))
+                class_logits = [r[0] for r in _all_res]
+                box_regression = [r[1] for r in _all_res]
+                embeddings = [r[2] for r in _all_res]
+                id_scores = [r[3] for r in _all_res]
+            else:
+                class_logits, box_regression, embeddings, id_scores = self.box_predictor(box_features)
         else:
             class_logits, box_regression = self.box_predictor(box_features)
 
@@ -821,7 +851,10 @@ class RoIHeads(nn.Module):
             num_images = len(boxes)
             embeddings_list = []
             for i in set(img_indicator):
-                embeddings_list.append(embeddings[img_indicator==i])
+                if type(embeddings) == list():
+                    embeddings_list.append([emb[img_indicator==i] for emb in embeddings])
+                else:
+                    embeddings_list.append(embeddings[img_indicator==i])
             
             for i in range(num_images):
                 result.append(
