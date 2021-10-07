@@ -222,71 +222,142 @@ class ReIDDataset(MOTDataset):
         np.set_printoptions(linewidth=np.inf)
         if frame_df_gt is None:
             frame_df_gt = frame_df
-
+        
         if correspondance is None:
             correspondance = np.argwhere(np.eye(frame_df.shape[0], frame_df.shape[0]))
-
+        
         if prev:
             cols = ['bb_left prev', 'bb_top prev', 'bb_width prev', 'bb_height prev']
         else:
             cols = ['bb_left', 'bb_top', 'bb_width', 'bb_height']
 
+        def get_intersections(bbs1l, bbs2l, pri=False):
+            bbs1 = np.asarray([r for r in bbs1l for i in range(len(bbs2l))])
+            bbs2 = np.asarray([r for i in range(len(bbs1l)) for r in bbs2l])
+            
+            # a = top left for intersecting
+            ax = np.max(np.vstack([bbs1[:, 0], bbs2[:, 0]]), axis=0)
+            ay = np.max(np.vstack([bbs1[:, 1], bbs2[:, 1]]), axis=0)
+            # b = top right for intersecting
+            bx = np.min(np.vstack([bbs1[:, 0] + bbs1[:, 2], bbs2[:, 0] + bbs2[:, 2]]), axis=0)
+            by = np.max(np.vstack([bbs1[:, 1] , bbs2[:, 1]]), axis=0)
+            # c = bottom left for intersecting
+            cx = np.max(np.vstack([bbs1[:, 0], bbs2[:, 0]]), axis=0)
+            cy = np.min(np.vstack([bbs1[:, 1] + bbs1[:, 3], bbs2[:, 1] + bbs2[:, 3]]), axis=0)
+            # d = bottom right for intersecting
+            dx = np.min(np.vstack([bbs1[:, 0] + bbs1[:, 2], bbs2[:, 0] + bbs2[:, 2]]), axis=0)
+            dy = np.min(np.vstack([bbs1[:, 1] + bbs1[:, 3], bbs2[:, 1] + bbs2[:, 3]]), axis=0)
+
+            # upper line for intersecting
+            ab = bx - ax
+            # left line for intersecting
+            ac = cy - ay
+
+            # intersection area for intersecting
+            intersection = ab * ac
+
+            return intersection, ab, ac, ax, ay, bx, by, cx, cy, dx, dy
+
+        def update(to_update, argument_a, argument_b):
+            # set values to zero if bbs are not intersecting, i.e., neg width or height
+            import copy
+            to_update = copy.deepcopy(to_update)
+            # if argument_a (ab) or argument_b (ac) negative ---> bbs are not intersecting
+            to_update = np.where(argument_a>0, to_update, 0)
+            to_update = np.where(argument_b>0, to_update, 0)
+            return np.round(to_update, decimals=2)
+        
         bbs1l = frame_df[cols].values.tolist()
         bbs2l = frame_df_gt[cols].values.tolist()
-        bbs1 = np.asarray([r for r in bbs1l for i in range(len(bbs2l))])
-        bbs1 = bbs1.astype(float)
-        bbs2 = np.asarray([r for i in range(len(bbs1l)) for r in bbs2l])
 
-        # a = top left for intersecting
-        ax = np.max(np.vstack([bbs1[:, 0], bbs2[:, 0]]), axis=0)
-        ay = np.max(np.vstack([bbs1[:, 1], bbs2[:, 1]]), axis=0)
-        # b = top right for intersecting
-        bx = np.min(np.vstack([bbs1[:, 0] + bbs1[:, 2], bbs2[:, 0] + bbs2[:, 2]]), axis=0)
-        by = np.max(np.vstack([bbs1[:, 1] , bbs2[:, 1]]), axis=0)
-        # c = bottom left for intersecting
-        cx = np.max(np.vstack([bbs1[:, 0], bbs2[:, 0]]), axis=0)
-        cy = np.min(np.vstack([bbs1[:, 1] + bbs1[:, 3], bbs2[:, 1] + bbs2[:, 3]]), axis=0)
-        # d = bottom right for intersecting
-        dx = np.min(np.vstack([bbs1[:, 0] + bbs1[:, 2], bbs2[:, 0] + bbs2[:, 2]]), axis=0)
-        dy = np.min(np.vstack([bbs1[:, 1] + bbs1[:, 3], bbs2[:, 1] + bbs2[:, 3]]), axis=0)
+        intersection, ab, ac, ax, ay, bx, by, cx, cy, dx, dy = get_intersections(bbs1l, bbs2l)
 
-        # upper line for intersecting
-        ab = bx - ax
-        # left line for intersecting
-        ac = cy - ay
+        # detections = rows --> gt_bbs = cols
+        # bb_left, bb_top, bb_width, bb_height
+        intersection_bbs = np.asarray([np.reshape(update(ax, ab, ac), (frame_df.shape[0], frame_df_gt.shape[0])), 
+                            np.reshape(update(ay, ab, ac), (frame_df.shape[0], frame_df_gt.shape[0])), 
+                            np.reshape(update(ab, ab, ac), (frame_df.shape[0], frame_df_gt.shape[0])), 
+                            np.reshape(update(ac, ab, ac), (frame_df.shape[0], frame_df_gt.shape[0]))])
 
-        # intersection area for intersecting
-        intersection = ab * ac
-
-        # if ab or ac negative ---> bbs are not intersecting
-        intersection = np.where(ab>0, intersection, 0)
-        intersection = np.where(ac>0, intersection, 0)
         # re-arange intersection values as matrix
-        intersection = np.reshape(intersection, (frame_df.shape[0], frame_df_gt.shape[0]))
+        intersection = np.reshape(update(intersection, ab, ac), (frame_df.shape[0], frame_df_gt.shape[0]))
+
+        # set to zero for intersection with own GT bb
+        intersection[correspondance[:, 0], correspondance[:, 1]] = 0
+
+        # set intersection to zero if bb_bottom larger than col and use gt for this
+        bot = np.asarray(bbs2l)[:, 1] + np.asarray(bbs2l)[:, 3]
+        # if bb is more up in img then bb occluded --> keep ioa if bb more up in image --> when upper == True
+        upper = np.expand_dims(bot,axis=0).T < np.expand_dims(bot, axis=0) 
+
+        # get rows 
+        corresponding_upper = upper[correspondance[:, 1], :].astype(float)
+        intersection = intersection * corresponding_upper
+
+        ##### NEW #####
+        for i in range(intersection_bbs.shape[1]):
+            #those are the intersection bbs of each GT bb with the i-th detection bb --> dim 1 = num GT bbs 
+            det_inters = intersection_bbs[:, i, :].T 
+
+            if np.nonzero(det_inters[:, 2])[0].shape < np.nonzero(det_inters[:, 3])[0].shape:
+                non_zeros = np.nonzero(det_inters[:, 2])[0].tolist()
+            else:
+                non_zeros = np.nonzero(det_inters[:, 3])[0].tolist()
+
+            non_zeros.remove(correspondance[i, 1])
+            non_zeros = np.asarray(non_zeros)
+
+            if non_zeros.shape[0] == 0:
+                continue
+            all_inds = np.argsort(-1*bot[non_zeros])
+
+            prev_inter = None
+            intra_intersection_dict = dict()
+            for j, ind in enumerate(np.argsort(-1*bot[non_zeros])[:-1]):
+
+                comp = non_zeros[ind]
+                others = non_zeros[all_inds[j+1:]]
+                other_bbs = det_inters[others].tolist()
+
+                _intersection, ab, ac, ax, ay, bx, by, cx, cy, dx, dy = get_intersections([det_inters[comp].tolist()], other_bbs)
+                if not np.any(_intersection>0):
+                    continue
+
+                if j > 0 and prev_inter:
+                    # get intersection between
+                    # 1. intersection bbs of current comp with others
+                    # 2. intersection bb of previous comp with current comp 
+                    intra_intersection = get_intersections(np.asarray([ax, ay, ab, ac]).T.tolist(), [np.asarray([prev_inter[3][0], prev_inter[4][0], prev_inter[1][0], prev_inter[2][0]]).T.tolist()])
+
+                    # if positive: subtract
+                    for p, intra in enumerate(intra_intersection[0]):
+                        if intra > 0:
+                            _intersection[p] -= intra
+
+                # others are more up than comp --> rm inter from intersection
+                changed = False
+                for inter, o in zip(_intersection, others):
+                    if inter > 0 and upper[correspondance[i, 1], o]:
+                        changed = True
+                        intersection[i, o] = np.max([intersection[i, o] - inter, 0])
+
+                if not changed:
+                    continue
+
+                prev_inter = [_intersection, ab, ac, ax, ay, bx, by, cx, cy, dx, dy]
 
         # area of detected bbs
-        diag = np.asarray(bbs1l)[:, 2].astype(float) * np.asarray(bbs1l)[:, 3].astype(float)
+        diag = np.asarray(bbs1l)[:, 2] * np.asarray(bbs1l)[:, 3]
         diag = np.tile(diag, (frame_df_gt.shape[0], 1)).T
-        ioa = intersection / diag
+        ioa = intersection / diag 
 
         # set ioa to zero where ID det == ID GT
         ioa = np.where(ioa > 0, ioa, 0)
 
-        # need it if leaving/entering frame
-        ioa_corr = copy.deepcopy(ioa[correspondance[:, 0], correspondance[:, 1]])
-        ioa[correspondance[:, 0], correspondance[:, 1]] = 0
-        #ioa = np.round(ioa, decimals=1)
-
-        # set ioa to zero if bb_bottom larger than col
-        bot = np.asarray(bbs2l)[:, 1] + np.asarray(bbs2l)[:, 3]
-        lower = np.expand_dims(bot,axis=0).T < np.expand_dims(bot, axis=0) # if val is lower than more up in img
-
-        corresponding_lower = lower[correspondance[:, 1], :].astype(float)
-        ioa = ioa * corresponding_lower
-
         # get visibility, ioa sum and boader cases
-        vis = frame_df_gt['vis'].values[correspondance[:, 1]] #frame_df['vis'].values
-        ioa_sum = np.sum(ioa, axis=1)
+        vis = frame_df['vis'].values
+        person_occ = np.sum(ioa * np.tile(frame_df_gt['label'].isin([1, 2, 7, 8, 12]).values, (frame_df.shape[0], 1)), axis=1)
+        object_occ = np.sum(ioa * ~np.tile(frame_df_gt['label'].isin([1, 2, 7, 8, 12]).values, (frame_df.shape[0], 1)), axis=1)
 
         # get entering/leaving the scene
         # top and bottom
@@ -303,10 +374,11 @@ class ReIDDataset(MOTDataset):
 
         # 2 == occluded by person, 1 == occluded by object, 0 == not occluded
         occlusion = np.zeros(ioa.shape[0])
-        occlusion = np.where(vis<0.55, 1, 0) 
-        occlusion = np.where((ioa_sum>=0.45) & (vis<0.55), 2, occlusion)
+        occlusion = np.where((vis<0.55) & (object_occ>=0.45), 1, occlusion) 
+        occlusion = np.where((person_occ>=0.45) & (vis<0.55), 2, occlusion)
         occlusion = np.where(border_case & (vis<=0.98), 3, occlusion)
-
+        occlusion = np.where(~border_case & (person_occ<0.45) & (object_occ<0.45) & (vis<0.55), 4, occlusion)
+                
         return occlusion, ioa
 
     def make_query_gal(self):
@@ -322,7 +394,7 @@ class ReIDDataset(MOTDataset):
             id_dict = dict()
             gt_ids = dict()
             for frame in self.queries['frame'].unique():
-                frame_df = self.queries[self.queries['frame']==frame]
+                frame_df = self.queries[self.queries['frame']==int(frame)]
                 frame_df = frame_df[frame_df['vis'] != -1]
                 frame_gt_all = self.gt_all[self.gt_all['frame']==int(frame)]
 
@@ -370,22 +442,28 @@ class ReIDDataset(MOTDataset):
                     id_2 = gt_ids[r_2['frame']]
 
                     correspondance = np.array([[m, n] for m in range(len(id_1)) for n in range(len(id_2)) if id_1[m] == id_2[n]])
-                    mins = np.sum(np.minimum(ioa_1[correspondance[:, 0]], ioa_2[correspondance[:, 1]]))
-                    maxs = np.sum(np.maximum(ioa_1[correspondance[:, 0]], ioa_2[correspondance[:, 1]]))
+                    #mins = np.sum(np.minimum(ioa_1[correspondance[:, 0]], ioa_2[correspondance[:, 1]]))
+                    #maxs = np.sum(np.maximum(ioa_1[correspondance[:, 0]], ioa_2[correspondance[:, 1]]))
+
+                    val_1 = np.sum(np.abs(ioa_1[correspondance[:, 0]] - ioa_2[correspondance[:, 1]]))
 
                     # use standard weighted jaccard and pretend zeros for non-matched entries
                     not_in_2 = [m for m in range(len(id_1)) if id_1[m] not in id_2]
                     not_in_1 = [m for m in range(len(id_2)) if id_2[m] not in id_1]
                     for ni1 in not_in_1:
-                        maxs += ioa_2[ni1]
+                        val_1 += ioa_2[ni1]
+                        #maxs += ioa_2[ni1]
                     for ni2 in not_in_2:
-                        maxs += ioa_1[ni2]
+                        val_1 += ioa_1[ni2]
+                        #maxs += ioa_1[ni2]
                     
-                    if maxs == 0:
+                    '''if maxs == 0:
                         weighted_jacc = np.array(1.0)
                     else:
                         weighted_jacc = np.divide(mins, maxs)
-                        weighted_jacc = np.nan_to_num(weighted_jacc, nan=1)
+                        weighted_jacc = np.nan_to_num(weighted_jacc, nan=1)'''
+
+                    weighted_jacc = val_1/2
 
                     if weighted_jacc > self.jaccard_thresh[0] and weighted_jacc < self.jaccard_thresh[1]:
                         q_map[ind2] = True
@@ -402,16 +480,16 @@ class ReIDDataset(MOTDataset):
             for frame in self.queries['frame'].unique():
                 frame_df = self.queries[self.queries['frame']==int(frame)]
                 frame_df = frame_df[frame_df['vis'] != -1]
-                frame_gt = self.gt_all[self.gt_all['frame']==frame]
+                frame_gt_all = self.gt_all[self.gt_all['frame']==int(frame)]
 
                 if frame_df.shape[0] == 0:
                     continue
                     
                 #occluder
-                correspondance = np.argwhere((np.expand_dims(frame_df['gt_id'].values, axis=0).T == np.expand_dims(frame_gt['id'].values, axis=0)).astype(float))
+                correspondance = np.argwhere((np.expand_dims(frame_df['gt_id'].values, axis=0).T == np.expand_dims(frame_gt_all['id'].values, axis=0)).astype(float))
  
                 #print(frame, seq, frame_df['gt_id'].values, frame_gt['id'].values)
-                occlusion, _ = self.get_ioa(frame_df, frame_gt, correspondance=correspondance)
+                occlusion, _ = self.get_ioa(frame_df, frame_gt_all, correspondance=correspondance)
                 self.queries.loc[frame_df.index, 'occluder'] = occlusion
             self.queries = self.queries[self.queries['occluder'] >= self.occluder_thresh[0]]   #vis_thresh = [0.5, 0.6]
             self.queries = self.queries[self.queries['occluder'] < self.occluder_thresh[1]] 

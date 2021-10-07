@@ -22,6 +22,21 @@ def make_transform(sz_resize=[256, 128], sz_crop=[256, 128],
         transforms.Normalize(mean=mean, std=std)
     ])
 
+def make_transform_whole_img(mean=[0.485, 0.456, 0.406], std=[0.299, 0.224, 0.225],
+                   is_train=True):
+    if is_train:
+        return transforms.Compose([
+            transforms.Compose([ 
+                transforms.RandomHorizontalFlip(p=0.5)]),
+            transforms.ToTensor(),
+            transforms.Normalize(mean=mean, std=std)
+        ])
+    else:
+        return transforms.Compose([
+            transforms.ToTensor(),
+            transforms.Normalize(mean=mean, std=std)
+        ])
+
 
 class RandomErasing(object):
     """ Randomly selects a rectangle region in an image and erases its pixels.

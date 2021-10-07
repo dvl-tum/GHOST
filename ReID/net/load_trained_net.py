@@ -7,6 +7,7 @@ from .resnet import resnet18, resnet34, resnet50, resnet101, resnet152
 from .resnet_fpn import ResNetFPN
 from .resnet_attention import resnet50 as resnet50_attention
 from .densenet import densenet121, densenet161, densenet169, densenet201
+from .faster_rcnn import fasterrcnn_resnet50_fpn, FastRCNNPredictor
 from .gnn_base import GNNReID
 from .graph_generator import GraphGenerator
 import torch.nn as nn
@@ -279,32 +280,6 @@ def load_net(dataset, nb_classes, mode, attention, net_type, bn_inception={'embe
 
         dim = int(256/red)
         if model.combine or model.conv_combi or model.last_only:
-            '''if model.combine:
-                if model.squeeze_ext and model.layer_norm:
-                    if model.combi_big:
-                        model.combi_layer = nn.Sequential(
-                            nn.Linear(int(4 * 256/red), int(2 * 256/red)),
-                            nn.Linear(int(2 * 256/red), 2048),
-                            nn.LayerNorm(2048))
-                    else:
-                        model.combi_layer = nn.Sequential(
-                            nn.Linear(int(4 * 256/red), int(2 * 256/red)),
-                            nn.Linear(int(2 * 256/red), int(4 * 256/red)),
-                            nn.LayerNorm(int(4 * 256/red)))
-                elif model.squeeze_ext:
-                    if model.combi_big:
-                        model.combi_layer = nn.Sequential(
-                            nn.Linear(int(4 * 256/red), int(2 * 256/red)),
-                            nn.Linear(int(2 * 256/red), 2048))
-                    else:
-                        model.combi_layer = nn.Sequential(
-                            nn.Linear(int(4 * 256/red), int(2 * 256/red)),
-                            nn.Linear(int(2 * 256/red), int(4 * 256/red)))
-                else:
-                    if model.combi_big:
-                        model.combi_layer = nn.Linear(4 * dim, 2048)
-                    else:
-                        model.combi_layer = nn.Linear(4 * dim, 4 * dim)'''
             if model.combi_big and model.last_only:
                 model.last_linear = nn.Linear(int(256/red), 2048)
             if model.make_small and model.last_only:
@@ -368,7 +343,26 @@ def load_net(dataset, nb_classes, mode, attention, net_type, bn_inception={'embe
             model_dict = model.state_dict()
             model_dict.update(load_dict)
             model.load_state_dict(model_dict)
-    print(model)
+
+    elif net_type == 'FRCNN_FPN':
+        model = fasterrcnn_resnet50_fpn(pretrained=True, num_ids=nb_classes, additional_embedding=True)
+        sz_embed = model.roi_heads.box_predictor.embedding_head.out_features
+
+        # training
+        # output = model(images, targets)
+        # For inference
+        # model.eval()
+        
     return model, sz_embed
 
 
+
+if __name__ == '__main__':
+    model = fasterrcnn_resnet50_fpn(pretrained=True)
+    # replace the classifier with a new one, that has
+    # num_classes which is user-defined
+    num_classes = 2  # 1 class (person) + background
+    # get number of input features for the classifier
+    in_features = model.roi_heads.box_predictor.cls_score.in_features
+    # replace the pre-trained head with a new one
+    model.roi_heads.box_predictor = FastRCNNPredictor(in_features, num_classes)

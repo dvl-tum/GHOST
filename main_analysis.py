@@ -56,7 +56,7 @@ def main(args):
     gallery_vis_thresh = [tuple(v) for v in gallery_vis_thresh]
     rel_gallery_vis_thresh = [(np.round(v-0.1, decimals=1), np.round(v, decimals=1)) for v in np.linspace(-0.9, 2, num=30)]
     only_next_frame = [1]
-    occluder_thresh = [(np.round(v, decimals=1)-0.0001, np.round(v+1, decimals=1)-0.0001) for v in np.linspace(0, 3, num=4)]
+    occluder_thresh = [(np.round(v, decimals=1)-0.0001, np.round(v+1, decimals=1)-0.0001) for v in np.linspace(0, 4, num=5)]
     jaccard_thresh = [(np.round(v-0.2, decimals=1)-0.0001, np.round(v, decimals=1)-0.0001) for v in np.linspace(0.2, 1.2, num=6)]
 
     var_dict = {'vis': vis_thresh, 'size': size_thresh, 'frame_dist': frame_dist_thresh, 'size_diff': size_diff_thresh, 
@@ -101,7 +101,7 @@ def main(args):
 
 
                                             manager = src.reid_manager.ManagerReID(device, time.time(), config['dataset'],
-                                                                config['reid_net'], config['tracker'], experiment_name='analysis_torchreid_jaccard_test')
+                                                                config['reid_net'], config['tracker'], experiment_name='analysis_torchreid_new_jaccard_test')
                                             if precomp is not None:
                                                 manager.ys = precomp_ys
                                                 manager.dist = precomp_dist
@@ -192,8 +192,9 @@ def main(args):
 
 
 def analysis():
-    encoder = models.build_model(name='resnet50', num_classes=1000)
-    torchreid.utils.load_pretrained_weights(encoder, 'resnet50_market_xent.pth.tar') 
+    pass
+    #encoder = models.build_model(name='resnet50', num_classes=1000)
+    #torchreid.utils.load_pretrained_weights(encoder, 'resnet50_market_xent.pth.tar') 
 
     
 

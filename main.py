@@ -4,11 +4,9 @@ import torch
 import logging
 import warnings
 import time
-import os.path as osp
-import os
-from src.manager import Manager
+#from src.manager import Manager
 from src.reid_manager import ManagerReID
-from src.proxy_manager import ProxyManager
+from src.Det4ReID_manager import ManagerDet4ReID
 
 logger = logging.getLogger('AllReIDTracker')
 logger.setLevel(logging.INFO)
@@ -27,8 +25,9 @@ warnings.filterwarnings("ignore")
 def init_args():
     parser = argparse.ArgumentParser(description='AllReID tracker')
     parser.add_argument('--config_path', type=str,
-                        default='config/config_tracker.yaml',
+                        #default='config/config_tracker.yaml',
                         #default='config/config_reid.yaml',
+                        default='config/config_Det4ReID.yaml',
                         #default='config/config_proxy.yaml',
                         help='Path to config file')
 
@@ -66,11 +65,15 @@ def main(args):
         manager = ProxyManager(device, time.time(), config['dataset'],
                           config['reid_net'], config['tracker'], train=True)
         manager.train()
+    elif 'Det4ReID.yaml' in args.config_path.split('_'):
+        manager = ManagerDet4ReID(device, time.time(), config['dataset'],
+                          config['reid_net'], config['tracker'], train=True)
+        manager.train()
     else:
         manager = ManagerReID(device, time.time(), config['dataset'],
                       config['reid_net'], config['tracker'])
         manager.train()
 
 if __name__ == '__main__':
-    args = init_args()
+    args = init_args() 
     main(args)

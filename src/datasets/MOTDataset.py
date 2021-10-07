@@ -18,6 +18,7 @@ class MOTDataset(Dataset):
             self.sequences = self.add_detector(sequences, dataset_cfg['detector'])
         else:
             self.sequences = sequences
+        
         self.dataset_cfg = dataset_cfg
         self.dir = dir
         self.datastorage = datastorage

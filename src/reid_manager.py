@@ -52,7 +52,7 @@ class ManagerReID(Manager):
         self.eval1 = 'rank-1'
         self.eval2 = 'mAP'
         if not os.path.isfile(self.experiment_name +'.csv'):
-            columns = ['date', 'Sequence', 'vis thresh 1', 'vis thresh 2', 'size thresh 1', 'size thresh 2', 'frame dist thresh 1', 'frame dist thresh 2', 'rel size thresh 1', 'rel size thresh 2', 'gallery vis thresh 1', 'gallery vis thresh 2', 'only next frame', 'number of samples', 'mAP', 'rank-1']
+            columns = ['date', 'Sequence', 'vis thresh 1', 'vis thresh 2', 'size thresh 1', 'size thresh 2', 'frame dist thresh 1', 'frame dist thresh 2', 'rel size thresh 1', 'rel size thresh 2', 'gallery vis thresh 1', 'gallery vis thresh 2', 'occluder thresh 1', 'occluder thresh 2', 'jaccard thresh 1', 'jaccard thresh 2', 'only next frame', 'number of samples', 'mAP', 'rank-1']
             with open(self.experiment_name + '.csv', 'w', newline='') as write_obj:
                 csv_writer = writer(write_obj)
                 csv_writer.writerow(columns)
@@ -236,6 +236,8 @@ class ManagerReID(Manager):
         add_row(self.tracker_cfg['frame_dist_thresh'])
         add_row(self.tracker_cfg['size_diff_thresh'])
         add_row(self.tracker_cfg['gallery_vis_thresh'])
+        add_row(self.tracker_cfg['occluder_thresh'])
+        add_row(self.tracker_cfg['jaccard_thresh'])
         add_row_single(self.tracker_cfg['only_next_frame'])
         
         new_row.extend([num_samps, mAP, rank[0]])
