@@ -23,6 +23,7 @@ class ManagerDet4ReID(Manager):
         self.tracker_cfg = tracker_cfg 
         print("Eval mode {}".format(self.tracker_cfg['eval_bb']))
         self.dataset_cfg = dataset_cfg
+        self.reid_net_cfg = reid_net_cfg
         print("Experiment: {}".format(experiment_name))
         self.separate_seqs = separate_seqs
         self.experiment_name = experiment_name
@@ -40,7 +41,7 @@ class ManagerDet4ReID(Manager):
         if detector == 'all':
             dets = ('DPM', 'FRCNN', 'SDP')
             if mode != 'train':
-                self.samp_seqs = [['-'.join([s, d]) for d in dets] for s in sequence]
+                self.samp_seqs = [['-'.join([s, d]) for d in dets] for s in sequence]  
             sequence = ['-'.join([s, d]) for s in sequence for d in dets]
         elif detector == '':
             if mode != 'train':
@@ -58,11 +59,13 @@ class ManagerDet4ReID(Manager):
     def _get_loaders(self, dataset_cfg):
         loaders = dict()
         for mode in _SPLITS[dataset_cfg['splits']].keys():
+
+            # get information from splits and add detector if nessecary
             seqs = _SPLITS[dataset_cfg['splits']][mode]['seq']
             seqs = self.add_detector(seqs, self.dataset_cfg['detector'], mode)
-
             dir = _SPLITS[dataset_cfg['splits']][mode]['dir']
-            if mode == 'train':
+
+            if mode == 'train': # get train loader
                 dataset = Det4ReIDDataset(dataset_cfg['splits'], seqs, dataset_cfg, self.tracker_cfg, dir, 'train')
                 self.num_classes = dataset.num_classes()
                 bs = self.reid_net_cfg['dl_params']['batch_size']
@@ -80,11 +83,13 @@ class ManagerDet4ReID(Manager):
 
                 logger.info("Training sequences {} in total: {} frames".format(seqs, len(dataset)))
 
-            else:
+            else: # get val/test loader
                 if mode == 'val':
                     datastorage = 'train'
                 else:
                     datastorage = 'test'
+                
+                # separate test sequences to have per sequence results
                 if self.separate_seqs:
                     dataloader = list()
                     for seq in seqs:
@@ -118,30 +123,49 @@ class ManagerDet4ReID(Manager):
 
         return loaders
 
+    def set_loss_fns(self):
+        # every box refers to if features for every porposal should be computed on every level
+        trip = True if 'trip' in self.reid_net_cfg['every_box'] else False
+        mult_pos_contr = True if 'mult_pos_contr' in self.reid_net_cfg['every_box'] else False
+        self.every_box = trip | mult_pos_contr
+
+        self._get_loss_fns(ce=True, trip=trip, mult_pos_contr=mult_pos_contr)
+        self.encoder.roi_heads.embedding_loss = self.loss1
+        if trip:
+            self.encoder.roi_heads.embedding_loss_trip = self.loss2
+            
+        if mult_pos_contr:
+            self.encoder.roi_heads.embedding_loss_mult = self.loss3
+
     def train(self):
         # set loss function inside of model
-        self._get_loss_fns()
-        self.encoder.roi_heads.embedding_loss = self.loss1
+        self.set_loss_fns()
         
         for i in range(self.num_iters):
-            self.writer = SummaryWriter('runs/' + self.dataset_cfg['splits'] + "_hyper_search_one_det_per_seq_val" + str(i))
             if self.num_iters > 1:    
                 logger.info("Search iteration {}/{}".format(i, self.num_iters))
+
+            # set up training
+            self.writer = SummaryWriter('runs/' + self.dataset_cfg['splits'] + "_hyper_search_one_det_per_seq_val_with_overall" + str(i))
             self._setup_training()
             best_rank_iter, best_mAP_iter = 0, 0
+
             for e in range(self.reid_net_cfg['train_params']['epochs']):
+                # train and eval step in epoch i
                 logger.info("Epoch {}/{}".format(e, self.reid_net_cfg['train_params']['epochs']))
                 print('Train')
                 self._train(e)
                 print('eval')
-                rank, mAP, seq_eval_dict = self._evaluate(e, mode='val')
+                rank, mAP, _ = self._evaluate(e, mode='val')
                 logger.info("Performance averaged over all sequences at epoch \
                     {}: Best {} {} and {} {}".format(e, self.eval1, rank, self.eval2, mAP))
-                # rank = mota, mAP = idf1
-                self._check_best(rank, mAP)
+                
+                # check if results in current epoch better than previous best
+                self._check_best(rank, mAP) # rank = mota, mAP = idf1
                 if rank > best_rank_iter:
                     best_rank_iter = rank
                     best_mAP_iter = mAP
+
             logger.info("Iteration {}: Best {} {} and {} {}".format(i, self.eval1, \
                 best_rank_iter, self.eval2, best_mAP_iter))
             self.writer.close()
@@ -153,7 +177,6 @@ class ManagerDet4ReID(Manager):
 
     def _evaluate(self, e, mode='test'):
         print("Started evaluating")
-        seqs = _SPLITS[self.dataset_cfg['splits']][mode]['seq']
         seq_eval_dict = dict()
         if self.tracker_cfg['eval_bb']:
             self.encoder.eval()
@@ -166,38 +189,46 @@ class ManagerDet4ReID(Manager):
             logger.info("Evaluating sequence {}".format(seq))
             feats, ys = list(), list()
             for data in self.loaders[mode][i]:
+                # get data
                 imgs = data[0]
                 labels = data[1]
                 labels = [{k: torch.from_numpy(v).to(self.device) for k, v in \
                     labs.items()} for labs in labels]
                 imgs = [img.to(self.device) for img in imgs]
+
+                # get embeddings
                 with torch.no_grad():
-                    results = self.encoder(imgs, labels)
+                    results = self.encoder(imgs, labels, every_box=self.every_box)
                 embeddings = [r['embeddings'] for r in results]
                 id_targets = [r['id_targets'] for r in results]
                 feats.extend(embeddings)
                 ys.extend(id_targets)
             
-            # get dist
+            # get dist and evaluate
             feats = torch.stack(feats).cpu()
             dist = sklearn.metrics.pairwise.pairwise_distances(feats)
 
             self.dist[seq] = dist
             self.ys[seq] = torch.stack(ys).cpu().numpy()
-
             rank, mAP, num_valid_queries = eval_metrics(y=self.ys[seq], y_g=self.ys[seq], 
                             gallery_mask=None, dist=self.dist[seq])
 
+            # write per sequence results
             for t, r in zip([rank, mAP], ['rank-1', 'mAP']):
                 self.writer.add_scalar('Accuracy/test/' + seq + '/' + str(r), t, e)
 
             seq_eval_dict[seq] = {'rank': rank, 'mAP': mAP, 'num_valid_queries': num_valid_queries}
         
         self.encoder.train()
+
+        # get and wirte overall results
         rank_sum = sum([v['rank'] * v['num_valid_queries'] for k, v in seq_eval_dict.items()])
         map_sum = sum([v['mAP'] * v['num_valid_queries'] for k, v in seq_eval_dict.items()])
         val_queries_sum = sum([v['num_valid_queries'] for k, v in seq_eval_dict.items()])
 
+        for t, r in zip([rank_sum/val_queries_sum, map_sum/val_queries_sum], ['rank-1', 'mAP']):
+                self.writer.add_scalar('Accuracy/test/' + 'overall' + '/' + str(r), t, e)
+        
         return rank_sum/val_queries_sum, map_sum/val_queries_sum, seq_eval_dict
 
     def _train(self, e):
@@ -216,7 +247,7 @@ class ManagerDet4ReID(Manager):
             labels = [{k: torch.from_numpy(v).to(self.device) for k, v in labs.items()} for labs in labels]
             imgs = [img.to(self.device) for img in imgs]
 
-            _losses = self.encoder(imgs, labels)
+            _losses = self.encoder(imgs, labels, every_box=self.every_box)
             loss = 0
             for k, v in _losses.items():
                 losses[k].append(v)
