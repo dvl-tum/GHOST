@@ -4,3 +4,14 @@
 *.pth
 *.csv
 *.pyc
+data/*
+runs/*
+out/*
+visualizations/*
+slurm_files/*
+gt_out/*
+tracking_wo_bnw
+*.tar
+slurm_files
+ReID/models
+ReID/results
