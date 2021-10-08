@@ -11,7 +11,7 @@ dataset:
   save_oracle: 0
 
 reid_net:
-  mode: 'hyper_search'
+  mode: 'test' #'hyper_search'
   gnn: 0
   save_folder_nets: 'nets'
   trained_on:
@@ -27,8 +27,8 @@ reid_net:
     lr: 0.2
     weight_decay: 0.2 
   encoder_params:
-    pretrained_path: "ReID/models/0.8806413301662708resnet50FPN_Market.pth" #"/storage/slurm/seidensc/gnn_based_reid/search_results_net/0.4006276150627615resnet50_attention_prw.pth" #"/storage/slurm/seidensc/gnn_based_reid/search_results_net/0.9443135911322468resnet50_attention_Market.pth" #"../gnn_based_reid/storage/search_results_net/0.91270783847981resnet50_attention_Market.pth" #"../gnn_based_reid/storage/search_results_net/all_experiemnts/0.9288501372898502resnet50_Market.pth" #"../gnn_based_reid/storage/search_results_net/0.14578384798099764resnet50_attention_Market.pth" #"weights/0.9233103714051737resnet50_Market.pth" #"../again_gnn_reid/gnn_based_reid/storage/search_results_net/all_experiemnts/0.9050050580471121resnet50FPN_Market.pth" #"../gnn_based_reid/storage/search_results_net/market_experiments/0.9364608076009501resnet50FPN_Market.pth" #'../gnn_based_reid/storage/search_results_net/prw.pth' #"../gnn_based_reid/storage/search_results_net/all_experiemnts/0.9328002312250109resnet50_Market.pth" #"../gnn_based_reid/storage/search_results_net/all_experiemnts/0.9474926537887182resnet50_Market.pth" #"../gnn_based_reid/storage/search_results_net/all_experiemnts/0.9290909966761405resnet50_Market.pth" #"../gnn_based_reid/storage/search_results_net/all_experiemnts/0.9339563562792041resnet50_Market.pth" #"../gnn_based_reid/storage/search_results_net/0.9339563562792041resnet50_Market.pth" #"../again_gnn_reid/gnn_based_reid/storage/search_results_net/market_experiments/0.9768408551068883resnet50_Market.pth" #"../again_gnn_reid/gnn_based_reid/storage/search_results_net/market_experiments/0.9593230403800475resnet50FPN_Market.pth" #"../again_gnn_reid/gnn_based_reid/storage/search_results_net/0.9219121140142518resnet50_Market.pth" #"../again_gnn_reid/gnn_based_reid/storage/search_results_net/market_experiments/0.9364608076009501resnet50FPN_Market.pth" 
-    net_type: "resnet50FPN" #"resnet50_attention" #"resnet50" #"query_guided" "resnet_attention"
+    pretrained_path: "ReID/models/0.8634204275534442resnet50_Market.pth"
+    net_type: "resnet50" #"resnet50_attention" #"resnet50" #"query_guided" "resnet_attention"
     neck: 0
     red: 1
     last_stride: 0
@@ -43,7 +43,7 @@ reid_net:
     thresh: 0
     set_negative: "hard"
   gnn_params:
-    pretrained_path: "/storage/slurm/seidensc/gnn_based_reid/search_results_net/0.4006276150627615gnn_resnet50_attention_prw.pth" #"/storage/slurm/seidensc/gnn_based_reid/search_results_net/0.9443135911322468gnn_resnet50_attention_Market.pth" #"../gnn_based_reid/storage/search_results_net/0.91270783847981gnn_resnet50_attention_Market.pth" #"../gnn_based_reid/storage/search_results_net/all_experiemnts/0.9288501372898502gnn_resnet50_Market.pth" #"../gnn_based_reid/storage/search_results_net/0.14578384798099764gnn_resnet50_attention_Market.pth" #"../gnn_based_reid/storage/search_results_net/market_experiments/0.9364608076009501gnn_resnet50FPN_Market.pth" #'../gnn_based_reid/storage/search_results_net/gnn_prw.pth' #"weights/0.9233103714051737gnn_resnet50_Market.pth" #"../gnn_based_reid/storage/search_results_net/all_experiemnts/0.9474926537887182gnn_resnet50_Market.pth" #"../gnn_based_reid/storage/search_results_net/0.9339563562792041gnn_resnet50_Market.pth" #"weights/0.9233103714051737gnn_resnet50_Market.pth" #"../again_gnn_reid/gnn_based_reid/storage/search_results_net/market_experiments/0.9768408551068883resnet50_Market.pth" #"../again_gnn_reid/gnn_based_reid/storage/search_results_net/market_experiments/0.9593230403800475gnn_resnet50FPN_Market.pth" #"../again_gnn_reid/gnn_based_reid/storage/search_results_net/0.9219121140142518gnn_resnet50_Market.pth" #"../again_gnn_reid/gnn_based_reid/storage/search_results_net/market_experiments/0.9364608076009501gnn_resnet50FPN_Market.pth"
+    pretrained_path: "/storage/slurm/seidensc/gnn_based_reid/search_results_net/0.4006276150627615gnn_resnet50_attention_prw.pth" #"/storage/slurm/seidensc/gnn_based_reid/search_results_net/0.9443135911322468gnn_resnet50_attention_Market.pth" #"../gnn_based_reid/storage/search_results_net/0.91270783847981gnn_resnet50_attention_Market.pth" #"../gnn_based_reid/storage/search_results_net/all_experiemnts/0.9288501372898502gnn_resnet50_Market.pth" #"../gnn_based_reid/storage/search_results_net/0.14578384798099764gnn_resnet50_attention_Market.pth" #"../gnn_based_reid/storage/search_results_net/market_experiments/0.9364608076009501gnn_resnet50FPN_Market.pth" #'../gnn_based_reid/storage/search_results_net/gnn_prw.pth' #"weights/0.9233103714051737gnn_resnet50_Market.pth" #"../gnn_based_reid/storage/search_results_net/all_experiemnts/0.9474926537887182gnn_resnet50_Market.pth" #"../gnn_based_reid/storage/search_results_net/0.9339563562792041gnn_resnet50_Market.pth" #"weights/0.9233103714051737gnn_resnet50_Market.pth" #"../again_gnn_reid/gnn_based_reid/storage/search_results_net/market_experiments/0.9768408551068883resnet50_Market.pth" #"../again_gnn_reid/gnn_based_reid/storage/search_results_net/0.9219121140142518gnn_resnet50_Market.pth" 
     use_edge_encoder: 0
     use_edge_model: 0
     use_node_encoder: 0
@@ -111,18 +111,18 @@ tracker:
   oracle_disappear: 0
   oracle_appear: 0
   interpolate: 0
-  act_reid_thresh: 0.7 #0.7 #0.2 #0.05 #0.45 #0.45 #0.35 #0.65 #0.55 #0.65 #0.7 #0.45
-  inact_reid_thresh:  0.35 #0.45 #0.35 #0.125 #0.901 #0.04 #0.35 #0.35 #0.35 #0.5 #0.5 #0.5 #0.5 #0.35
+  act_reid_thresh: 0.5 #0.7 #0.2 #0.05 #0.45 #0.45 #0.35 #0.65 #0.55 #0.65 #0.7 #0.45
+  inact_reid_thresh:  0.4 #0.45 #0.35 #0.125 #0.901 #0.04 #0.35 #0.35 #0.35 #0.5 #0.5 #0.5 #0.5 #0.35
   inact_thresh: 100000
   output_dir: 'out'
   avg_act:
-    do: 0
-    num: 1 #'uniform_2' #60 #10 #4 #20 #'all'
-    proxy: 'mean' #'frames_gnn' #'frames_gnn' #'frames_gnn' #'mode'
+    do: 1
+    num: 0.9 #'uniform_2' #60 #10 #4 #20 #'all'
+    proxy: 'mv_avg' #'frames_gnn' #'frames_gnn' #'frames_gnn' #'mode'
   avg_inact: 
     do: 1
-    num: 32 #'uniform_2' #'mean' #'uniform_4' #10 #4 #20 #'all'
-    proxy: 'mode' #'frames_gnn' #'60' #'frames_gnn' #'frames_gnn' #'mode'
+    num: 0.9 #'uniform_2' #'mean' #'uniform_4' #10 #4 #20 #'all'
+    proxy: 'mv_avg' #'frames_gnn' #'60' #'frames_gnn' #'frames_gnn' #'mode'
   init_tracktor: 
     do: 0
   h_w_thresh: 10000

@@ -27,6 +27,8 @@ sys.path.insert(0, "/usr/wiss/seidensc/Documents/batch-dropblock-network")
 from get_model import get_bdb
 sys.path.insert(0, "/usr/wiss/seidensc/Documents/reid-strong-baseline")
 from get_model_bot import get_bot
+sys.path.insert(0, "/usr/wiss/seidensc/Documents/LUPerson/fast-reid")
+from load_model import load_lup
 from torchreid import models
 import torchreid
 
@@ -123,6 +125,7 @@ class Manager():
         corresponding_gt = OrderedDict()
         
         # get tracking files
+        print(self.loaders)
         for seq in self.loaders[mode]:
             if self.dataset_cfg['splits'] != 'mot17_test':
                 df = seq[0].corresponding_gt
@@ -191,6 +194,11 @@ class Manager():
             encoder = get_bdb()
             self.encoder = encoder.to(self.device)
             self.sz_embed = None
+        
+        elif self.net_type == 'LUP':
+            encoder = load_lup()
+            self.encoder = encoder.to(self.device)
+            self.sz_embed = None
 
         elif self.net_type == 'bot':
             # get pretraine bag of tricks network
@@ -229,8 +237,9 @@ class Manager():
 
             # tracking dataset
             if mode != 'train':
-                dataset = Det4ReIDDataset(dataset_cfg['splits'], seqs, 
+                dataset = TrackingDataset(dataset_cfg['splits'], seqs, 
                                             dataset_cfg, self.dir, dev=self.device)
+                loaders[mode] = dataset
             # train dataset
             else:
                 dataset = MOTDataset(dataset_cfg['splits'], seqs, 

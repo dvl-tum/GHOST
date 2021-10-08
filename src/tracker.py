@@ -55,6 +55,7 @@ class Tracker():
 
         self.tracks = defaultdict(list)
         self.inactive_tracks = defaultdict(list)
+        self.mv_avg = dict()
         logger.info("Tracking sequence {} of lenght {}".format(seq.name, seq.num_frames))
         seq.random_patches = self.tracker_cfg['random_patches']
         
@@ -70,11 +71,8 @@ class Tracker():
                     _, feats, feat_maps = self.encoder(frame, output_option='plain') 
                     if self.gnn:
                         feats = feat_maps
-                elif self.net_type == 'batch_drop_block':
-                    feats = self.encoder(frame)
-                elif self.net_type == 'bot':
-                    feats = self.encoder(frame)
-                elif self.net_type == 'resnet50_analysis':
+                elif self.net_type == 'resnet50_analysis' or self.net_type == 'bot' or \
+                    self.net_type == 'batch_drop_block' or self.net_type == 'LUP':
                     feats = self.encoder(frame)
                 else:   
                     _, feats = self.encoder(frame, output_option='plain')
@@ -106,7 +104,7 @@ class Tracker():
         self.write_results(results, self.output_dir, seq.name)
         self.hidden = dict()
 
-    def _track(self, tracks, i, writer):
+    def _track(self, tracks, i):
         if i == 0:
             # just add all bbs to self.tracks / intitialize
             for tr in tracks:
@@ -114,7 +112,10 @@ class Tracker():
                 self.id += 1
         elif i > 0:
             # get hungarian matching
-            dist, row, col, ids, dist_l = self.get_hungarian(tracks, writer)
+            dist, row, col, ids, dist_l = self.get_hungarian(tracks)
+            if self.net_type == "LUP":
+                dist = dist * 1000000
+                
             if dist is not None:
                 # get bb assignment
                 self.assign(tracks, dist, row, col, ids, dist_l)
@@ -128,19 +129,19 @@ class Tracker():
         # Get active tracklets
         if len(self.tracks) > 0:
             if self.tracker_cfg['avg_act']['do']:
-                y = self.avg_it(self.tracks)
+                y = self.avg_it(self.tracks, 'act')
             else:
                 y = torch.stack([v[-1]['feats'] for v in self.tracks.values()])
             
             ids += list(self.tracks.keys())
             gt_t += [v[-1]['id'] for v in self.tracks.values()]
 
-        # get inactive tracklets
+        # get inactive tracklets (inacht thresh = 100000)
         curr_it = {k: v for k, v in self.inactive_tracks.items() 
                                 if v[-1]['inact_count'] <= self.inact_thresh}
         if len(curr_it) > 0:
             if self.tracker_cfg['avg_inact']['do']:
-                y_inactive = self.avg_it(curr_it)
+                y_inactive = self.avg_it(curr_it, 'inact')
             else:
                 y_inactive = torch.stack([v[-1]['feats'] for v in curr_it.values()])
 
@@ -178,37 +179,45 @@ class Tracker():
 
         return dist, row, col, ids, dist_l
 
-    def avg_it(self, curr_it):
+    def avg_it(self, curr_it, mode='inact'):
         feats = list()
-        avg = self.tracker_cfg['avg_inact']['num'] 
+        avg = self.tracker_cfg['avg_' + mode]['num'] 
+        proxy = self.tracker_cfg['avg_' + mode]['proxy']
 
         if type(avg) != str:
-            avg = int(avg)
+            if proxy != 'mv_avg':
+                avg = int(avg)
+            else:
+                avg = float(avg)
 
         for i, it in curr_it.items():
             # take all bbs until now
             if avg == 'all':
-                if self.tracker_cfg['avg_inact']['proxy'] == 'mean':
+                if proxy == 'mean':
                     f = torch.mean(torch.stack([t['feats'] for t in it]), dim=0)
-                elif self.tracker_cfg['avg_inact']['proxy'] == 'median':
+                elif proxy == 'median':
                     f = torch.median(torch.stack([t['feats'] for t in it]), dim=0)[0]
-                elif self.tracker_cfg['avg_inact']['proxy'] == 'mode':
+                elif proxy == 'mode':
                     f = torch.mode(torch.stack([t['feats'] for t in it]), dim=0)[0]
             # take the last avg
-            elif not self.tracker_cfg['avg_inact']['proxy'] == 'frames_gnn' and avg != 'first':
-                if self.tracker_cfg['avg_inact']['proxy'] == 'mean':
+            elif not proxy == 'frames_gnn' and avg != 'first' and proxy != 'mv_avg':
+                if proxy == 'mean':
                     f = torch.mean(torch.stack([t['feats'] for t in it]), dim=0)
-                elif self.tracker_cfg['avg_inact']['proxy'] == 'median':
+                elif proxy == 'median':
                     f = torch.median(torch.stack([t['feats'] for t in it]), dim=0)[0]
-                elif self.tracker_cfg['avg_inact']['proxy'] == 'mode':
+                elif proxy == 'mode':
                     f = torch.mode(torch.stack([t['feats'] for t in it]), dim=0)[0]
-            elif avg == 'moving_avg':
-                pass
+            elif proxy == 'mv_avg':
+                if i not in self.mv_avg.keys():
+                    f = it[-1]['feats']
+                else:
+                    f = self.mv_avg[i] * avg + it[-1]['feats'] * (1-avg) 
+                self.mv_avg[i] = f
             # take the first only
             elif avg == 'first':
                 f = it[0]['feats']
             # for gnn 
-            elif self.tracker_cfg['avg_inact']['proxy'] == 'frames_gnn':
+            elif proxy == 'frames_gnn':
                 if type(avg) != int:
                     num = int(avg.split('_')[-1])
                     k = int((len(it)-1)/(num-1))
@@ -221,7 +230,6 @@ class Tracker():
                     f.append(f[-c])
                     c += 1 if c+1 < num else 0
                 f = torch.stack(f)
-            
             feats.append(f)
 
         if len(feats[0].shape) == 1:
@@ -317,21 +325,9 @@ class Tracker():
 
     def make_results(self, seq_name):
         results = defaultdict(dict)
-        cols = ['frame', 'id', 'my_id', 'bb_left', 'bb_top', 'bb_width', 'bb_height']
-        df = pd.DataFrame(columns=cols)
         for i, ts in self.tracks.items():
-            #if len(ts) <= self.tracker_cfg['length_thresh']:
-            #    print([{k: v for k, v in d.items() if k != 'feats'} for d in ts])
-            showed = 0
             for t in ts:
-                if t['id'] == -1 and showed == 0:
-                    for d in ts:
-                        df = df.append(pd.DataFrame([[d['im_index'], d['id'], i, d['bbox'][0]+1, d['bbox'][1]+1, d['bbox'][2]-d['bbox'][0],d['bbox'][3]-d['bbox'][1]]], columns=cols))
-                    #print([{k: v for k, v in d.items() if k != 'feats'} for d in ts])
-                    #print([d['id'] for d in ts])
-                    showed = 1
                 results[i][t['im_index']] = t['bbox']
-        df.to_csv('checker_files/' + seq_name + 'checker.csv')
         return results
 
     def _remove_short_tracks(self, all_tracks):
@@ -404,17 +400,7 @@ class Tracker():
 
         self.experiment = '_'.join(t) + self.experiment
 
-        if debug_dist_consecutive_frames:
-            self.avg_dists = dict()
-            for mode in ['act', 'inact']:
-                self.avg_dists['same_class_' + mode] = list()
-                self.avg_dists['diff_class_' + mode] = list()
-                self.avg_dists['min_same_class_' + mode] = list()
-                self.avg_dists['max_same_class_' + mode] = list()
-                self.avg_dists['min_diff_class_' + mode] = list()
-                self.avg_dists['max_diff_class_' + mode] = list()
-
-    def normalization_experiment(self, random_patches, frame, i):
+    def normalization_experiments(self, random_patches, frame, i):
         ###### Normalization experiments ######
         if self.tracker_cfg['random_patches']:
             if i == 0:
