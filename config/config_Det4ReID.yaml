@@ -1,9 +1,9 @@
 dataset:
   mot_dir: "/storage/slurm/seidensc/datasets/MOT/MOT17" # mot17_test_FRCNN
-  det_dir: "/storage/slurm/seidensc/datasets/MOT/MOT17Labels"
-  det_file: "tracktor_prepr_det.txt"
-  detector: "all"
-  splits: "mot17_split_3" #"mot17_split_1"
+  det_dir: "/storage/slurm/seidensc/datasets/MOT/MOT17" #"/storage/slurm/seidensc/datasets/MOT/MOT17Labels"
+  det_file: "gt.txt" #"tracktor_prepr_det.txt"
+  detector: "" #"all"
+  splits: "mot17_split_along" #"mot17_split_1"
   gt_assign_min_iou: 0.5
   prepro_again: 0
   drop_unassigned: 0

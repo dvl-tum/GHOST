@@ -32,7 +32,10 @@ class MOTLoader():
         for s in self.sequence:
             gt_file = osp.join(self.mot_dir, s, 'gt', 'gt.txt')
             exist_gt = os.path.isfile(gt_file)
-            det_file = osp.join(self.det_dir, s, 'det', self.det_file)
+            if self.det_file == 'gt.txt':
+                det_file = osp.join(self.det_dir, s, 'gt', self.det_file)
+            else:
+                det_file = osp.join(self.det_dir, s, 'det', self.det_file)
             seq_file = osp.join(self.mot_dir, s, 'seqinfo.ini')
             
             self.get_seq_info(seq_file, gt_file, det_file)

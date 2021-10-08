@@ -88,8 +88,8 @@ class MOTDataset(Dataset):
             
             self.id_to_y[seq] = seq_ids
 
-            if 'vis' in dets and dets['vis'].unique() != [-1]:
-                dets = dets[dets['vis'] > self.dataset_cfg['gt_training_min_vis']]
+            '''if 'vis' in dets and dets['vis'].unique() != [-1]:
+                dets = dets[dets['vis'] > self.dataset_cfg['gt_training_min_vis']]'''
             
             self.seqs_by_names[seq] = dets
             self.get_n_frame_graphs(dets)

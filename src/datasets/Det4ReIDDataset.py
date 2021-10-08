@@ -1,11 +1,13 @@
 from collections import defaultdict
 import os
+import random
 from .MOTDataset import MOTDataset
 from .MOT17_parser import MOTLoader
 import pandas as pd
 import PIL.Image as Image
 from ReID.dataset.utils import make_transform_whole_img
 import copy
+import numpy as np
 
 def collate(batch):
     data = [item[0] for item in batch]
@@ -18,11 +20,17 @@ def collate(batch):
 
 
 class Det4ReIDDataset(MOTDataset):
-    def __init__(self, split, sequences, dataset_cfg, tracker_cfg, dir, datastorage='data'):
+    def __init__(self, split, sequences, dataset_cfg, tracker_cfg, dir, datastorage='data', augment=False, train=False):
         self.mode = split.split('_')[-1]
         self.data = list()
         self.data_unclipped = list()
         self.gt = list()
+        self.augment = augment
+        self.train = train
+        if split[-5:] == 'along':
+            self.split_along_seq = True
+        else:
+            self.split_along_seq = False
 
         # if dist was already computed for this seq
         super(Det4ReIDDataset, self).__init__(split, sequences, dataset_cfg, dir, datastorage, add_detector=False)
@@ -74,26 +82,40 @@ class Det4ReIDDataset(MOTDataset):
         frames = list()
         frames_gt = list()
         ys_list = list()
+        seq_frame_list = defaultdict(int)
         for i, seq in enumerate(self.data):
             seq['Sequence'] = len(seq) * [self.sequences[i]]
-            for frame in seq['frame'].unique():
+            for frame in sorted(seq['frame'].unique()):
+                if self.split_along_seq:
+                    if self.train and frame >= sorted(seq['frame'].unique())[-1] * 2/3:
+                        break
+                    if not self.train and frame < sorted(seq['frame'].unique())[-1] * 2/3:
+                        continue
                 frame_df = seq[seq['frame']==frame]
-                '''frame_ys = list()
-                for bb_id in frame_df['id'].values:
-                    if bb_id not in ys_dict[self.sequences[i]].keys():
-                        ys_dict[self.sequences[i]][bb_id] = y_count
-                        y_count += 1
-                    frame_ys.append(ys_dict[self.sequences[i]][bb_id])
-                frame_df['id'] = frame_ys'''
                 ys_list.append(frame_df['id'].values)
                 frames.append(frame_df)
                 frames_gt.append(self.gt[i][self.gt[i]['frame']==frame])
-
+                seq_frame_list[self.sequences[i]] += 1
+            
         self.data = frames
         self.ys_list = ys_list
         self.gt_all = frames_gt
+        print(seq_frame_list)
 
-    def get_bounding_boxe(self, bbs, bbs_gt):
+    def augment_boxes(self, boxes):
+        # change size of bb
+        size_changes = np.asarray([[random.uniform(-0.05, 0.05) \
+            for _ in range(4)] for _ in range(boxes.shape[0])])
+        boxes = boxes + boxes*size_changes
+
+        # move bb
+        pos_changes = np.asarray([[random.uniform(-0.05, 0.05)] * 4 \
+            for _ in range(boxes.shape[0])])
+        boxes = boxes + boxes * pos_changes
+        
+        return boxes
+
+    def get_bounding_box(self, bbs, bbs_gt):
         # tracktor resize (256,128))
 
         img = self.to_tensor(Image.open(bbs.iloc[0]['frame_path']).convert("RGB"))
@@ -103,12 +125,15 @@ class Det4ReIDDataset(MOTDataset):
         boxes = bbs[['bb_left', 'bb_top', 'bb_right', 'bb_bot']].values
         ids = bbs['id'].values
 
+        if self.augment:
+            self.augment_boxes(boxes)
+
         return img, {'boxes': gt_boxes, 'public_preds': boxes, 'ids': ids}
  
     def __getitem__(self, idx, train=True):
         bbs = self.data[idx]
         bbs_gt = self.gt_all[idx]
-        img, labels = self.get_bounding_boxe(bbs, bbs_gt)
+        img, labels = self.get_bounding_box(bbs, bbs_gt)
 
         return img, labels
 

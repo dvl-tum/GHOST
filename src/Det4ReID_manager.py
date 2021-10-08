@@ -19,7 +19,7 @@ logger = logging.getLogger('AllReIDTracker.ReIDManager')
 
 class ManagerDet4ReID(Manager):
     def __init__(self, device, timer, dataset_cfg, reid_net_cfg, tracker_cfg, 
-            separate_seqs=True, experiment_name='experiment', train=False):
+            separate_seqs=True, experiment_name='experiment', train=False, write=True):
         self.tracker_cfg = tracker_cfg 
         print("Eval mode {}".format(self.tracker_cfg['eval_bb']))
         self.dataset_cfg = dataset_cfg
@@ -27,6 +27,7 @@ class ManagerDet4ReID(Manager):
         print("Experiment: {}".format(experiment_name))
         self.separate_seqs = separate_seqs
         self.experiment_name = experiment_name
+        self.write = write
 
         # compute ys and dists only once
         self.ys = dict()
@@ -45,11 +46,11 @@ class ManagerDet4ReID(Manager):
             sequence = ['-'.join([s, d]) for s in sequence for d in dets]
         elif detector == '':
             if mode != 'train':
-                self.samp_seqs = sequence
+                self.samp_seqs = [[seq] for seq in sequence]
         else:
             sequence = ['-'.join([s, detector]) for s in sequence]
             if mode != 'train':
-                self.samp_seqs = sequence
+                self.samp_seqs = [[seq] for seq in sequence]
 
         return sequence
 
@@ -59,14 +60,16 @@ class ManagerDet4ReID(Manager):
     def _get_loaders(self, dataset_cfg):
         loaders = dict()
         for mode in _SPLITS[dataset_cfg['splits']].keys():
-
             # get information from splits and add detector if nessecary
             seqs = _SPLITS[dataset_cfg['splits']][mode]['seq']
             seqs = self.add_detector(seqs, self.dataset_cfg['detector'], mode)
             dir = _SPLITS[dataset_cfg['splits']][mode]['dir']
 
+            logger.info("{} sequences {} from {}".format(mode, seqs, dir))
+
             if mode == 'train': # get train loader
-                dataset = Det4ReIDDataset(dataset_cfg['splits'], seqs, dataset_cfg, self.tracker_cfg, dir, 'train')
+                dataset = Det4ReIDDataset(dataset_cfg['splits'], seqs, dataset_cfg, \
+                    self.tracker_cfg, dir, 'train', augment=False, train=True)
                 self.num_classes = dataset.num_classes()
                 bs = self.reid_net_cfg['dl_params']['batch_size']
 
@@ -93,13 +96,14 @@ class ManagerDet4ReID(Manager):
                 if self.separate_seqs:
                     dataloader = list()
                     for seq in seqs:
-                        dataset = Det4ReIDDataset(dataset_cfg['splits'], [seq], dataset_cfg, self.tracker_cfg, dir, datastorage)
+                        dataset = Det4ReIDDataset(dataset_cfg['splits'], [seq], dataset_cfg, \
+                            self.tracker_cfg, dir, datastorage, augment=False)
                         bs = self.reid_net_cfg['dl_params']['batch_size']
 
                         _dataloader = DataLoader(
                             dataset,
                             batch_size=bs,
-                            shuffle=True,
+                            shuffle=False,
                             num_workers=1,
                             pin_memory=True,
                             collate_fn=collate_fn) 
@@ -108,13 +112,14 @@ class ManagerDet4ReID(Manager):
                         logger.info("Validation sequence {}: {} frames".format(seq, len(dataset)))
                   
                 else:
-                    dataset = Det4ReIDDataset(dataset_cfg['splits'], seqs, dataset_cfg, self.tracker_cfg, dir, datastorage)
+                    dataset = Det4ReIDDataset(dataset_cfg['splits'], seqs, dataset_cfg, self.tracker_cfg, \
+                        dir, datastorage)
                     bs = self.reid_net_cfg['dl_params']['batch_size']
 
                     dataloader = DataLoader(
                         dataset,
                         batch_size=bs,
-                        shuffle=True,
+                        shuffle=False,
                         num_workers=4,
                         pin_memory=True)
 
@@ -140,16 +145,15 @@ class ManagerDet4ReID(Manager):
     def train(self):
         # set loss function inside of model
         self.set_loss_fns()
-        
         for i in range(self.num_iters):
             if self.num_iters > 1:    
                 logger.info("Search iteration {}/{}".format(i, self.num_iters))
 
             # set up training
-            self.writer = SummaryWriter('runs/' + self.dataset_cfg['splits'] + "_hyper_search_one_det_per_seq_val_with_overall" + str(i))
+            if self.write:
+                self.writer = SummaryWriter('runs/' + self.dataset_cfg['splits'] + "_hyper_search_gt_along_no_aug" + str(i))
             self._setup_training()
             best_rank_iter, best_mAP_iter = 0, 0
-
             for e in range(self.reid_net_cfg['train_params']['epochs']):
                 # train and eval step in epoch i
                 logger.info("Epoch {}/{}".format(e, self.reid_net_cfg['train_params']['epochs']))
@@ -168,7 +172,8 @@ class ManagerDet4ReID(Manager):
 
             logger.info("Iteration {}: Best {} {} and {} {}".format(i, self.eval1, \
                 best_rank_iter, self.eval2, best_mAP_iter))
-            self.writer.close()
+            if self.write:
+                self.writer.close()
 
         # save best
         logger.info("Overall Results: Best {} {} and {} {}".format(self.eval1, \
@@ -214,19 +219,22 @@ class ManagerDet4ReID(Manager):
                             gallery_mask=None, dist=self.dist[seq])
 
             # write per sequence results
-            for t, r in zip([rank, mAP], ['rank-1', 'mAP']):
-                self.writer.add_scalar('Accuracy/test/' + seq + '/' + str(r), t, e)
+            if self.write:
+                for t, r in zip([rank, mAP], ['rank-1', 'mAP']):
+                    self.writer.add_scalar('Accuracy/test/' + seq + '/' + str(r), t, e)
 
             seq_eval_dict[seq] = {'rank': rank, 'mAP': mAP, 'num_valid_queries': num_valid_queries}
         
         self.encoder.train()
 
+        print(seq_eval_dict)
         # get and wirte overall results
         rank_sum = sum([v['rank'] * v['num_valid_queries'] for k, v in seq_eval_dict.items()])
         map_sum = sum([v['mAP'] * v['num_valid_queries'] for k, v in seq_eval_dict.items()])
         val_queries_sum = sum([v['num_valid_queries'] for k, v in seq_eval_dict.items()])
-
-        for t, r in zip([rank_sum/val_queries_sum, map_sum/val_queries_sum], ['rank-1', 'mAP']):
+        print(rank_sum, map_sum, val_queries_sum)
+        if self.write:
+            for t, r in zip([rank_sum/val_queries_sum, map_sum/val_queries_sum], ['rank-1', 'mAP']):
                 self.writer.add_scalar('Accuracy/test/' + 'overall' + '/' + str(r), t, e)
         
         return rank_sum/val_queries_sum, map_sum/val_queries_sum, seq_eval_dict
@@ -254,9 +262,9 @@ class ManagerDet4ReID(Manager):
                 loss += v
 
             losses['Total'].append(loss)
-
-            for k, v in losses.items():
-                self.writer.add_scalar('Loss/train/' + k, v[-1], e)
+            if self.write:
+                for k, v in losses.items():
+                    self.writer.add_scalar('Loss/train/' + k, v[-1], e)
             
             loss.backward()
             self.optimizer.step()
