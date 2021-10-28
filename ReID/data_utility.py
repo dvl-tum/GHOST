@@ -30,9 +30,7 @@ def create_loaders(data_root, num_workers, num_classes_iter=None,
     query, gallery = data[2], data[3]
 
     dl_tr = get_train_dataloader(config, labels, paths, data_root, rand_scales)
-    
-    print("ATTENTION ALSO USING RAND SCALES IN EVAL!!!!!!!!!!!!!!!!!!!!!!!!")
-    dl_ev, dl_ev_gnn = get_val_dataloader(config, data, data_root, rand_scales)
+    dl_ev, dl_ev_gnn = get_val_dataloader(config, data, data_root, rand_scales=False)
 
     return dl_tr, dl_ev, query, gallery, dl_ev_gnn
 
@@ -112,8 +110,7 @@ def get_val_dataloader(config, data, data_root, rand_scales=False):
         )
 
     # dataloader
-    if 'gnn' in config['mode'].split('_') or 'pseudo' in config['mode'].split('_') or \
-        'batchwise' in config['mode'].split('_'):
+    if 'gnn' in config['mode'].split('_') or 'queryguided' in config['mode'].split('_'):
         ddict = defaultdict(list)
         for idx, label in enumerate(dataset_ev.ys):
             ddict[label].append(idx)
@@ -122,8 +119,8 @@ def get_val_dataloader(config, data, data_root, rand_scales=False):
         for key in ddict:
             list_of_indices_for_each_class.append(ddict[key])
 
-        if 'gnn' in config['mode'].split('_') or 'batchwise' in config['mode'].split('_') \
-            and not 'knn' in config['mode'].split('_') and not 'queryguided' in config['mode'].split('_'):
+        # for batchwise evaluation
+        if 'gnn' in config['mode'].split('_') and not 'queryguided' in config['mode'].split('_'):
             sampler = CombineSampler(list_of_indices_for_each_class,
                                  config['nci'], config['nec'])
             dl_ev = torch.utils.data.DataLoader(
@@ -137,45 +134,12 @@ def get_val_dataloader(config, data, data_root, rand_scales=False):
             )
             dl_ev_gnn = None
 
-        elif 'knn' in config['mode'].split('_'):
-            sampler = KNNSampler(nn=50)
-            dl_ev_gnn = torch.utils.data.DataLoader(
-                dataset_ev,
-                batch_size=50,
-                shuffle=False,
-                sampler=sampler,
-                num_workers=1,
-                drop_last=True,
-                pin_memory=True)
-            dl_ev = torch.utils.data.DataLoader(
-                copy.deepcopy(dataset_ev),
-                batch_size=64,
-                shuffle=True,
-                num_workers=1,
-                pin_memory=True)
-
+        # for evaluation for query guided attention
         elif 'queryguided' in config['mode'].split('_'):
             sampler = QueryGuidedSampler(batch_size=256)
             dl_ev_gnn = torch.utils.data.DataLoader(
                 dataset_ev,
                 batch_size=256,
-                shuffle=False,
-                sampler=sampler,
-                num_workers=1,
-                drop_last=True,
-                pin_memory=True)
-            dl_ev = torch.utils.data.DataLoader(
-                copy.deepcopy(dataset_ev),
-                batch_size=64,
-                shuffle=True,
-                num_workers=1,
-                pin_memory=True)
-
-        elif 'pseudo' in config['mode'].split('_'):
-            sampler = KReciprocalSampler(config['nci'], config['nec'])
-            dl_ev_gnn = torch.utils.data.DataLoader(
-                dataset_ev,
-                batch_size=config['nci']*config['nec'],
                 shuffle=False,
                 sampler=sampler,
                 num_workers=1,

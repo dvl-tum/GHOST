@@ -21,12 +21,14 @@ class Evaluator():
 
     def evaluate(self, model, dataloader, query=None, gallery=None, 
             gnn=None, graph_generator=None, add_dist=False, batchwise_rank=False,
-            query_guided=False, knn=False, dl_ev_gnn=None, queryguided=False):
+            query_guided=False, dl_ev_gnn=None, queryguided=False):
         # query_guided == use QG network
         # queryguided == evaluate for each gallery and each query
         model_is_training = model.training
         model.eval()
-        if (batchwise_rank or query_guided) and not knn and not queryguided and gnn:
+
+        # batchwise evaluation
+        if (batchwise_rank or query_guided) and not queryguided and gnn:
             gnn_is_training = gnn.training
             gnn.eval()
             mAP, cmc = self.predict_batchwise_gnn(model, gnn,
@@ -35,18 +37,9 @@ class Evaluator():
                                                         batchwise_rank=batchwise_rank,
                                                         query_guided=query_guided)
             gnn.train(gnn_is_training)
-        elif (batchwise_rank or query_guided) and knn and not queryguided and gnn:
-            gnn_is_training = gnn.training
-            gnn.eval()
-            mAP, cmc = self.predict_batchwise_gnn_knn(model, gnn,
-                                                        graph_generator,
-                                                        dataloader,
-                                                        batchwise_rank=batchwise_rank,
-                                                        query_guided=query_guided,
-                                                        dataloader_knn=dl_ev_gnn,
-                                                        query=query, gallery=gallery)
-            gnn.train(gnn_is_training)
-        elif (batchwise_rank or query_guided) and not knn and queryguided and gnn:
+        
+        # query guided evaluation
+        elif query_guided and queryguided and gnn:
             gnn_is_training = gnn.training
             gnn.eval()
             mAP, cmc = self.predict_batchwise_gnn_queryguided(model, gnn,
@@ -58,9 +51,11 @@ class Evaluator():
                                                         query=query, gallery=gallery)
             gnn.train(gnn_is_training)
         else:
-            if not gnn: # normal setting
+            # normal setting
+            if not gnn: 
                 _, _, features, _ = self.predict_batchwise_reid(model, dataloader, add_dist)
-            else: #gnn
+            #gnn with sampled batches
+            else: 
                 gnn_is_training = gnn.training
                 gnn.eval()
                 features, _ = self.predict_batchwise_gnn(model, gnn,
@@ -126,7 +121,8 @@ class Evaluator():
                     attended_feats = attended_feats.reshape(X.shape[0], X.shape[0]-1, -1)
                     #logger.info(attended_feats.shape)
                     #logger.info(gs, qs)
-                    dist = [sklearn.metrics.pairwise_distances(q.unsqueeze(0).cpu().numpy(), f.cpu().numpy(), metric='euclidean') for q, f in zip(queries, attended_feats)]
+                    dist = [sklearn.metrics.pairwise_distances(q.unsqueeze(0).cpu().numpy(), \
+                        f.cpu().numpy(), metric='euclidean') for q, f in zip(queries, attended_feats)]
                     dist = np.asarray([np.insert(d, i, 0) for i, d in enumerate(dist)])
 
                 for path, out, y in zip(P, fc7[-1], Y):
@@ -159,66 +155,6 @@ class Evaluator():
             return sum(mAP)/len(mAP), cmc_avg
         
         return features, labels
-
-
-    def predict_batchwise_gnn_knn(self, model, gnn, graph_generator, dataloader, \
-            attention=True, batchwise_rank=False, query_guided=False, query=None, \
-            gallery=None, dataloader_knn=None):
-        features = dict()
-        feature_maps = dict()
-        CMC, mAP = list(), list()
-        indices = dict()
-        with torch.no_grad():
-            for X, Y, I, P in dataloader:
-                if torch.cuda.is_available(): X = X.cuda()
-
-                _, queries, fc7 = model(X, output_option=self.output_test, val=True)
-
-                for path, out, f, i in zip(P, queries, fc7, I):
-                    features[path] = out.detach()
-                    indices[path] = i
-                    feature_maps[path] = f.detach()
-
-            x = torch.cat([features[f].unsqueeze(0) for f in query], 0)
-            y = torch.cat([features[f].unsqueeze(0) for f in gallery], 0)
-            indices_query = [indices[f].unsqueeze(0) for f in query]
-            indices_gallery = [indices[f].unsqueeze(0) for f in gallery]
-            dist = sklearn.metrics.pairwise_distances(x.cpu().numpy(), y.cpu().numpy(), metric='euclidean')
-
-            dataloader_knn.sampler.dist = dist
-            dataloader_knn.sampler.indices_query = indices_query
-            dataloader_knn.sampler.indices_gallery = indices_gallery
-
-            for X, Y, I, P in dataloader_knn:
-                # get feature maps
-                fc7 = torch.cat([feature_maps[p].unsqueeze(0) for p in P], 0)
-                #queries = torch.cat([features[p].unsqueeze(0) for p in P[0]], 0)
-
-                # get attended features
-                _, _, _, qs, gs, attended_feats, _ = gnn(fc7, num_query=1)
-
-                # get distance
-                dist = sklearn.metrics.pairwise_distances(features[P[0]].unsqueeze(0).cpu().numpy(), \
-                    attended_feats.cpu().numpy(), metric='euclidean')
-
-                maP, cmc = calc_mean_average_precision(None, query=[P[0]], gallery=P[1:], distmat=dist)
-                #quit()
-                if cmc is not None and maP is not None:
-                    CMC.append(cmc)
-                    mAP.append(maP)
-
-        if len(CMC) > 0:
-            cmc_avg = dict()
-            for k in cmc.keys():
-                eval_type = list()
-                for data in CMC:
-                    eval_type.append(data[k])
-                eval_type = np.mean(np.stack(eval_type), axis=0)
-                cmc_avg[k] = eval_type
-            #logger.info(sum(mAP)/len(mAP), cmc_avg['Market'][0])
-            return sum(mAP)/len(mAP), cmc_avg
-        else:
-            return 0, {'Market': [0]*50}
 
     def predict_batchwise_gnn_queryguided(self, model, gnn, graph_generator, dataloader, \
             attention=True, batchwise_rank=False, query_guided=False, query=None, \

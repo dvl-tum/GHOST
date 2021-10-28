@@ -17,19 +17,8 @@ from .utils import weights_init_kaiming, weights_init_classifier
 def load_net(dataset, nb_classes, mode, attention, net_type, bn_inception={'embed': 0, 'sz_embedding': 512},
              last_stride=0, neck=0, pretrained_path=None, weight_norm=0, final_drop=0.5, stoch_depth=0.8, red=1,
              add_distractors=False):
-    if net_type == 'bn_inception':
-        sz_embed = 1024
-        model = net.bn_inception(pretrained=True)
-        model.last_linear = nn.Linear(1024, nb_classes)
-        
-        if bn_inception['embed']:
-            model = net.Inception_embed(model, 1024, bn_inception['sz_embedding'], num_classes=nb_classes, neck=neck)
-            sz_embed = bn_inception['sz_embedding']
-
-        if pretrained_path != 'no':
-            model.load_state_dict(torch.load(pretrained_path))
             
-    elif net_type == 'resnet18':
+    if net_type == 'resnet18':
         red = 1
         sz_embed = int(512/red)
         model = net.resnet18(pretrained=True, last_stride=last_stride, neck=neck, final_drop=final_drop, stoch_depth=stoch_depth, red=1)
@@ -115,31 +104,7 @@ def load_net(dataset, nb_classes, mode, attention, net_type, bn_inception={'embe
             model_dict.update(state_dict)
             model.load_state_dict(model_dict)
 
-    elif net_type == 'resnet50_attention':
-        sz_embed = int(2048/red)
-        model = resnet50_attention(pretrained=True, last_stride=last_stride, neck=neck, final_drop=final_drop, stoch_depth=stoch_depth, red=red)
-        
-        dim = int(2048/red)
-        if neck:
-            model.bottleneck = nn.BatchNorm1d(dim)
-            model.bottleneck.bias.requires_grad_(False)  # no shift
-            model.fc = nn.Linear(dim, nb_classes, bias=False)
-
-            model.bottleneck.apply(weights_init_kaiming)
-            model.fc.apply(weights_init_classifier)
-        else: 
-            model.fc = nn.Linear(dim, nb_classes)
-
-        if not mode  == 'pretraining' and pretrained_path != 'no':
-            no_load = ['fc.bias', 'fc.weight']
-            load_dict = {k: v for k, v in torch.load(pretrained_path).items() if k not in no_load}
-            for k, v in load_dict.items():
-                print(k, v.shape)
-            print(model)
-            model_dict = model.state_dict()
-            model_dict.update(load_dict)
-            model.load_state_dict(model_dict)
-            #model.load_state_dict(torch.load(pretrained_path))
+    
     elif net_type == 'resnet101':
         sz_embed = int(2048/red)
         model = net.resnet101(pretrained=True, last_stride=last_stride, neck=neck, final_drop=final_drop, stoch_depth=stoch_depth, red=red)
@@ -187,97 +152,6 @@ def load_net(dataset, nb_classes, mode, attention, net_type, bn_inception={'embe
         if pretrained_path != 'no':
             model.load_state_dict(torch.load(pretrained_path))
 
-    elif net_type == 'densenet121':
-        sz_embed = int(1024/red)
-        model = net.densenet121(pretrained=True, last_stride=last_stride, neck=neck, red=red)
-        dim = int(1024/red)
-        if neck:
-            model.bottleneck = nn.BatchNorm1d(dim)
-            model.bottleneck.bias.requires_grad_(False)  # no shift
-            if weight_norm:
-                model.classifier = weightNorm(nn.Linear(dim, nb_classes, bias=False), name = "weight")
-            else:
-                model.classifier = nn.Linear(dim, nb_classes, bias=False)
-
-            model.bottleneck.apply(weights_init_kaiming)
-            model.classifier.apply(weights_init_classifier)
-        else:
-            if weight_norm:
-                model.classifier = weightNorm(nn.Linear(dim, nb_classes), name = "weight")
-            else:
-                model.classifier = nn.Linear(dim, nb_classes)
-        
-        if pretrained_path != 'no':
-            model.load_state_dict(torch.load(pretrained_path))
-
-    elif net_type == 'densenet161':
-        sz_embed = int(2208/red)
-        model = net.densenet161(pretrained=True, last_stride=last_stride, neck=neck, red=red)
-        dim = int(2208/red)
-        if neck:
-            model.bottleneck = nn.BatchNorm1d(dim)
-            model.bottleneck.bias.requires_grad_(False)  # no shift
-            if weight_norm:
-                model.classifier = weightNorm(nn.Linear(dim, nb_classes, bias=False), name = "weight")
-            else:
-                model.classifier = nn.Linear(dim, nb_classes, bias=False)
-
-            model.bottleneck.apply(weights_init_kaiming)
-            model.classifier.apply(weights_init_classifier)
-        else:
-            if weight_norm:
-                model.classifier = weightNorm(nn.Linear(dim, nb_classes), name = "weight")
-            else:
-                model.classifier = nn.Linear(dim, nb_classes)
-
-        if pretrained_path != 'no':
-            model.load_state_dict(torch.load(pretrained_path))
-
-    elif net_type == 'densenet169':
-        sz_embed = int(1664/red)
-        model = net.densenet169(pretrained=True, last_stride=last_stride, neck=neck, red=red)
-        dim = int(1664/red)
-        if neck:
-            model.bottleneck = nn.BatchNorm1d(dim)
-            model.bottleneck.bias.requires_grad_(False)  # no shift
-            if weight_norm:
-                model.classifier = weightNorm(nn.Linear(dim, nb_classes, bias=False), name = "weight")
-            else:
-                model.classifier = nn.Linear(dim, nb_classes, bias=False)
-
-            model.bottleneck.apply(weights_init_kaiming)
-            model.classifier.apply(weights_init_classifier)
-        else:
-            if weight_norm:
-                model.classifier = weightNorm(nn.Linear(dim, nb_classes), name = "weight")
-            else:
-                model.classifier = nn.Linear(dim, nb_classes)
-
-        if pretrained_path != 'no':
-            model.load_state_dict(torch.load(pretrained_path))
-
-    elif net_type == 'densenet201':
-        sz_embed = int(1920)
-        model = net.densenet201(pretrained=True, last_stride=last_stride, neck=neck, red=red)
-        dim = int(1920/red)
-        if neck:
-            model.bottleneck = nn.BatchNorm1d(dim)
-            model.bottleneck.bias.requires_grad_(False)  # no shift
-            if weight_norm:
-                model.classifier = weightNorm(nn.Linear(dim, nb_classes, bias=False), name = "weight")
-            else:
-                model.classifier = nn.Linear(dim, nb_classes, bias=False)
-
-            model.bottleneck.apply(weights_init_kaiming)
-            model.classifier.apply(weights_init_classifier)
-        else:
-            if weight_norm:
-                model.classifier = weightNorm(nn.Linear(dim, nb_classes), name = "weight")
-            else:
-                model.classifier = nn.Linear(dim, nb_classes)
-
-        if pretrained_path != 'no':
-            model.load_state_dict(torch.load(pretrained_path))
 
     elif net_type == 'resnet50FPN':
         sz_embed = int(256/red)
@@ -360,14 +234,3 @@ def load_net(dataset, nb_classes, mode, attention, net_type, bn_inception={'embe
         
     return model, sz_embed
 
-
-
-if __name__ == '__main__':
-    model = fasterrcnn_resnet50_fpn(pretrained=True)
-    # replace the classifier with a new one, that has
-    # num_classes which is user-defined
-    num_classes = 2  # 1 class (person) + background
-    # get number of input features for the classifier
-    in_features = model.roi_heads.box_predictor.cls_score.in_features
-    # replace the pre-trained head with a new one
-    model.roi_heads.box_predictor = FastRCNNPredictor(in_features, num_classes)
