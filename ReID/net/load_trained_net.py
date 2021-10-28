@@ -15,7 +15,8 @@ import torch.nn.utils.weight_norm as weightNorm
 from .utils import weights_init_kaiming, weights_init_classifier
 
 def load_net(dataset, nb_classes, mode, attention, net_type, bn_inception={'embed': 0, 'sz_embedding': 512},
-             last_stride=0, neck=0, pretrained_path=None, weight_norm=0, final_drop=0.5, stoch_depth=0.8, red=1):
+             last_stride=0, neck=0, pretrained_path=None, weight_norm=0, final_drop=0.5, stoch_depth=0.8, red=1,
+             add_distractors=False):
     if net_type == 'bn_inception':
         sz_embed = 1024
         model = net.bn_inception(pretrained=True)
@@ -77,26 +78,30 @@ def load_net(dataset, nb_classes, mode, attention, net_type, bn_inception={'embe
             model.load_state_dict(torch.load(pretrained_path))
 
     elif net_type == 'resnet50':
-        sz_embed = int(2048/red)
-        model = resnet50(pretrained=True, last_stride=last_stride, neck=neck, final_drop=final_drop, stoch_depth=stoch_depth, red=red, attention=attention)
-
-        dim = int(2048/red)
-        print("Dimension of Resnet output {}".format(dim))
+        model = resnet50(pretrained=True, last_stride=last_stride, neck=neck, 
+                    final_drop=final_drop, stoch_depth=stoch_depth, red=red, 
+                    attention=attention, add_distractors=add_distractors)
+        
+        if attention:
+            sz_embed, dim_fc = [2048, 8, 4], 2048
+        else:
+            sz_embed = dim_fc = int(2048/red)
+        print("Dimension of Resnet output {}".format(dim_fc))
         if neck:
-            model.bottleneck = nn.BatchNorm1d(dim)
+            model.bottleneck = nn.BatchNorm1d(dim_fc)
             model.bottleneck.bias.requires_grad_(False)  # no shift
             if weight_norm:
-                model.fc = weightNorm(nn.Linear(dim, nb_classes, bias=False), name = "weight")
+                model.fc = weightNorm(nn.Linear(dim_fc, nb_classes, bias=False), name = "weight")
             else:
-                model.fc = nn.Linear(dim, nb_classes, bias=False)
+                model.fc = nn.Linear(dim_fc, nb_classes, bias=False)
 
             model.bottleneck.apply(weights_init_kaiming)
             model.fc.apply(weights_init_classifier)
         else: 
             if weight_norm:
-                model.fc = weightNorm(nn.Linear(dim, nb_classes), name = "weight")
+                model.fc = weightNorm(nn.Linear(dim_fc, nb_classes), name = "weight")
             else:
-                model.fc = nn.Linear(dim, nb_classes)
+                model.fc = nn.Linear(dim_fc, nb_classes)
 
         if pretrained_path != 'no':
             if not torch.cuda.is_available(): 

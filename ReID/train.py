@@ -7,7 +7,7 @@ import time
 import os.path as osp
 import os
 import utils.utils as utils
-from trainer import Trainer
+from trainer import Trainer 
 
 
 logger = logging.getLogger('GNNReID')

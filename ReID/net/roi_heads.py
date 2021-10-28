@@ -1,3 +1,4 @@
+from random import randint, random
 from pandas.core import frame
 import torch
 import torchvision
@@ -13,6 +14,8 @@ from . import _utils as det_utils
 
 from typing import Optional, List, Dict, Tuple
 import sklearn
+from torchvision.ops import box_iou 
+import random
 
 
 def fastrcnn_loss(class_logits, box_regression, labels, regression_targets):
@@ -557,6 +560,7 @@ class RoIHeads(nn.Module):
         self.embedding_loss = None
         self.embedding_loss_trip = None
         self.embedding_loss_mult = None
+        self.person_loss = None
 
     def has_mask(self):
         if self.mask_roi_pool is None:
@@ -686,7 +690,8 @@ class RoIHeads(nn.Module):
         else:
             pass
 
-    def get_embedding_loss(self, embeddings=None, id_labels=None, id_scores=None):
+    def get_embedding_loss(self, embeddings=None, id_labels=None, id_scores=None, \
+        person_scores=None, person_labels=None):
         loss = self.embedding_loss(id_scores, id_labels)
         if type(embeddings) == list():
             all_embeddings = torch.cat(embeddings)
@@ -696,6 +701,9 @@ class RoIHeads(nn.Module):
                 loss += self.embedding_loss_trip(all_embeddings, id_indicator)
             if self.embedding_loss_mult:
                 loss += self.embedding_loss_mult(all_embeddings, id_indicator)
+            if self.person_loss:
+                loss += self.person_loss(person_scores, person_labels)
+
 
         return loss
 
@@ -760,6 +768,28 @@ class RoIHeads(nn.Module):
 
         return all_boxes, all_scores, all_labels
 
+    def make_background(self, proposals=None, image_shapes=None):
+        # sample aspect ratio (h/w), height, position
+        new_proposals, labels = list(), list()
+        for proposals_per_img, image_shape in zip(proposals, image_shapes):
+            # image shape = (H, W)
+            background_list = list()
+            while len(background_list) < proposals_per_img.shape[0]:
+                ratio = random.choice([0.1, 1]) * random.randint(1, 10) # h/w
+                height = random.randint(10, 50) if ratio < 1 else random.randint(50, 500)
+                position = (random.randint(0, int(image_shape[1] - height/ratio)), \
+                    random.randint(0, int(image_shape[0] - height)))
+                # 'bb_left', 'bb_top', 'bb_right', 'bb_bot'
+                bb = torch.tensor([[position[0], position[1], \
+                    position[0] + height/ratio, position[1] + height]]).to(proposals_per_img.get_device())
+                ious = box_iou(proposals_per_img, bb)
+                if all(ious < 0.3):
+                    background_list.append(bb.squeeze())
+            new_proposals.append(torch.stack([proposals_per_img, torch.stack(background_list)]))
+            labels.append(torch.cat([torch.ones(proposals_per_img.shape[0]), torch.zeros(proposals_per_img.shape[0])]))
+
+        return new_proposals, labels
+
     def forward(self,
                 features,      # type: Dict[str, Tensor]
                 proposals,     # type: List[Tensor]
@@ -790,6 +820,7 @@ class RoIHeads(nn.Module):
         if self.training and "ids" not in targets[0].keys(): # Jenny: nothing to do here!!
             proposals, matched_idxs, labels, regression_targets = self.select_training_samples(proposals, targets)
         elif "ids" in targets[0].keys():
+            proposals, person_labels = self.make_background(proposals, image_shapes)
             id_targets = torch.stack([ti for t in targets for ti in t["ids"]])
         else:
             labels = None
@@ -819,8 +850,9 @@ class RoIHeads(nn.Module):
                 box_regression = [r[1] for r in _all_res]
                 embeddings = [r[2] for r in _all_res]
                 id_scores = [r[3] for r in _all_res]
+                person_scores = [r[4] for r in _all_res]
             else:
-                class_logits, box_regression, embeddings, id_scores = self.box_predictor(box_features)
+                class_logits, box_regression, embeddings, id_scores, person_scores = self.box_predictor(box_features)
         else:
             class_logits, box_regression = self.box_predictor(box_features)
 
@@ -831,7 +863,7 @@ class RoIHeads(nn.Module):
 
         if self.training:
             if self.box_predictor.additional_embedding:
-                loss_embeddings = self.get_embedding_loss(embeddings, id_targets, id_scores)
+                loss_embeddings = self.get_embedding_loss(embeddings, id_targets, id_scores, person_scores, person_labels)
                 losses = {
                     "loss_embeddings": loss_embeddings
                 }

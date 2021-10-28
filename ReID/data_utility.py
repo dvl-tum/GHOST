@@ -2,8 +2,7 @@ import random
 import dataset
 import torch
 from collections import defaultdict
-from combine_sampler import CombineSampler, DistanceSampler, PretraingSampler,\
-    KReciprocalSampler, ClusteringSampler
+from combine_sampler import BatchSizeSampler, CombineSampler, KReciprocalSampler, KNNSampler, QueryGuidedSampler
 import numpy as np
 import os
 import matplotlib.pyplot as plt
@@ -15,20 +14,23 @@ logger = logging.getLogger('GNNReID.DataUtility')
 
 def create_loaders(data_root, num_workers, num_classes_iter=None, 
         num_elements_class=None, mode='single', trans='norm', 
-        distance_sampler='only', val=0, seed=0, bssampling=None, rand_scales=False):
+        distance_sampler='only', val=0, seed=0, bssampling=None, 
+        rand_scales=False, add_distractors=False):
 
     config = {'bss': bssampling,'num_workers': num_workers,
               'nci': num_classes_iter, 'nec': num_elements_class,
               'trans': trans, 'ds': distance_sampler, 'mode': mode}
 
     labels, paths = dataset.load_data(root=data_root, mode=mode, val=val,
-                                          seed=seed)
+                                          seed=seed, add_distractors=add_distractors)
     labels, paths = labels[0], paths[0]
     
+    print(mode)
     data, data_root = get_validation_images(mode, labels, paths, data_root)
     query, gallery = data[2], data[3]
 
     dl_tr = get_train_dataloader(config, labels, paths, data_root, rand_scales)
+    
     print("ATTENTION ALSO USING RAND SCALES IN EVAL!!!!!!!!!!!!!!!!!!!!!!!!")
     dl_ev, dl_ev_gnn = get_val_dataloader(config, data, data_root, rand_scales)
 
@@ -55,11 +57,13 @@ def get_train_dataloader(config, labels, paths, data_root, rand_scales):
 
     list_of_indices_for_each_class = []
     for key in ddict:
-        list_of_indices_for_each_class.append(ddict[key])
+        if key != -2:
+            list_of_indices_for_each_class.append(ddict[key])
 
     sampler = CombineSampler(list_of_indices_for_each_class,
                                 config['nci'], config['nec'],
-                                batch_sampler=config['bss'])
+                                batch_sampler=config['bss'], 
+                                distractor_idx=Dataset.distractor_idx)
     
     def seed_worker(worker_id):
         worker_seed = torch.initial_seed() % 2**32
@@ -87,7 +91,7 @@ def get_train_dataloader(config, labels, paths, data_root, rand_scales):
 
 def get_val_dataloader(config, data, data_root, rand_scales=False):
     labels_ev, paths_ev, query, gallery = data
-    
+
     # get dataset
     if config['mode'] != 'all':
         dataset_ev = dataset.Birds(
@@ -108,7 +112,8 @@ def get_val_dataloader(config, data, data_root, rand_scales=False):
         )
 
     # dataloader
-    if 'gnn' in config['mode'].split('_') or 'pseudo' in config['mode'].split('_'):
+    if 'gnn' in config['mode'].split('_') or 'pseudo' in config['mode'].split('_') or \
+        'batchwise' in config['mode'].split('_'):
         ddict = defaultdict(list)
         for idx, label in enumerate(dataset_ev.ys):
             ddict[label].append(idx)
@@ -117,7 +122,8 @@ def get_val_dataloader(config, data, data_root, rand_scales=False):
         for key in ddict:
             list_of_indices_for_each_class.append(ddict[key])
 
-        if 'gnn' in mode.split('_'):
+        if 'gnn' in config['mode'].split('_') or 'batchwise' in config['mode'].split('_') \
+            and not 'knn' in config['mode'].split('_') and not 'queryguided' in config['mode'].split('_'):
             sampler = CombineSampler(list_of_indices_for_each_class,
                                  config['nci'], config['nec'])
             dl_ev = torch.utils.data.DataLoader(
@@ -131,8 +137,42 @@ def get_val_dataloader(config, data, data_root, rand_scales=False):
             )
             dl_ev_gnn = None
 
-        elif 'pseudo' in mode.split('_'):
-            sampler = PseudoSamplerV(config['nci'], config['nec'])
+        elif 'knn' in config['mode'].split('_'):
+            sampler = KNNSampler(nn=50)
+            dl_ev_gnn = torch.utils.data.DataLoader(
+                dataset_ev,
+                batch_size=50,
+                shuffle=False,
+                sampler=sampler,
+                num_workers=1,
+                drop_last=True,
+                pin_memory=True)
+            dl_ev = torch.utils.data.DataLoader(
+                copy.deepcopy(dataset_ev),
+                batch_size=64,
+                shuffle=True,
+                num_workers=1,
+                pin_memory=True)
+
+        elif 'queryguided' in config['mode'].split('_'):
+            sampler = QueryGuidedSampler(batch_size=256)
+            dl_ev_gnn = torch.utils.data.DataLoader(
+                dataset_ev,
+                batch_size=256,
+                shuffle=False,
+                sampler=sampler,
+                num_workers=1,
+                drop_last=True,
+                pin_memory=True)
+            dl_ev = torch.utils.data.DataLoader(
+                copy.deepcopy(dataset_ev),
+                batch_size=64,
+                shuffle=True,
+                num_workers=1,
+                pin_memory=True)
+
+        elif 'pseudo' in config['mode'].split('_'):
+            sampler = KReciprocalSampler(config['nci'], config['nec'])
             dl_ev_gnn = torch.utils.data.DataLoader(
                 dataset_ev,
                 batch_size=config['nci']*config['nec'],
@@ -158,7 +198,7 @@ def get_val_dataloader(config, data, data_root, rand_scales=False):
         )
 
         dl_ev_gnn = None
-    
+
     return dl_ev, dl_ev_gnn
 
 
@@ -234,18 +274,56 @@ def get_market_and_cuhk03(labels, paths, data_root):
     return data, data_root
 
 
-def get_single(labels, paths, data_root):
-    labels_ev = labels['bounding_box_test'] + labels['query']
-    paths_ev = paths['bounding_box_test'] + paths['query']
+def get_single(labels, paths, data_root, sample_sub=True):
+    logger.info("Sampling subset {}".format(sample_sub))
+    if sample_sub:
+        import random
+        random.seed(0)
+        gallery = labels['bounding_box_test']
+        query = labels['query']
+
+        query_ddict = defaultdict(list)
+        for i, q in enumerate(query):
+            query_ddict[q].append(i)
+        query_ids = random.sample(list(query_ddict.keys()), k=300)
+        query_samps = [random.choice(query_ddict[q]) for q in query_ids]
+
+        gallery_ddict = defaultdict(list)
+        for i, g in enumerate(gallery):
+            gallery_ddict[g].append(i)
+
+        gallery_samps = list()
+        for g in gallery_ddict.values():
+            random.shuffle(g)
+            gallery_samps.extend(g[:3])
+        # gallery_samps = [s for g in gallery_ddict.values() for s in random.sample(g, k=3)]
+
+        labels_ev = [l for i, l in enumerate(labels['bounding_box_test']) if i in gallery_samps] \
+            + [l for i, l in enumerate(labels['query']) if i in query_samps]
+        paths_ev = [p for i, p in enumerate(paths['bounding_box_test']) if i in gallery_samps] \
+             + [p for i, p in enumerate(paths['query']) if i in query_samps]
+        
+        query = [os.path.join(data_root, 'images',
+            '{:05d}'.format(int(q.split('_')[0])), q) for i, q 
+            in enumerate(paths['query']) if i in query_samps]
+        gallery = [os.path.join(data_root, 'images',
+                '{:05d}'.format(int(g.split('_')[0])), g) for i, g 
+                in enumerate(paths['bounding_box_test']) if i in gallery_samps]
+
+    else:
+        labels_ev = labels['bounding_box_test'] + labels['query']
+        paths_ev = paths['bounding_box_test'] + paths['query']
     
-    query = [os.path.join(data_root, 'images',
-            '{:05d}'.format(int(q.split('_')[0])), q) for q 
-            in paths['query']]
-    gallery = [os.path.join(data_root, 'images',
-            '{:05d}'.format(int(g.split('_')[0])), g) for g 
-            in paths['bounding_box_test']]
+        query = [os.path.join(data_root, 'images',
+                '{:05d}'.format(int(q.split('_')[0])), q) for q 
+                in paths['query']]
+        gallery = [os.path.join(data_root, 'images',
+                '{:05d}'.format(int(g.split('_')[0])), g) for g 
+                in paths['bounding_box_test']]
 
     data = (labels_ev, paths_ev, query, gallery)
+
+    print(len(labels_ev), len(paths_ev), len(query), len(gallery))
 
     return data, data_root
 

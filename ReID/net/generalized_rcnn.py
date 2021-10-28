@@ -98,7 +98,7 @@ class GeneralizedRCNN(nn.Module):
         # Jenny: if there are public preds --> use them and not the proposals from rpn
         if 'public_preds' not in targets[0].keys():
             proposals, proposal_losses = self.rpn(images, features, targets)
-        else:
+        else: 
             proposals = [t['public_preds'] for t in targets]
             proposal_losses = {}
 

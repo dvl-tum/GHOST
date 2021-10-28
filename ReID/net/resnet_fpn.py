@@ -252,7 +252,9 @@ def resnet152(pretrained=False):
 
 
 class ResNetFPN(nn.Module):
-  def __init__(self, num_layers=50, pretrained=True, neck=1, red=1, combine=False, conv_combi=True, squeeze_ext=False, layer_norm=False, combi_big=True, attention=0, last_only=False, make_small=False):
+  def __init__(self, num_layers=50, pretrained=True, neck=1, red=1, combine=False, \
+                conv_combi=False, squeeze_ext=False, layer_norm=False, \
+                  combi_big=False, attention=0, last_only=False, make_small=False):
     super(ResNetFPN, self).__init__()
     self._layers = {}
     self.neck = neck

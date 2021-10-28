@@ -47,6 +47,9 @@ class Birds(torch.utils.data.Dataset):
         self.labels_gallery = labels_gallery
         self.paths_gallery = paths_gallery
         self.rand_scales = rand_scales
+        self.distractor_idx = None
+        self.no_imgs = False
+        
         print('Randomly scales images {}'.format(rand_scales))
         # when cuhk03 detected and labeled should be used
         if os.path.basename(root) == 'cuhk03' or os.path.basename(root) == 'cuhk03-np':
@@ -63,9 +66,20 @@ class Birds(torch.utils.data.Dataset):
                     int(paths[t][i].split('_')[0])), paths[t][i]))
         # when only detected or labeled
         else:
-            self.map = {lab: i for i, lab in enumerate(sorted(set(self.labels)))}
+            i = 0
+            self.map = dict()
+            for lab in sorted(set(self.labels)):
+                if lab != -2:
+                    self.map[lab] = i 
+                    i += 1
             for i, y in enumerate(self.labels):
-                self.ys.append(self.map[y])
+                if y == -2:
+                    if self.distractor_idx is None:
+                        self.distractor_idx = list()
+                    self.distractor_idx.append(i)
+                    self.ys.append(y)
+                else:
+                    self.ys.append(self.map[y])
                 self.im_paths.append(os.path.join(root, 'images', '{:05d}'.format(
                     int(paths[i].split('_')[0])), paths[i]))
 
@@ -114,6 +128,8 @@ class Birds(torch.utils.data.Dataset):
         return len(self.ys)
 
     def __getitem__(self, index):
+        if self.no_imgs:
+            return self.ys[index], index, self.im_paths[index]
         im = pil_loader(self.im_paths[index])
         
         if not self.eval_reid and self.rand_scales:

@@ -35,6 +35,7 @@ def cmc(distmat, query_ids=None, gallery_ids=None,
     # junk = gallery_ids != -1
     if type(distmat) != np.ndarray:
         distmat = distmat.cpu().numpy()
+    distmat = np.atleast_2d(distmat)
     m, n = distmat.shape
 
     # Sort and find correct matches
@@ -95,7 +96,8 @@ def cmc(distmat, query_ids=None, gallery_ids=None,
         num_valid_queries += 1
 
     if num_valid_queries == 0:
-        raise RuntimeError("No valid query")
+        #print("No valid query")
+        return None, None
 
     return ret.cumsum() / num_valid_queries
 
@@ -105,6 +107,7 @@ def mean_ap(dist, ql, qc, gl, gc):
     # junk = gl != -1
     if type(dist) != np.ndarray:
         dist = dist.cpu().numpy()
+    dist = np.atleast_2d(dist)
 
     indices = np.argsort(dist, axis=1)
     matches = (gl[indices] == ql[:, np.newaxis])
@@ -120,13 +123,13 @@ def mean_ap(dist, ql, qc, gl, gc):
         pos &= junk
 
         y_true = matches[k, pos]
-
         y_score = -dist[k][indices[k]][pos]
         if not np.any(y_true): continue
         aps.append(average_precision_score(y_true, y_score))
 
     if len(aps) == 0:
-        raise RuntimeError("No valid query")
+        #print("No valid query")
+        return None
 
     return np.mean(aps)
 
@@ -147,14 +150,7 @@ def evaluate_all(distmat, query=None, gallery=None):
     mAP = mean_ap(distmat, query_ids, query_cams, gallery_ids, gallery_cams)
 
     # Compute all kinds of CMC scores
-    cmc_configs = {
-        'allshots': dict(separate_camera_set=False,
-                         single_gallery_shot=False,
-                         first_match_break=False),
-        'cuhk03': dict(separate_camera_set=True,
-                       single_gallery_shot=True,
-                       first_match_break=False),
-        'Market': dict(separate_camera_set=False,
+    cmc_configs = {'Market': dict(separate_camera_set=False,
                        single_gallery_shot=False,
                        first_match_break=True)}
     cmc_scores = {name: cmc(distmat, query_ids, gallery_ids,
@@ -279,15 +275,12 @@ def re_ranking(features, query, gallery, k1=20, k2=6, lambda_value=0.3,
 
 
 def calc_mean_average_precision(features, query, gallery, re_rank=False,
-                                lamb=0.3, k1=20, k2=6):
-    if type(features[list(features.keys())[0]]) == dict:
-        query = list(features.keys())
-        gallery = set(
-            [k2 for k1 in features.keys() for k2 in features[k1].keys()])
-        distmat = dist_traintest(features, query, gallery)
-    elif re_rank:
+                                lamb=0.3, k1=20, k2=6, distmat=None):
+
+    if re_rank:
         distmat = re_ranking(features, query, gallery, k1=k1, k2=k2,
                              lambda_value=lamb)
-    else:
+    elif distmat is None:
         distmat = pairwise_distance(features, query, gallery)
+
     return evaluate_all(distmat, query=query, gallery=gallery)

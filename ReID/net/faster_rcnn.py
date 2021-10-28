@@ -206,7 +206,7 @@ class FasterRCNN(GeneralizedRCNN):
 class TwoMLPHead(nn.Module):
     """
     Standard heads for FPN-based models
-
+ 
     Args:
         in_channels (int): number of input channels
         representation_size (int): size of the intermediate representation
@@ -245,6 +245,8 @@ class FastRCNNPredictor(nn.Module):
         if self.additional_embedding:
             self.embedding_head = nn.Linear(in_channels, in_channels)
             self.fc = nn.Linear(in_channels, num_ids)
+            self.fc_person = nn.Linear(in_channels, 1)
+            self.sig = nn.Sigmoid()
 
     def forward(self, x):
         if x.dim() == 4:
@@ -255,7 +257,8 @@ class FastRCNNPredictor(nn.Module):
         if self.additional_embedding:
             embeddings = self.embedding_head(x)
             id_scores = self.fc(embeddings)
-            return scores, bbox_deltas, embeddings, id_scores
+            person_scores = self.sig(self.fc_person(x))
+            return scores, bbox_deltas, embeddings, id_scores, person_scores
 
         return scores, bbox_deltas
 

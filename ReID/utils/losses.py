@@ -288,15 +288,16 @@ class TripletLoss(nn.Module):
         self.margin = margin
         self.ranking_loss = nn.MarginRankingLoss(margin=margin)
 
-    def forward(self, inputs, targets):
+    def forward(self, inputs=None, targets=None, dist=None):
         # Compute pairwise distance
-        m, n = inputs.size(0), inputs.size(0)
-        x = inputs.view(m, -1)
-        y = inputs.view(n, -1)
-        dist = torch.pow(x, 2).sum(dim=1, keepdim=True).expand(m, n) + \
-               torch.pow(y, 2).sum(dim=1, keepdim=True).expand(n, m).t()
+        if dist is None:
+            m, n = inputs.size(0), inputs.size(0)
+            x = inputs.view(m, -1)
+            y = inputs.view(n, -1)
+            dist = torch.pow(x, 2).sum(dim=1, keepdim=True).expand(m, n) + \
+                torch.pow(y, 2).sum(dim=1, keepdim=True).expand(n, m).t()
 
-        dist.addmm_(1, -2, x, y.t())
+            dist.addmm_(1, -2, x, y.t())
 
         mask = targets.type(torch.ByteTensor).cuda()
 
@@ -374,15 +375,18 @@ def multi_pos_cross_entropy(pred,
     # neg_inds = (label == 0).float()
     # exp_pos = (torch.exp(-1 * pred) * pos_inds).sum(dim=1)
     # exp_neg = (torch.exp(pred.clamp(max=80)) * neg_inds).sum(dim=1)
-    # loss = torch.log(1 + exp_pos * exp_neg)
+    # loss = torch.log(1 + exp_pos * exp_neg)    
 
-    # a more numerical stable implementation.
-    pos_inds = (label == 1)
-    neg_inds = (label == 0)
+    pos_inds = label
+    neg_inds = ~label
+
     pred_pos = pred * pos_inds.float()
     pred_neg = pred * neg_inds.float()
     # use -inf to mask out unwanted elements.
-    pred_pos[neg_inds] = pred_pos[neg_inds] + float('inf')
+    # --> don't take distance to itself into account (should be in pos anyway)
+
+    self_dist = torch.diag(torch.ones(label.shape[0])).bool().to(neg_inds.get_device())
+    pred_pos[neg_inds | self_dist] = pred_pos[neg_inds | self_dist] + float('inf')
     pred_neg[pos_inds] = pred_neg[pos_inds] + float('-inf')
 
     _pos_expand = torch.repeat_interleave(pred_pos, pred.shape[1], dim=1)
@@ -390,7 +394,6 @@ def multi_pos_cross_entropy(pred,
 
     x = torch.nn.functional.pad((_neg_expand - _pos_expand), (0, 1), "constant", 0)
     loss = torch.logsumexp(x, dim=1)
-
 
     # apply weights and do the reduction
     if weight is not None:
@@ -416,6 +419,8 @@ class MultiPosCrossEntropyLoss(nn.Module):
                 avg_factor=None,
                 reduction_override=None,
                 **kwargs):
+        label = torch.atleast_2d(label)
+        label = label == label.T
         assert cls_score.size() == label.size()
         assert reduction_override in (None, 'none', 'mean', 'sum')
         reduction = (

@@ -1,10 +1,14 @@
 #!/bin/bash
-#SBATCH --job-name=GL
+#SBATCH --job-name=ResNetBackbonesAllReID
 #SBATCH --nodes=1
-#SBATCH --gres=gpu:1
+#SBATCH --partition=DEADLINE
+#SBATCH --comment='For CVPR submission.'
+#SBATCH --gpus=rtx_8000:1
 #SBATCH --cpus-per-gpu=3
 #SBATCH --mem=128G
-#SBATCH --time=120:00:00
+#SBATCH --partition=DEADLINE
+#SBATCH --comment='For CVPR submission.'
+#SBATCH --time=40:00:00
 
-source activate gnn_reid_new
+source activate allreid_tv
 python train.py

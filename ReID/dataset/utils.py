@@ -37,6 +37,16 @@ def make_transform_whole_img(mean=[0.485, 0.456, 0.406], std=[0.299, 0.224, 0.22
             transforms.Normalize(mean=mean, std=std)
         ])
 
+def make_transfor_obj_det(is_train):
+    _transforms = []
+    # converts the image, a PIL image, into a PyTorch Tensor
+    _transforms.append(transforms.ToTensor())
+    if is_train:
+        # during training, randomly flip the training images
+        # and ground-truth for data augmentation
+        _transforms.append(transforms.RandomHorizontalFlip(0.5))
+    return transforms.Compose(_transforms)
+
 
 class RandomErasing(object):
     """ Randomly selects a rectangle region in an image and erases its pixels.

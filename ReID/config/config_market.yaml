@@ -1,11 +1,11 @@
-mode: "train" #train/test/hyper_search/pretraining
+mode: "train" #_spatialatt_batchwise_queryguided" #train/test/hyper_search/pretraining
 application: "reid"
 
 models:
   encoder_params:
-    pretrained_path: "no" #"best_weights/0.8861117951243536resnet50_cars.pth" #"0.8266303675287712resnet50_cars.pth" #"0.8324929282991022resnet50_cars.pth" #"0.8937908496732027neck_resnet50_cars.pth" #"pretrained/0.835444594760792neck_resnet50_cars.pth" #"pretrained/0.8101094576312876neck_resnet50_cars.pth" #"pretrained_gnn/0.9390158582089553neck_resnet50_cars.pth" 
-    net_type: "resnet50FPN" #"resnet50FPN"
-    neck: 0
+    pretrained_path: "no" 
+    net_type: "resnet50" #"resnet50FPN"
+    neck: 1
     red: 1
     last_stride: 0
     final_drop: 0 #0.5
@@ -16,7 +16,7 @@ models:
       sz_embedding: 512
 
   gnn_params:
-    pretrained_path: "no" #"best_weights/0.8861117951243536gnn_resnet50_cars.pth" #"0.8266303675287712gnn_resnet50_cars.pth" #"0.8324929282991022gnn_resnet50_cars.pth" #"0.8937908496732027gnn_neck_resnet50_cars.pth" #"pretrained_gnn/0.9390158582089553gnn_neck_resnet50_cars.pth" 
+    pretrained_path: "no" 
     use_edge_encoder: 0
     use_edge_model: 0
     use_node_encoder: 0
@@ -25,9 +25,9 @@ models:
     every: 0
     proxies: 0
     gnn:
-      num_layers: 2 #1 #4 #2 #2 #1 #2
+      num_layers: 1 #1 #4 #2 #2 #1 #2
       aggregator: "add"
-      num_heads: 8 #4 #8 #2 #2 #2 #2
+      num_heads: 4 #4 #8 #2 #2 #2 #2
       attention: "dot" #"dot_pygeo"
       mlp: 1
       dropout_mlp: 0.1
@@ -71,8 +71,9 @@ dataset:
   sampling: "no"
   bssampling: "no" #"NumberSampler"
   val: 0
-  rand_scales: 1
+  rand_scales: 0
   nb_workers: 4
+  add_distractors: 0
 
 train_params:
   num_classes_iter: 6 #12 #70 #32 #70 #12 #4 #12 #9 #4 #6 #4 #5 #6 #5
@@ -86,11 +87,11 @@ train_params:
   output_train_enc: "norm"
   output_train_gnn: "plain"
   loss_fn:
-    fns: "lsce" #ce/focalce can be used instead of lsce and lsgnn/focalgnn instead of gnn, rest can be added by ce_gnn_center...
+    fns: "lsce_lsspatialattention_multposcont" #"lsce_bceattention_tripletattention_lsmultiattention" #ce/focalce can be used instead of lsce and lsgnn/focalgnn instead of gnn, rest can be added by ce_gnn_center...
     scaling_ce: 1
     scaling_multiattention: 1
     scaling_bce: 1
-    scaling_multiposcont: 1
+    scaling_multiposcont: 0.1
     scaling_gnn: 1
     scaling_distance: 0.01
     scaling_center: 0.5

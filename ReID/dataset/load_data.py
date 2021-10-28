@@ -34,13 +34,15 @@ query: used as query images for testing
 '''
 
 
-def load_data(root: str = None, mode: str='single', val=0, seed=0):
+def load_data(root: str = None, mode: str='single', val=0, seed=0, add_distractors=True):
     image_dir = os.path.join(root, 'images')
 
     # check if json file already exists --> if not: generate image folders
     if (not os.path.isfile(os.path.join(root, 'info.json')) or \
             not os.path.isfile(os.path.join(root, 'labels.json')) or \
-            not os.path.isdir(os.path.join(root, 'images'))) and not os.path.basename(root) == 'CUB_200_2011' and not os.path.basename(root) == 'CARS':
+            not os.path.isdir(os.path.join(root, 'images'))) and not \
+                os.path.basename(root) == 'CUB_200_2011' and not \
+                    os.path.basename(root) == 'CARS':
 
         # names of zip files
         if os.path.basename(os.path.dirname(root)) == 'cuhk03':
@@ -172,9 +174,13 @@ def load_data(root: str = None, mode: str='single', val=0, seed=0):
         
         elif os.path.basename(root) == 'Market-1501-v15.09.15':
             for key, value in labels.items():
-                junk = [i for i, v in enumerate(value) if v == -1]
-                labels[key] = [v for i, v in enumerate(value) if i not in junk]
-                data[key] = [v for i, v in enumerate(data[key]) if i not in junk]
+                # -1 == junk, -2 == distractors
+                if not add_distractors:
+                    labels[key] = [v for i, v in enumerate(value) if value[i] != -1 and value[i] != -2]
+                    data[key] = [v for i, v in enumerate(data[key]) if value[i] != -1 and value[i] != -2]
+                else:
+                    labels[key] = [v for i, v in enumerate(value) if value[i] != -1]
+                    data[key] = [v for i, v in enumerate(data[key]) if value[i] != -1]
 
         # make list if not, for cuhk03 classic split is list
         if type(data) != list:
