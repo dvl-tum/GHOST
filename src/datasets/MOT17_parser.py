@@ -43,7 +43,12 @@ class MOTLoader():
             if exist_gt:
                 self.get_gt(gt_file)
             self.dets_unclipped = deepcopy(self.dets)
-            self.clip_boxes_to_image(df=self.dets)
+            self.dets = self.clip_boxes_to_image(df=self.dets)
+            
+            '''# clip gt for assignment
+            if exist_gt:
+                self.gt = self.clip_boxes_to_image(df=self.gt)'''
+            
             self.dets.sort_values(by = 'frame', inplace = True)
             self.dets_unclipped.sort_values(by='frame', inplace=True)
             
@@ -165,6 +170,8 @@ class MOTLoader():
             mask = self.dets['id'] != -1
             self.dets = self.dets[mask]
             self.dets_unclipped = self.dets_unclipped[mask]
+        
+        print(self.dets[self.dets['id'] == -1].shape)
         
         #print(self.dets.shape)
         #print(self.dets_unclipped.shape)

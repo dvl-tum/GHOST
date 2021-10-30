@@ -66,7 +66,7 @@ def main(args):
     variables = list(var_dict.keys()) 
 
     # choose which ones to use 
-    use = ['jaccard'] 
+    use = [''] # vis, size, frame_dist, size_diff, gallery_vis
     for v in var_dict.keys():
         if v not in use:
             var_dict[v] = [0]
@@ -97,11 +97,11 @@ def main(args):
                                             config['tracker']['rel_gallery_vis_thresh'] = v6
                                             config['tracker']['only_next_frame'] = v7
                                             config['tracker']['occluder_thresh'] = v8
-                                            config['tracker']['jaccard_thresh'] = v9
+                                            config['tracker']['jaccard_thresh'] = v9 
 
 
                                             manager = src.reid_manager.ManagerReID(device, time.time(), config['dataset'],
-                                                                config['reid_net'], config['tracker'], experiment_name='analysis_torchreid_new_jaccard_test')
+                                                                config['reid_net'], config['tracker'], experiment_name='just_reid_abd')
                                             if precomp is not None:
                                                 manager.ys = precomp_ys
                                                 manager.dist = precomp_dist

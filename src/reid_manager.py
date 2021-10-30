@@ -1,5 +1,5 @@
 from typing import Tuple
-from tracking_wo_bnw.src.tracktor.datasets import factory
+#from tracking_wo_bnw.src.tracktor.datasets import factory
 from ReID import net
 import os.path as osp
 import os
@@ -80,6 +80,8 @@ class ManagerReID(Manager):
             dir = _SPLITS[dataset_cfg['splits']][mode]['dir']
 
             if mode == 'train':
+                continue
+            
                 ddict = defaultdict(list)
                 for idx, label in enumerate(dataset.ys):
                     ddict[label].append(idx)
@@ -105,7 +107,7 @@ class ManagerReID(Manager):
                     query_dls = list()
                     gallery_dls = list()
                     seq_list = list()
-                    for seq in seqs:
+                    for seq in seqs: 
                         seq_list.append(seq)
                         query_dataset = dataset = ReIDDataset(dataset_cfg['splits'], [seq], dataset_cfg, self.tracker_cfg, dir, 'query')
                         query_dl = torch.utils.data.DataLoader(

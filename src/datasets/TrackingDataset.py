@@ -1,4 +1,6 @@
 import os
+
+from numpy.core.fromnumeric import shape
 import torch
 from .MOTDataset import MOTDataset
 from .MOT17_parser import MOTLoader
@@ -9,6 +11,7 @@ from torch.utils.data import Dataset
 import csv
 from torchvision.ops.boxes import clip_boxes_to_image
 import random 
+import torch.nn.functional as F
 
 
 class TrackingDataset(MOTDataset):
@@ -90,7 +93,8 @@ class TrackingDataset(MOTDataset):
                                         transform=self.transform,
                                         dev=self.device,
                                         dets_unclipped=dets_unclipped,
-                                        corresponding_gt=corresponding_gt))
+                                        corresponding_gt=corresponding_gt,
+                                        transform_det=self.transform_det))
             #self.data.append({'name': seq, 'dets': dets, 'gt': gt})
         
         self.id += 1
@@ -119,7 +123,9 @@ class TrackingDataset(MOTDataset):
 
 
 class Sequence():
-    def __init__(self, name, dets, gt, to_pil, to_tensor, transform, dev=None, dets_unclipped=None, corresponding_gt=None, zero_pad=False):
+    def __init__(self, name, dets, gt, to_pil, to_tensor, transform, dev=None, 
+            dets_unclipped=None, corresponding_gt=None, zero_pad=True, transform_det=None,
+            use_unclipped_for_eval=True):
         self.dets = dets
         self.dets_unclipped = dets_unclipped
         self.gt = gt
@@ -132,7 +138,10 @@ class Sequence():
         self.num_frames = len(self.dets['frame'].unique())
         self.zero_pad = zero_pad
         self.random_patches = False
+        self.transform_det = transform_det
+        self.use_unclipped_for_eval = use_unclipped_for_eval
         print("Zero padding of images {}".format(self.zero_pad))
+        print("Using unclipped detections for evaluation {}".format(use_unclipped_for_eval))
 
     def _get_random_patches(self, img, height_max: int = 256, 
                 height_min: int = 64, width_max: int = 256, 
@@ -155,6 +164,8 @@ class Sequence():
 
     def _get_images(self, path, dets_frame, dets_uncl_frame):
         img = self.to_tensor(Image.open(path).convert("RGB"))
+        import copy
+        img_for_det = copy.deepcopy(img)
         res = list()
         dets = list()
         tracktor_ids = list()
@@ -171,21 +182,36 @@ class Sequence():
 
             im = img[:, int(row['bb_top']):int(row['bb_bot']), int(
                 row['bb_left']):int(row['bb_right'])]
-            
+                        
             # pad if part of bb outside of image
             if self.zero_pad:
                 left_pad = abs(int(row_unclipped['bb_left'])) if int(row_unclipped['bb_left']) < 0 else 0
                 right_pad = abs(int(row_unclipped['bb_right']) - img.shape[2]) if int(row_unclipped['bb_right']) > img.shape[2] else 0
                 top_pad = abs(int(row_unclipped['bb_top'])) if int(row_unclipped['bb_top']) < 0 else 0
                 bot_pad = abs(int(row_unclipped['bb_bot']) - img.shape[1]) if int(row_unclipped['bb_bot']) > img.shape[1] else 0
+                
+                # zero padding
                 m = torch.nn.ZeroPad2d((left_pad, right_pad, top_pad, bot_pad))
                 im = m(im)
+
+                # image mean
+                # im = F.pad(im, (left_pad, right_pad, top_pad, bot_pad), "constant", im.mean())
+
+                # channel-wise mean
+                # im = torch.stack([F.pad(im[i, :, :], (left_pad, right_pad, top_pad, bot_pad), "constant", im.mean(dim=1).mean(dim=1)[i]) for i in range(im.shape[0])])
+                
+                # others
+                # left_pad = left_pad if left_pad < im.shape[2] else im.shape[2] - 1
+                # right_pad = right_pad if right_pad < im.shape[2] else im.shape[2] - 1
+                # top_pad = top_pad if top_pad < im.shape[1] else im.shape[1] - 1
+                # bot_pad = bot_pad if bot_pad < im.shape[1] else im.shape[1] - 1
+                # im = F.pad(im.unsqueeze(0), (left_pad, right_pad, top_pad, bot_pad), "circular").squeeze()
 
             im = self.to_pil(im)
             im = self.transform(im)
             res.append(im)
 
-            if self.zero_pad:
+            if self.zero_pad or self.use_unclipped_for_eval:
                 dets.append(np.array([row_unclipped['bb_left'], row_unclipped['bb_top'], row_unclipped[
                     'bb_right'], row_unclipped['bb_bot']], dtype=np.float32))
             else:
@@ -199,7 +225,7 @@ class Sequence():
         res = torch.stack(res, 0)
         res = res.to(self.device)
     
-        return res, dets, tracktor_ids, ids, vis, random_patches
+        return res, dets, tracktor_ids, ids, vis, random_patches, img_for_det.to(self.device)
     
     def __iter__(self):
         self.frames = self.dets['frame'].unique()
@@ -216,7 +242,7 @@ class Sequence():
             #quit()
             assert len(dets_frame['frame_path'].unique()) == 1
             
-            img, dets_f, tracktor_ids, ids, vis, random_patches = self._get_images(dets_frame['frame_path'].unique()[0], dets_frame, dets_uncl_frame)
+            img, dets_f, tracktor_ids, ids, vis, random_patches, img_for_det = self._get_images(dets_frame['frame_path'].unique()[0], dets_frame, dets_uncl_frame)
 
             if self.gt is not None:
                 gt_frame = self.gt[self.gt['frame']==frame]
@@ -225,7 +251,7 @@ class Sequence():
                 gt_f = None
 
             self.i += 1
-            return img, gt_f, dets_frame['frame_path'].unique()[0], dets_f, tracktor_ids, ids, vis, random_patches
+            return img, gt_f, dets_frame['frame_path'].unique()[0], dets_f, tracktor_ids, ids, vis, random_patches, img_for_det
         else:
             raise StopIteration
 

@@ -23,14 +23,26 @@ import sys
 import argparse
 #sys.path.insert(0, "/usr/wiss/seidensc/Documents/SRGAN-PyTorch")
 #from srgan_pytorch.utils.common import configure
-sys.path.insert(0, "/usr/wiss/seidensc/Documents/batch-dropblock-network")
+
+'''sys.path.insert(0, "/usr/wiss/seidensc/Documents/batch-dropblock-network")
 from get_model import get_bdb
 sys.path.insert(0, "/usr/wiss/seidensc/Documents/reid-strong-baseline")
 from get_model_bot import get_bot
 sys.path.insert(0, "/usr/wiss/seidensc/Documents/LUPerson/fast-reid")
 from load_model import load_lup
+sys.path.insert(0, "/usr/wiss/seidensc/Documents/LightMBN")
+from load_model_lmbn import load_lightweight_mbn
+sys.path.insert(0, '/usr/wiss/seidensc/Documents/TransReID')
+from load_model_transreid import load_trans_reid
+sys.path.insert(0, '/usr/wiss/seidensc/Documents/ABD-Net')
+from get_model_abd import get_model_abd
+sys.path.insert(0, '/usr/wiss/seidensc/Documents/deep-person-reid')
+from get_model_os import get_model_os'''
+sys.path.insert(0, '/usr/wiss/seidensc/Documents/mot_neural_solver')
+from get_detector import get_detection_model
+'''
 from torchreid import models
-import torchreid
+import torchreid'''
 
 
 logger = logging.getLogger('AllReIDTracker.Manager')
@@ -48,6 +60,7 @@ class Manager():
         self.num_classes = 10
         self.loaders = self._get_loaders(dataset_cfg)
         self._get_models()
+        
 
         if 'train' in self.loaders.keys():
             self.num_classes = self.loaders['train'].dataset.id
@@ -137,6 +150,8 @@ class Manager():
             self.tracker.track(seq[0])
             names.append(seq[0].name)
 
+        #self.tracker.experiment = 'TMOH' # "center_track"
+
         # get tracking results
         if self.dataset_cfg['splits'] != 'mot17_test':
             # evlauate only with gt files corresponding to detection files
@@ -170,14 +185,16 @@ class Manager():
                                 self.gnn, self.graph_gen, 
                                 self.proxy_gen, dev=self.device,
                                 net_type=self.net_type,
-                                test=test, sr_gan=self.sr_gan)
+                                test=test, sr_gan=self.sr_gan,
+                                output=self.reid_net_cfg['output'])
             self.tracker.num_el_id = self.reid_net_cfg['dl_params']['num_elements_class']
         else:
             self.gnn, self.graph_gen = None, None
             self.tracker = tracker(self.tracker_cfg, self.encoder, 
                                 proxy_gen=self.proxy_gen, dev=self.device, 
                                 net_type=self.net_type,
-                                test=test, sr_gan=self.sr_gan)
+                                test=test, sr_gan=self.sr_gan,
+                                output=self.reid_net_cfg['output'])
 
     def _get_proxy_gen(self):
         # currently no proxy gen implemented
@@ -200,17 +217,52 @@ class Manager():
             self.encoder = encoder.to(self.device)
             self.sz_embed = None
 
+        elif self.net_type == 'abd':
+            encoder = get_model_abd()
+            self.encoder = encoder.to(self.device)
+            self.sz_embed = None
+
+        elif self.net_type == 'transreid':
+            encoder = load_trans_reid()
+            self.encoder = encoder.to(self.device)
+            self.sz_embed = None
+
+        elif self.net_type == 'lmbn':
+            encoder = load_lightweight_mbn()
+            self.encoder = encoder.to(self.device)
+            self.sz_embed = None
+
+        elif self.net_type == 'os':
+            encoder = get_model_os()
+            self.encoder = encoder.to(self.device)
+            self.sz_embed = None
+
         elif self.net_type == 'bot':
             # get pretraine bag of tricks network
             encoder = get_bot()
             self.encoder = encoder.to(self.device)
             self.sz_embed = None
+        
+        elif self.net_type == 'det_bb':
+            encoder = get_detection_model()
+            self.encoder = encoder.to(self.device)
+            self.sz_embed = None
 
         elif self.net_type == 'resnet50_analysis':
             # get pretrained resnet 50 from torchreid
-            encoder = models.build_model(name='resnet50', num_classes=1000)
+            encoder = torchreid.models.build_model(name='resnet50', num_classes=1000)
             torchreid.utils.load_pretrained_weights(encoder, 'resnet50_market_xent.pth.tar') 
             self.sz_embed = None
+        
+        elif self.net_type == 'resnet50_attention':
+            import copy
+            params = copy.deepcopy(self.reid_net_cfg['encoder_params'])
+            params['net_type'] = 'resnet50'
+            encoder, self.sz_embed = ReID.net.load_net(
+                self.reid_net_cfg['trained_on']['name'],
+                self.num_classes, 'test',
+                attention=True,
+                **params)
 
         else:
             # own trained network
@@ -224,8 +276,26 @@ class Manager():
     
     def _get_gnn(self):
         # currently no GNN implemented
-        self.reid_net_cfg['gnn_params']['classifier']['num_classes'] = self.num_classes
+        # self.reid_net_cfg['gnn_params']['classifier']['num_classes'] = self.num_classes
         self.gnn = None
+        in_channels = self.sz_embed[0]
+
+        self.query_guided_attention = ReID.net.Query_Guided_Attention_Layer(in_channels, \
+            gnn_params=self.model_params['gnn_params']['gnn'],
+            num_classes=self.config['dataset']['num_classes'],
+            non_agg=True, class_non_agg=True,
+            neck=self.model_params['gnn_params']['classifier']['neck']).cuda(self.device)
+
+        if self.reid_net_cfg['gnn_params']['pretrained_path'] != "no":
+            load_dict = torch.load(
+                self.reid_net_cfg['gnn_params']['pretrained_path'],
+                map_location='cpu')
+            load_dict = {k: v for k, v in load_dict.items() if 'fc' not in k.split('.')}
+
+            model_dict = self.gnn.state_dict()
+            model_dict.update(load_dict)
+            self.query_guided_attention.load_state_dict(model_dict)
+
     
     def _get_loaders(self, dataset_cfg):
         # Initialize datasets
@@ -253,7 +323,7 @@ class Manager():
         config = {'lr': 10 ** random.uniform(-5, -3),
                   'weight_decay': 10 ** random.uniform(-15, -6),
                   'temperatur': random.random(),
-                  'epochs': 5}
+                  'epochs': 10}
         self.reid_net_cfg['train_params'].update(config)
         
         if self.reid_net_cfg['gnn_params']['pretrained_path'] == 'no':
@@ -301,7 +371,7 @@ class Manager():
         # initialize losses
         self._get_loss_fns()
 
-    def _get_loss_fns(self, ce=True, trip=False, mult_pos_contr=False):
+    def _get_loss_fns(self, ce=True, trip=False, mult_pos_contr=False, person_loss=False):
         if ce:
             self.loss1 = ReID.utils.losses.CrossEntropyLabelSmooth(
                             num_classes=self.num_classes, dev=self.device).to(self.device) 
@@ -310,6 +380,9 @@ class Manager():
         
         if mult_pos_contr:
             self.loss3 = ReID.utils.losses.MultiPositiveContrastive() # inputs, targets --> loss        
+        
+        if person_loss:
+            self.loss4 = torch.nn.BCELoss()
     
     def _check_best(self, mota_overall, idf1_overall):
         # check if current mota better than previous

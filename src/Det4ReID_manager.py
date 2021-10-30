@@ -69,7 +69,7 @@ class ManagerDet4ReID(Manager):
 
             if mode == 'train': # get train loader
                 dataset = Det4ReIDDataset(dataset_cfg['splits'], seqs, dataset_cfg, \
-                    self.tracker_cfg, dir, 'train', augment=False, train=True)
+                    self.tracker_cfg, dir, 'train', augment=True, train=True)
                 self.num_classes = dataset.num_classes()
                 bs = self.reid_net_cfg['dl_params']['batch_size']
 
@@ -97,7 +97,7 @@ class ManagerDet4ReID(Manager):
                     dataloader = list()
                     for seq in seqs:
                         dataset = Det4ReIDDataset(dataset_cfg['splits'], [seq], dataset_cfg, \
-                            self.tracker_cfg, dir, datastorage, augment=False)
+                            self.tracker_cfg, dir, datastorage)
                         bs = self.reid_net_cfg['dl_params']['batch_size']
 
                         _dataloader = DataLoader(
@@ -132,6 +132,7 @@ class ManagerDet4ReID(Manager):
         # every box refers to if features for every porposal should be computed on every level
         trip = True if 'trip' in self.reid_net_cfg['every_box'] else False
         mult_pos_contr = True if 'mult_pos_contr' in self.reid_net_cfg['every_box'] else False
+        person_loss = True if 'person_loss' in self.reid_net_cfg['every_box'] else False
         self.every_box = trip | mult_pos_contr
 
         self._get_loss_fns(ce=True, trip=trip, mult_pos_contr=mult_pos_contr)
@@ -141,17 +142,21 @@ class ManagerDet4ReID(Manager):
             
         if mult_pos_contr:
             self.encoder.roi_heads.embedding_loss_mult = self.loss3
+        
+        if person_loss:
+            self.encoder.roi_heads.person_loss = self.loss4
 
     def train(self):
         # set loss function inside of model
-        self.set_loss_fns()
         for i in range(self.num_iters):
+            self._get_models()
+            self.set_loss_fns()
             if self.num_iters > 1:    
                 logger.info("Search iteration {}/{}".format(i, self.num_iters))
 
             # set up training
             if self.write:
-                self.writer = SummaryWriter('runs/' + self.dataset_cfg['splits'] + "_hyper_search_gt_along_no_aug" + str(i))
+                self.writer = SummaryWriter('runs/' + self.dataset_cfg['splits'] + "_hyper_search_gt_along_aug2" + str(i))
             self._setup_training()
             best_rank_iter, best_mAP_iter = 0, 0
             for e in range(self.reid_net_cfg['train_params']['epochs']):

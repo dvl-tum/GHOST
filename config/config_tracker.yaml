@@ -1,9 +1,9 @@
 dataset:
   mot_dir: "/storage/slurm/seidensc/datasets/MOT/MOT17" # mot17_test_FRCNN
   det_dir: "/storage/slurm/seidensc/datasets/MOT/MOT17Labels"
-  det_file: "tracktor_prepr_det.txt"
-  detector: "all" #"FRCNN"
-  splits: "mot17_train_test" #"mot17_split_1_test" #
+  det_file:  "tmoh.txt" #"tracktor_prepr_det.txt" #"tmoh.txt" #"center_track.txt" 
+  detector: "FRCNN"
+  splits: "debug_train" #"mot17_train_test" #"mot17_split_1_test" #
   gt_assign_min_iou: 0.5
   prepro_again: 0
   gt_training_min_vis: 0
@@ -11,9 +11,10 @@ dataset:
   save_oracle: 0
 
 reid_net:
-  mode: 'test' #'hyper_search'
-  gnn: 0
+  mode: 'hyper_search'
+  gnn: 1
   save_folder_nets: 'nets'
+  output: 'plain'
   trained_on:
     name: 'Market'
     num_classes: 2820 #751
@@ -27,9 +28,19 @@ reid_net:
     lr: 0.2
     weight_decay: 0.2 
   encoder_params:
-    pretrained_path: "ReID/models/0.8634204275534442resnet50_Market.pth"
-    net_type: "resnet50" #"resnet50_attention" #"resnet50" #"query_guided" "resnet_attention"
-    neck: 0
+    pretrained_path: 'ReID/models/0.8966745843230404neck_resnet50_Market.pth' 
+    #ReID + triplet + neck + dist 'ReID/models/0.7779097387173397neck_resnet50_Market.pth' 
+    #ReID + triplet + dist 'ReID/models/0.7586104513064132resnet50_Market.pth' 
+    #ReID + neck + dist 'ReID/models/0.8966745843230404neck_resnet50_Market.pth' 
+    #ResNet plain + dist:'ReID/models/0.8105700712589073resnet50_Market.pth'
+    #ResNet neck: 'ReID/models/0.879750593824228neck_resnet50_Market.pth'
+    #ResNet plain: "ReID/models/0.8634204275534442resnet50_Market.pth"
+    #ResNet + neck + spatial attention (train): "ReID/models/0.9046912114014252neck_resnet50_Market.pth"
+    #ResNet + neck + spatial attention: "ReID/models/0.9011282660332541neck_resnet50_Market.pth"
+    #ResNet + neck + spatial attention (batchwise): "ReID/models/0.9046912114014252neck_resnet50_Market.pth"
+    net_type: "resnet_attention" #"resnet50" #"det_bb" #"batch_drop_block" #"query_guided" "resnet_attention"
+    add_distractors: 1
+    neck: 1
     red: 1
     last_stride: 0
     final_drop: 0 #0.5
@@ -43,10 +54,11 @@ reid_net:
     thresh: 0
     set_negative: "hard"
   gnn_params:
-    pretrained_path: "/storage/slurm/seidensc/gnn_based_reid/search_results_net/0.4006276150627615gnn_resnet50_attention_prw.pth" #"/storage/slurm/seidensc/gnn_based_reid/search_results_net/0.9443135911322468gnn_resnet50_attention_Market.pth" #"../gnn_based_reid/storage/search_results_net/0.91270783847981gnn_resnet50_attention_Market.pth" #"../gnn_based_reid/storage/search_results_net/all_experiemnts/0.9288501372898502gnn_resnet50_Market.pth" #"../gnn_based_reid/storage/search_results_net/0.14578384798099764gnn_resnet50_attention_Market.pth" #"../gnn_based_reid/storage/search_results_net/market_experiments/0.9364608076009501gnn_resnet50FPN_Market.pth" #'../gnn_based_reid/storage/search_results_net/gnn_prw.pth' #"weights/0.9233103714051737gnn_resnet50_Market.pth" #"../gnn_based_reid/storage/search_results_net/all_experiemnts/0.9474926537887182gnn_resnet50_Market.pth" #"../gnn_based_reid/storage/search_results_net/0.9339563562792041gnn_resnet50_Market.pth" #"weights/0.9233103714051737gnn_resnet50_Market.pth" #"../again_gnn_reid/gnn_based_reid/storage/search_results_net/market_experiments/0.9768408551068883resnet50_Market.pth" #"../again_gnn_reid/gnn_based_reid/storage/search_results_net/0.9219121140142518gnn_resnet50_Market.pth" 
+    pretrained_path: "ReID/models/0.9011282660332541gnn_neck_resnet50_Market.pth"
     use_edge_encoder: 0
     use_edge_model: 0
     use_node_encoder: 0
+    red_before: 1
     red: 1
     cat: 0
     every: 0
@@ -54,7 +66,7 @@ reid_net:
     gnn:
       num_layers: 1 #1 
       aggregator: "add"
-      num_heads: 8 #
+      num_heads: 4 #
       attention: "dot" #"dot_pygeo"
       mlp: 1
       dropout_mlp: 0.1
@@ -85,7 +97,10 @@ reid_net:
 
 tracker:
   pad_imgs: 0
+  assign_separately: 0
   mode: "eval" #"hyper_search" #"eval" 
+  random_patches_several_frames: 0
+  several_frames: 0
   random_patches: 0
   random_patches_first: 0
   running_mean_seq: 0
@@ -111,18 +126,24 @@ tracker:
   oracle_disappear: 0
   oracle_appear: 0
   interpolate: 0
-  act_reid_thresh: 0.5 #0.7 #0.2 #0.05 #0.45 #0.45 #0.35 #0.65 #0.55 #0.65 #0.7 #0.45
-  inact_reid_thresh:  0.4 #0.45 #0.35 #0.125 #0.901 #0.04 #0.35 #0.35 #0.35 #0.5 #0.5 #0.5 #0.5 #0.35
+  #Torchreid: 0.6814211405013855, 0.14258016074055002, 90, mode
+  #ResNet: 0.40925543677573695, 0.31084457476623506, 27, median
+  #ResNet Neck: 0.18498964692794959, 0.05, 83, mode
+  #ResNet Dist Neck: 0.098, 0.074, 62, mode
+  #Detection Backbone: 0.3006055694824037, 0.3322236235805963, 77, mode
+  #ResNet + GNN (not batchwise rank): 0.5651008171629721, 0.5035112091729865, 59, median
+  act_reid_thresh: 0.098 #1.9 #0.5 #0.9784526763106252 #0.632431273844204 #0.7 #0.2 #0.05 #0.45 #0.45 #0.35 #0.65 #0.55 #0.65 #0.7 #0.45
+  inact_reid_thresh:  0.074 #3322236235805963 #1.7 #0.25 #0.41154iv6056504569 #0.45 #0.35 #0.125 #0.901 #0.04 #0.35 #0.35 #0.35 #0.5 #0.5 #0.5 #0.5 #0.35
   inact_thresh: 100000
   output_dir: 'out'
   avg_act:
-    do: 1
+    do: 0
     num: 0.9 #'uniform_2' #60 #10 #4 #20 #'all'
     proxy: 'mv_avg' #'frames_gnn' #'frames_gnn' #'frames_gnn' #'mode'
   avg_inact: 
     do: 1
-    num: 0.9 #'uniform_2' #'mean' #'uniform_4' #10 #4 #20 #'all'
-    proxy: 'mv_avg' #'frames_gnn' #'60' #'frames_gnn' #'frames_gnn' #'mode'
+    num: 62 #'uniform_2' #'mean' #'uniform_4' #10 #4 #20 #'all'
+    proxy: 'mode' #'frames_gnn' #'60' #'frames_gnn' #'frames_gnn' #'mode'
   init_tracktor: 
     do: 0
   h_w_thresh: 10000

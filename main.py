@@ -4,9 +4,21 @@ import torch
 import logging
 import warnings
 import time
-#from src.manager import Manager
+from src.manager import Manager
 from src.reid_manager import ManagerReID
 from src.Det4ReID_manager import ManagerDet4ReID
+
+'''import sys
+import traceback
+
+class TracePrints(object):
+  def __init__(self):    
+    self.stdout = sys.stdout
+  def write(self, s):
+    self.stdout.write("Writing %r\n" % s)
+    traceback.print_stack(file=self.stdout)
+
+sys.stdout = TracePrints()'''
 
 logger = logging.getLogger('AllReIDTracker')
 logger.setLevel(logging.INFO)
@@ -25,9 +37,9 @@ warnings.filterwarnings("ignore")
 def init_args():
     parser = argparse.ArgumentParser(description='AllReID tracker')
     parser.add_argument('--config_path', type=str,
-                        #default='config/config_tracker.yaml',
+                        default='config/config_tracker.yaml',
                         #default='config/config_reid.yaml',
-                        default='config/config_Det4ReID.yaml',
+                        #default='config/config_Det4ReID.yaml',
                         #default='config/config_proxy.yaml',
                         help='Path to config file')
 
@@ -37,6 +49,8 @@ def init_args():
 def main(args):
     with open(args.config_path, 'r') as f:
         config = yaml.load(f, Loader=yaml.FullLoader)
+    import random
+    #random.seed(1)
 
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     logger.info('Switching to device {}'.format(device))
@@ -50,11 +64,13 @@ def main(args):
         for i in range(num_iter):
             if config['tracker']['mode'] == 'hyper_search':
                 # act_reid_thresh, inact_reid_thresh, avg_inact: num, proxy
-                import random
-                config['tracker']['act_reid_thresh'] = random.uniform(0.3, 1)
-                config['tracker']['inact_reid_thresh'] = random.uniform(0.3, 1)
-                config['tracker']['avg_inact']['num'] = random.randint(2, 100)
-                config['tracker']['avg_inact']['proxy'] = random.choice(['mean', 'mode', 'median'])
+                
+                config['tracker']['act_reid_thresh'] = random.uniform(0.1, 0.8) #0.088, 0.108
+                config['tracker']['inact_reid_thresh'] = random.uniform(0.1, config['tracker']['act_reid_thresh']) #0.064, 0.084
+                config['tracker']['avg_inact']['num'] = random.randint(50, 100)
+                config['tracker']['avg_inact']['proxy'] = random.choice(['mode', 'mean', 'median']) #'mean', 'median'
+                config['tracker']['avg_act']['num'] = random.randint(50, 100)
+                config['tracker']['avg_act']['proxy'] = random.choice(['mode', 'mean', 'median']) #'mean', 'median'
             logger.info('Iteration {}'.format(i+1))
             logger.info(config)
             manager = Manager(device, time.time(), config['dataset'],

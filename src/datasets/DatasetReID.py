@@ -72,7 +72,9 @@ class ReIDDataset(MOTDataset):
                 dets_unclipped = pd.read_pickle(self.preprocessed_paths[seq][:-4] + '_unclipped.pkl')
 
             dets['gt_id'] = copy.deepcopy(dets['id'].values)
-
+            print(dets, seq)
+            print(dets[(dets['frame'] == 10)])
+            quit()
             for i, row in dets.iterrows():
                 if row['id'] not in seq_ids.keys():
                     seq_ids[row['id']] = self.id
