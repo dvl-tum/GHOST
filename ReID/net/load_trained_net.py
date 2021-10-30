@@ -1,13 +1,8 @@
 import torch
 import os
 #import net
-from .embed import embed
-from .inception_bn import bn_inception, Inception_embed#, bn_inception_augmented
 from .resnet import resnet18, resnet34, resnet50, resnet101, resnet152
 from .resnet_fpn import ResNetFPN
-from .resnet_attention import resnet50 as resnet50_attention
-from .densenet import densenet121, densenet161, densenet169, densenet201
-from .faster_rcnn import fasterrcnn_resnet50_fpn, FastRCNNPredictor
 from .gnn_base import GNNReID
 from .graph_generator import GraphGenerator
 import torch.nn as nn

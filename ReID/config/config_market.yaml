@@ -1,4 +1,4 @@
-mode: "train" #_spatialatt_batchwise_queryguided" #train/test/hyper_search/pretraining
+mode: "train" #"train_spatialattention_queryguided" #train/test/hyper_search/pretraining #train_spatialatt_batchwise_queryguided     #queryguided == evaluation in qg setting
 application: "reid"
 
 models:
@@ -87,7 +87,7 @@ train_params:
   output_train_enc: "norm"
   output_train_gnn: "plain"
   loss_fn:
-    fns: "lsce_lsspatialattention_multposcont" #"lsce_bceattention_tripletattention_lsmultiattention" #ce/focalce can be used instead of lsce and lsgnn/focalgnn instead of gnn, rest can be added by ce_gnn_center...
+    fns: "lsce" #"lsce_bceattention_tripletattention_lsmultiattention" #ce/focalce can be used instead of lsce and lsgnn/focalgnn instead of gnn, rest can be added by ce_gnn_center...
     scaling_ce: 1
     scaling_multiattention: 1
     scaling_bce: 1

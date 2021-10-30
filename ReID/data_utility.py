@@ -2,7 +2,8 @@ import random
 import dataset
 import torch
 from collections import defaultdict
-from combine_sampler import BatchSizeSampler, CombineSampler, KReciprocalSampler, KNNSampler, QueryGuidedSampler
+from combine_sampler import BatchSizeSampler, CombineSampler, QueryGuidedSampler
+from dataset.MOTdata import get_sequence_class
 import numpy as np
 import os
 import matplotlib.pyplot as plt
@@ -21,23 +22,34 @@ def create_loaders(data_root, num_workers, num_classes_iter=None,
               'nci': num_classes_iter, 'nec': num_elements_class,
               'trans': trans, 'ds': distance_sampler, 'mode': mode}
 
-    labels, paths = dataset.load_data(root=data_root, mode=mode, val=val,
-                                          seed=seed, add_distractors=add_distractors)
-    labels, paths = labels[0], paths[0]
-    
-    print(mode)
-    data, data_root = get_validation_images(mode, labels, paths, data_root)
-    query, gallery = data[2], data[3]
+    if data_root != 'MOT17':
+        # get dataset
+        labels, paths = dataset.load_data(root=data_root, mode=mode, val=val,
+                                            seed=seed, add_distractors=add_distractors)
+
+        # get validation images
+        labels, paths = labels[0], paths[0]
+        data, data_root = get_validation_images(mode, labels, paths, data_root)
+        query, gallery = data[2], data[3]
+    else:
+        labels = paths = data = query = None
 
     dl_tr = get_train_dataloader(config, labels, paths, data_root, rand_scales)
     dl_ev, dl_ev_gnn = get_val_dataloader(config, data, data_root, rand_scales=False)
 
+    if query is None:
+        query = dl_ev.dataset.query_paths
+        gallery = dl_ev.dataset.gallery_paths
+
     return dl_tr, dl_ev, query, gallery, dl_ev_gnn
 
 
-def get_train_dataloader(config, labels, paths, data_root, rand_scales):
+def get_train_dataloader(config, labels, paths, data_root, rand_scales, split='split_3'):
     # get dataset
-    if config['mode'] != 'all':
+    if data_root == 'MOT17':
+        Dataset = get_sequence_class(split=split)
+        Dataset = Dataset(mode='train')
+    elif config['mode'] != 'all':
         Dataset = dataset.Birds(root=data_root,
                                 labels=labels['bounding_box_train'],
                                 paths=paths['bounding_box_train'],
@@ -87,11 +99,16 @@ def get_train_dataloader(config, labels, paths, data_root, rand_scales):
     return dl_tr
 
 
-def get_val_dataloader(config, data, data_root, rand_scales=False):
-    labels_ev, paths_ev, query, gallery = data
+def get_val_dataloader(config, data, data_root, rand_scales=False, split='split_3'):
+    if data is not None:
+        labels_ev, paths_ev, query, gallery = data
 
     # get dataset
-    if config['mode'] != 'all':
+    if data_root == 'MOT17':
+        dataset_ev = get_sequence_class(split=split)
+        dataset_ev = dataset_ev(mode='test')
+
+    elif config['mode'] != 'all':
         dataset_ev = dataset.Birds(
             root=data_root,
             labels=labels_ev,
@@ -143,7 +160,6 @@ def get_val_dataloader(config, data, data_root, rand_scales=False):
                 shuffle=False,
                 sampler=sampler,
                 num_workers=1,
-                drop_last=True,
                 pin_memory=True)
             dl_ev = torch.utils.data.DataLoader(
                 copy.deepcopy(dataset_ev),
@@ -158,7 +174,8 @@ def get_val_dataloader(config, data, data_root, rand_scales=False):
             batch_size=50,
             shuffle=False,
             num_workers=1,
-            pin_memory=True
+            pin_memory=True,
+            drop_last=False
         )
 
         dl_ev_gnn = None

@@ -1,6 +1,8 @@
 import os.path as osp
 import logging
 import random
+
+from numpy.core.fromnumeric import argmax
 import net
 import dataset
 from RAdam import RAdam
@@ -22,6 +24,7 @@ import os
 import json
 from torch import autograd
 import numpy as np
+from evaluation.utils import visualize_att_map
 from torch.utils.tensorboard import SummaryWriter
 autograd.set_detect_anomaly(True)
 
@@ -39,8 +42,11 @@ class Trainer():
         self.config = config
         if 'attention' in self.config['train_params']['loss_fn']['fns']:
             self.config['models']['attention'] = 1
+            self.attention = 1
         else:
             self.config['models']['attention'] = 0
+            self.attention = 0
+
         self.device = device
         self.save_folder_results = save_folder_results
         self.save_folder_nets = save_folder_nets
@@ -54,6 +60,7 @@ class Trainer():
         self.best_hypers = None
         self.num_iter = 30 if 'hyper' in config['mode'].split('_') else 1
         self.write = write
+        logger.info("Writing and saving weights {}".format(write))
 
     def make_det(self, seed=1):
         logger.info("Using seed {}".format(seed))
@@ -74,7 +81,10 @@ class Trainer():
         self.model_params = self.config['models']
 
         if self.write:
-            self.writer = SummaryWriter('runs/' + "lsce1.0_small_eval") # + str(i))
+            path = 'runs/' + "lsce1.0_RedTwiceFinalTraining_split-3"
+            self.writer = SummaryWriter(path) # + str(i))
+            logger.info("Writing to {}.".format(path))
+
         self.make_det(random.randint(0, 100))
         logger.info('Search iteration {}'.format(i + 1))
         mode = self.get_save_name()
@@ -151,7 +161,7 @@ class Trainer():
             logger.info('Best Rank-1: {}'.format(best_rank_iter))
 
             # save best model of iterations
-            if best_rank_iter > best_rank:
+            if best_rank_iter > best_rank and self.write:
                 os.rename(osp.join(self.save_folder_nets, self.fn + '.pth'),
                           str(best_rank_iter) + mode + self.net_type + '_' +
                           self.dataset_short + '.pth')
@@ -179,6 +189,9 @@ class Trainer():
         best_rank_iter = 0
         scores = list()
 
+        best_rank_iter = self.evaluate(eval_params, scores, 0,
+                                best_rank_iter)
+
         for e in range(1, train_params['num_epochs'] + 1):
  
             if 'test' in self.config['mode'].split('_'):
@@ -204,6 +217,9 @@ class Trainer():
                         loss.backward()
 
                     self.opt.step()
+                
+                best_rank_iter = self.evaluate(eval_params, scores, e,
+                                best_rank_iter)
 
             self.log()
             # compute ranks and mAP at the end of each epoch
@@ -229,11 +245,18 @@ class Trainer():
             else:
                 probs, fc7 = self.encoder(x.cuda(self.device),
                                 output_option=train_params['output_train_enc'])
-            
+        
+        self.losses['Classification Accuracy'].append((torch.argmax(\
+            probs, dim=1)==Y).float().mean())
+ 
+
         # query guided attention output
         if self.model_params['attention'] and not self.gnn:
-            _, _, _, qs, gs, attended_feats, fc_x = \
+            _, _, _, qs, gs, attended_feats, fc_x, att_maps = \
                 self.query_guided_attention(attention_features)
+        
+        '''if e == 3:
+            visualize_att_map(attended_feats, P, 'visualization_attention_maps_train_' + str(e))'''
 
         # Compute CE Loss
         loss = 0
@@ -248,6 +271,7 @@ class Trainer():
                 loss0 = self.ce(p/self.train_params['temperatur'], _Y)
                 loss += train_params['loss_fn']['scaling_ce'] * loss0
                 self.losses['Cross Entropy ' + str(i)].append(loss0.item())
+
         
         if self.bce_distractor:
             # -2 again is distractor label
@@ -280,6 +304,9 @@ class Trainer():
             scale = train_params['loss_fn']['scaling_multiattention']
             loss += scale * multattloss
             self.losses['CE Loss Atttention ' + str(i)].append(scale * multattloss.item())
+
+            self.losses['Classification Accuracy after QG'].append((torch.argmax(\
+            fc_x[mask], dim=1)==Y[gs][mask]).float().mean())
         
         # Compute MultiPositiveContrastive
         if self.multposcont:
@@ -324,23 +351,22 @@ class Trainer():
                     enumerate(loss1)]
 
 
-            # Compute Triplet Loss
-            if self.triplet:
-                _fc7 = fc7[Y!=-2]
-                _Y = Y[Y!=-2]
-                triploss, _ = self.triplet(_fc7, _Y)
-                loss += train_params['loss_fn']['scaling_triplet'] * triploss
-                self.losses['Triplet'].append(triploss.item())
+        # Compute Triplet Loss
+        if self.triplet:
+            _fc7 = fc7[Y!=-2]
+            _Y = Y[Y!=-2]
+            triploss, _ = self.triplet(_fc7, _Y)
+            loss += train_params['loss_fn']['scaling_triplet'] * triploss
+            self.losses['Triplet'].append(triploss.item())
 
         if self.write:
-            logger.info("Write losses")
             for k, v in self.losses.items():
                 self.writer.add_scalar('Loss/train/' + k, v[-1], e)
-
+            
         return loss
 
-    def evaluate(self, eval_params, scores, e, best_rank_iter):
-        if not self.config['mode'] == 'pretraining':
+    def evaluate(self, eval_params, scores=None, e=None, best_rank_iter=None, mode='val'):
+        if mode == 'val':
             with torch.no_grad():
                 logger.info('EVALUATION')
                 if self.config['mode'] in ['train', 'test', 'hyper_search']:
@@ -350,13 +376,16 @@ class Trainer():
                                                        gallery=self.gallery,
                                                        add_dist= 
                                                        self.config['dataset'][
-                                                            'add_distractors'])
+                                                            'add_distractors'],
+                                                       attention=self.attention
+                                                       )
                 elif self.gnn is not None:
                     mAP, top = self.evaluator.evaluate(self.encoder,
                                                        self.dl_ev,
                                                        self.query,
                                                        self.gallery, self.gnn,
-                                                       self.graph_generator
+                                                       self.graph_generator,
+                                                       attention=self.attention
                                                        )
                 else: #'spatialattention' in self.train_params['loss_fn']['fns']
                     mAP, top = self.evaluator.evaluate(self.encoder,
@@ -365,9 +394,9 @@ class Trainer():
                                                        self.gallery, 
                                                        self.query_guided_attention,
                                                        query_guided=True,
-                                                       knn='knn' in self.config['mode'].split('_'),
                                                        queryguided = 'queryguided' in self.config['mode'].split('_'),
-                                                       dl_ev_gnn=self.dl_ev_gnn
+                                                       dl_ev_gnn=self.dl_ev_gnn,
+                                                       attention=self.attention
                                                        )
 
                 logger.info('Mean AP: {:4.1%}'.format(mAP))
@@ -377,10 +406,7 @@ class Trainer():
                 for k in (1, 5, 10):
                     logger.info('  top-{:<4}{:12.1%}'.format(k, top['Market'][k - 1]))
 
-                if self.dataset_short in ['cuhk03-np', 'dukemtmc']:
-                    setting = 'Market'
-                else:
-                    setting = self.dataset_short
+                setting = 'Market'
 
                 if self.write:
                     logger.info("write evaluation")
@@ -388,10 +414,12 @@ class Trainer():
                         self.writer.add_scalar('Accuracy/test/' + str(rank), t, e)
 
                 scores.append((mAP, [top[setting][k - 1] for k in [1, 5, 10]]))
-                rank = top[setting][0]
+                #rank = top[setting][0]
 
+                rank = e
+                
                 self.encoder.current_epoch = e
-                if rank > best_rank_iter:
+                if rank > best_rank_iter and self.write:
                     best_rank_iter = rank
                     torch.save(self.encoder.state_dict(),
                                osp.join(self.save_folder_nets,
@@ -420,26 +448,6 @@ class Trainer():
                                     self.fn + '.pth'))
 
         return best_rank_iter
-
-    def check_sampling_strategy(self, e):
-        # Different Distance Sampling Strategies
-        if self.distance_sampling != 'no':
-            if e > 1:
-                self.dl_tr = self.dl_tr2
-                self.dl_ev = self.dl_ev2
-                self.gallery = self.gallery2
-                self.query = self.query2
-                self.dl_ev_gnn = self.dl_ev_gnn2
-            elif e == 1:
-                self.dl_tr = self.dl_tr1
-                self.dl_ev = self.dl_ev1
-                self.gallery = self.gallery1
-                self.query = self.query1
-                self.dl_ev_gnn = self.dl_ev_gnn1
-
-            # set feature dict of sampler = feat dict of previous epoch
-            self.dl_tr.sampler.feature_dict = self.feature_dict
-            self.dl_tr.sampler.epoch = e
 
 
     def get_loss_fn(self, params, num_classes, add_distractors=False):
@@ -609,6 +617,9 @@ class Trainer():
 
     def get_gnn(self, sz_embed):
         # pretrined gnn path
+        self.query_guided_attention = None
+        self.gnn = None
+
         path = self.model_params['gnn_params']['pretrained_path']
         if 'gnnspatialattention' in self.train_params['loss_fn']['fns']:
             if self.net_type == 'resnet50FPN':
@@ -656,7 +667,8 @@ class Trainer():
             self.query_guided_attention = net.Query_Guided_Attention_Layer(in_channels, \
                 gnn_params=self.model_params['gnn_params']['gnn'],
                 num_classes=self.config['dataset']['num_classes'],
-                non_agg=True, class_non_agg=True).cuda(self.gnn_dev)
+                non_agg=True, class_non_agg=True, 
+                neck=self.model_params['gnn_params']['classifier']['neck']).cuda(self.gnn_dev)
 
             if path != "no":
                 load_dict = torch.load(path, map_location='cpu')
@@ -664,43 +676,50 @@ class Trainer():
 
             params = list(set(self.encoder.parameters())) + \
                 list(set(self.query_guided_attention.parameters()))
-            self.gnn = None
 
         else:
             params = list(set(self.encoder.parameters()))
-            self.gnn = None
 
         return params
 
     def milestones(self, e, train_params, logger):
         if e == 31:
             logger.info("reduce learning rate")
-            self.encoder.load_state_dict(torch.load(
-                osp.join(self.save_folder_nets, self.fn + '.pth')))
-            if self.gnn is not None:
-                self.gnn.load_state_dict(
-                    torch.load(osp.join(self.save_folder_nets,
-                                        'gnn_' + self.fn + '.pth')))
-            elif self.query_guided_attention is not None:
-                self.query_guided_attention.load_state_dict(
-                    torch.load(osp.join(self.save_folder_nets,
-                                        'gnn_' + self.fn + '.pth')))
+            if self.write:
+                self.encoder.load_state_dict(torch.load(
+                    osp.join(self.save_folder_nets, self.fn + '.pth')))
+
+                if self.gnn is not None:
+                    self.gnn.load_state_dict(
+                        torch.load(osp.join(self.save_folder_nets,
+                                            'gnn_' + self.fn + '.pth')))
+                elif self.query_guided_attention is not None:
+                    self.query_guided_attention.load_state_dict(
+                        torch.load(osp.join(self.save_folder_nets,
+                                            'gnn_' + self.fn + '.pth')))
+            else:
+                logger.info("not loading weights as self.write = False")
+
             for g in self.opt.param_groups:
                 g['lr'] = train_params['lr'] / 10.
 
         if e == 51:
             logger.info("reduce learning rate")
-            if self.gnn is not None:
-                self.gnn.load_state_dict(
-                    torch.load(osp.join(self.save_folder_nets,
-                                        'gnn_' + self.fn + '.pth')))
-            elif self.query_guided_attention is not None:
-                self.query_guided_attention.load_state_dict(
-                    torch.load(osp.join(self.save_folder_nets,
-                                        'gnn_' + self.fn + '.pth')))
+            if self.write:
+                self.encoder.load_state_dict(torch.load(
+                    osp.join(self.save_folder_nets, self.fn + '.pth')))
 
-            self.encoder.load_state_dict(torch.load(
-                osp.join(self.save_folder_nets, self.fn + '.pth')))
+                if self.gnn is not None:
+                    self.gnn.load_state_dict(
+                        torch.load(osp.join(self.save_folder_nets,
+                                            'gnn_' + self.fn + '.pth')))
+                elif self.query_guided_attention is not None:
+                    self.query_guided_attention.load_state_dict(
+                        torch.load(osp.join(self.save_folder_nets,
+                                            'gnn_' + self.fn + '.pth')))
+            else:
+                logger.info("not loading weights as self.write = False")
+
             for g in self.opt.param_groups:
                 g['lr'] = train_params['lr'] / 100.
 

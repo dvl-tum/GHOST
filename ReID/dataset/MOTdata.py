@@ -16,11 +16,24 @@ import tqdm
 import pandas as pd
 import numpy as np
 import json
+import math
+import random
+
+#from utils import eval_metrics
+
+from . import utils
+import PIL.Image
+
 
 def read_json(path):
     with open(path) as json_file:
         data = json.load(json_file)
     return data
+
+def pil_loader(path):
+    with open(path, 'rb') as f:
+        img = PIL.Image.open(f)
+        return img.convert('RGB')
 
 def anns2df(anns, img_dir):
     # Build DF from anns
@@ -86,10 +99,15 @@ def relabel_ids(df):
 
     return df
 
+split_dict = {'split_1': {'train': (2, 5, 9, 10, 13), 'test': (4, 11)},
+              'split_2': {'train': (2, 4, 11, 10, 13), 'test': (5, 9)},
+              'split_3': {'train': (4, 5, 9, 11), 'test': (2, 10, 13)}}
+
 class MOTSeqDataset(ImageDataset):
     def __init__(self,ann_files, img_dir, min_vis=0.3, min_h=50, min_w=25, \
             min_samples=15, night_id=True, motcha=False, split='split_1', \
-            seq_names=None, **kwargs):
+            seq_names=None, mode='train', **kwargs):
+        np.random.seed(0)
 
         for i, (ann_file, seq_name) in enumerate(zip(ann_files, seq_names)):
             # Create a Pandas DataFrame out of json annotations file
@@ -112,34 +130,77 @@ class MOTSeqDataset(ImageDataset):
                 df_all = df
             else:
                 df_all = df_all.append(df)
-            
-        df_all = relabel_ids(df_all)
+
+        df = relabel_ids(df_all)
 
         # For testing, choose one apperance randomly for every track and put in the gallery
         to_tuple_list = lambda df: list(df[['path', 'reid_id', 'cam_id']].itertuples(\
             index=False, name=None))
         df['cam_id'] = 0
-        train = to_tuple_list(df)
 
-        df['index'] = df.index.values
-        np.random.seed(0)
-        query_per_id = df.groupby('reid_id')['index'].agg(lambda x: np.random.choice(list(x.unique())))
-        query_df = df.loc[query_per_id.values].copy()
-        gallery_df = df.drop(query_per_id).copy()
+        if split != '50-50':
+            test_seqs = ["MOT17-{:02d}".format(seq) for seq in split_dict[split]['test']]
+
+            train_df = df[~df['Sequence'].isin(test_seqs)]
+            test = df[df['Sequence'].isin(test_seqs)]
+    
+        else:
+            test_id = df.groupby('Sequence')['reid_id'].apply(lambda x: \
+                np.random.choice(x.unique(), size=math.ceil(x.unique().shape[0]*0.5)))
+            test_id = [i for ids in test_id.values for i in ids]
+            train_df = df[~df['reid_id'].isin(test_id)]
+            test = df[df['reid_id'].isin(test_id)]
+
+            '''print(train_df)
+            print(test)
+
+            import json
+            train_test_ids = {
+                'train': train_df['old_id_seq'].unique().tolist(),
+                'test': train_df['old_id_seq'].unique().tolist()
+            }
+            with open('50-50-split.json', 'w') as file:
+                json.dump(train_test_ids, file)
+
+            quit()'''
         
+        test['index'] = test.index.values
+        
+        query_per_id = test.groupby('reid_id')['index'].agg(lambda x: np.random.choice(list(x.unique())))
+        query_df = test.loc[query_per_id.values].copy()
+        gallery_df = test.drop(query_per_id).copy()
+
+        train = to_tuple_list(train_df)
         # IMPORTANT: For testing, torchreid only compares gallery and query images from different cam_ids
         # therefore we just assign them ids 0 and 1 respectively
         gallery_df['cam_id'] = 1
         
         query=to_tuple_list(query_df)
         gallery=to_tuple_list(gallery_df)
+        
+        if mode == 'test':
+            self.gallery_paths = gallery_df['path'].tolist()
+            self.query_paths = query_df['path'].tolist()
+
+            self.gallery_ys = gallery_df['reid_id'].tolist()
+            self.query_ys = query_df['reid_id'].tolist()
+
+            data = gallery + query
+            self.im_paths = self.gallery_paths + self.query_paths
+            self.ys = self.gallery_ys + self.query_ys
+        elif mode == 'train':
+            data = train
+            self.im_paths = train_df['path']
+            self.ys = train_df['reid_id']
 
         print("Done!")
         super(MOTSeqDataset, self).__init__(train, query, gallery, **kwargs)
-        
+        self.data = data
 
-def get_sequence_class(seq_names, split='split_1'):
-    
+def get_sequence_class(seq_names=None, split='split_1', eval_reid=False):
+    if seq_names == None:
+        seq_names = ["MOT17-02", "MOT17-04", "MOT17-05", "MOT17-09", "MOT17-10", "MOT17-11", "MOT17-13"]
+
     # raise RuntimeError("MODify this path to wherever you store json annotations and reid data!!")
     ann_files = [f'/storage/remote/atcremers82/mot_neural_solver/sanity_check_data/red_annotations/MOT17_{seq_name}.json' for seq_name in seq_names]
     img_dir = '/storage/remote/atcremers82/mot_neural_solver/sanity_check_data/reid'
@@ -151,7 +212,30 @@ def get_sequence_class(seq_names, split='split_1'):
         def __init__(self, **kwargs):
             super(MOTSpecificSeq, self).__init__(ann_files=ann_files, img_dir=img_dir, \
                 min_samples=min_samples, motcha=motcha, split=split, seq_names=seq_names, \
-                    **kwargs)
+                rand_scales=None, **kwargs)
+            print("Using split {}".format(split))
+            self.eval_reid = eval_reid
+            self.transform = utils.make_transform(is_train=not self.eval_reid)
+            self.no_imgs = None
+            self.distractor_idx = None
+            self.rand_scales = None
+        
+        def __getitem__(self, index):
+            # 'path', 'reid_id', 'cam_id'
+            img_path, pid, camid = self.data[index]
+            if self.no_imgs:
+                return pid, index, (img_path, camid)
+            im = pil_loader(img_path)
+            
+            if not self.eval_reid and self.rand_scales:
+                if random.randint(0, 1):
+                    r = random.randint(2, 4)
+                    #print(im.size)
+                    im = im.resize((int(im.size[0]/r), int(im.size[1]/r)))
+                    #print(r, im.size) 
+            im = self.transform(im)
+
+            return im, pid, index, (img_path, camid)
 
     MOTSpecificSeq.__name__=split
     
@@ -160,5 +244,5 @@ def get_sequence_class(seq_names, split='split_1'):
 
 
 if __name__ == '__main__':
-    dataset = get_sequence_class(["MOT17-02", "MOT17-04", "MOT17-05", "MOT17-09", "MOT17-10", "MOT17-11", "MOT17-13"])
+    dataset = get_sequence_class(split='50-50')
     dataset = dataset()

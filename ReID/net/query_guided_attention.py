@@ -5,6 +5,7 @@ from torch.nn import functional as F
 from time import time
 from torch_scatter import scatter_add
 from .utils import *
+import torch.nn.functional as F
 
 class _Query_Guided_Attention(nn.Module):
     def __init__(self, in_channels, inter_channels=None, norm='size', message='attention_map'): #'attention_map', 'masked_image', with_residual''
@@ -44,7 +45,6 @@ class _Query_Guided_Attention(nn.Module):
         '''
 
         batch_size = x_gallery.size(0)
-
         # reduce channel dimension
         theta_x = self.theta(x_gallery) # --> BS x C' x H x W
         phi_x = self.phi(x_query) # --> BS x C' x H x W
@@ -79,21 +79,92 @@ class _Query_Guided_Attention(nn.Module):
                 z = z + x_gallery
                 return z
 
+
+class Matrix_Self_Attention_Block(nn.Module):
+    def __init__(self, in_channels, inter_channels=None, nhead=1): #'attention_map', 'masked_image', with_residual''
+        super(Matrix_Self_Attention_Block, self).__init__()
+
+        self.in_channels = in_channels
+        self.inter_channels = inter_channels
+        if self.inter_channels is None:
+            self.inter_channels = in_channels
+
+        self.nhead = nhead
+        self.h_dim = int(self.inter_channels/self.nhead)
+
+        conv_nd = nn.Conv2d
+        
+        # same as first reshaping and then applying MLP to the channel dimension
+        self.q = conv_nd(in_channels=self.in_channels, out_channels=self.inter_channels,
+                             kernel_size=1, stride=1, padding=0)
+
+        self.k = conv_nd(in_channels=self.in_channels, out_channels=self.inter_channels,
+                           kernel_size=1, stride=1, padding=0)
+        
+        self.v = conv_nd(in_channels=self.in_channels, out_channels=self.in_channels,
+                           kernel_size=1, stride=1, padding=0)
+
+        self.out = conv_nd(in_channels=self.in_channels, out_channels=self.in_channels,
+                           kernel_size=1, stride=1, padding=0)
+
+        self.sm = nn.Softmax(dim=1)
+
+
+    def forward(self, x, x_g):
+        '''
+        :param x = new detections [x1, x1, x2, x2, x3, x3]
+        :param x_g = tracklets (guidance) [x_g1, xg_2, x_g1, xg_2, x_g1, xg_2]
+        :param attention = x: update feature map of x
+        :param attention = x_g: update feature map of guidance 
+        :return:
+        '''
+
+        batch_size, _, h, w = x.size()
+        # [Comparisons (BS), C, H, W] --> [Comparisons (BS), HW, IC] same as sequence input now
+        q = self.q(x_g).view(batch_size, -1, self.inter_channels) # BS X HW x IC
+        k = self.k(x).view(batch_size, -1, self.inter_channels) # BS X HW x IC
+        v = self.v(x).view(batch_size, -1, self.inter_channels) # BS X HW x InC
+
+        q = q.view(batch_size, -1, self.nhead, self.h_dim).transpose(1, 2) # BS X HW X NHeads X HDim 
+        k = k.view(batch_size, -1, self.nhead, self.h_dim).transpose(1, 2) # BS X HW X NHeads X HDim  
+        v = v.view(batch_size, -1, self.nhead, self.h_dim).transpose(1, 2) # BS X HW X NHeads X InC  
+
+        # (B, Nt, E) x (B, E, Ns) -> (B, Nt, Ns)
+        attention = self.sm(torch.matmul(q, k.transpose(-2, -1))/math.sqrt(k.shape[2])) 
+        # (B, Nt, Ns) x (B, Ns, E) -> (B, Nt, E) 
+        attended = torch.matmul(attention, v)
+        attended = attended.transpose(1, 2).contiguous().view(batch_size, -1, self.inter_channels).transpose(1, 2)
+        attended = attended.view(batch_size, -1, h, w)
+
+        attended = self.out(attended)
+        
+        return attended
+
+
 class Query_Guided_Attention_Layer(nn.Module):
     def __init__(self, in_channels, inter_channels=None,
             gnn_params=None, post_agg=False, num_classes=751, 
-            post_dist=False, post_class=False, aggregate=False, 
-            class_agg=True, non_agg=True, class_non_agg=True, 
-            distance=False):
+            post_dist=False, post_non_agg=False, aggregate=False, 
+            class_agg=False, non_agg=False, class_non_agg=True, 
+            distance=False, aggr=None, neck=False):
         super(Query_Guided_Attention_Layer, self).__init__()
         self.aggregate = aggregate
         self.class_agg = class_agg
+        self.post_agg = post_agg
+        
         self.non_agg = non_agg
         self.class_non_agg = class_non_agg
+        self.post_non_agg = post_non_agg
+
         self.distance = distance
-        self.post_agg = post_agg
         self.post_dist = post_dist
-        self.post_class = post_class
+
+        self.aggr = aggr
+        self.neck = neck
+
+        print('Aggregate branch', self.aggregate, self.class_agg, self.post_agg)
+        print('Non-aggregate branch', self.non_agg, self.class_non_agg, self.post_non_agg)
+        print('Distance branch', self.distance, self.post_dist)
 
         if inter_channels is None:
             inter_channels = in_channels
@@ -101,24 +172,27 @@ class Query_Guided_Attention_Layer(nn.Module):
         self.query_guided_attention = _Query_Guided_Attention(in_channels=in_channels, 
                 inter_channels=inter_channels)
         
+        #self.query_guided_attention = Matrix_Self_Attention_Block(in_channels=in_channels,
+        #        inter_channels=inter_channels)
+
         self.res1 = gnn_params['res1']
         self.res2 = gnn_params['res2']
 
-        if self.aggregate is None:
+        if self.aggr is None and self.aggregate:
             self.aggr = lambda out, row, dim, x_size: scatter_add(out,
                                                                    row,
                                                                    dim=dim,
                                                                    dim_size=x_size)
-        if self.post_class or self.post_agg or self.post_dist:
+        if self.post_non_agg or self.post_agg or self.post_dist:
             self.dropout1 = nn.Dropout(gnn_params['dropout_1'])
             self.conv1 = nn.Conv2d(in_channels, in_channels, kernel_size=1, bias=False) if gnn_params['mlp'] else None #kernel_size 3 or 1? if 3: padding=1 
             self.act = F.relu
             self.dropout = nn.Dropout(gnn_params['dropout_mlp'])
             self.conv2 = nn.Conv2d(in_channels, in_channels, kernel_size=1, bias=False) if gnn_params['mlp'] else None
 
-            self.norm = nn.LayerNorm([in_channels, 12, 4]) if gnn_params['norm1'] else None
+            self.norm = nn.LayerNorm([in_channels, 8, 4]) if gnn_params['norm1'] else None
             self.dropout2 = nn.Dropout(gnn_params['dropout_2'])
-            self.norm2 = nn.LayerNorm([in_channels, 12, 4]) if gnn_params['norm2'] else None
+            self.norm2 = nn.LayerNorm([in_channels, 8, 4]) if gnn_params['norm2'] else None
 
         self.avgpool = nn.AdaptiveAvgPool2d((1, 1))
 
@@ -130,13 +204,21 @@ class Query_Guided_Attention_Layer(nn.Module):
             self.sig = nn.Sigmoid()
 
         if self.non_agg:
-            self.fc = nn.Linear(in_channels, num_classes)
+            if self.neck:
+                self.bottleneck = nn.BatchNorm1d(in_channels)
+                self.bottleneck.bias.requires_grad_(False)  # no shift
+                self.fc = nn.Linear(in_channels, num_classes, bias=False)
+
+                self.bottleneck.apply(weights_init_kaiming)
+                self.fc.apply(weights_init_classifier)
+
+            else:
+                self.fc = nn.Linear(in_channels, num_classes)
 
         if self.aggregate:
             self.fc_agg = nn.Linear(in_channels, num_classes)
 
-
-    def forward(self, x, num_query=None):
+    def forward(self, x, num_query=None, output_option='plain'):
 
         size = (x.shape[0], x.shape[0])
         if num_query is None:
@@ -145,11 +227,16 @@ class Query_Guided_Attention_Layer(nn.Module):
             #A = torch.where(torch.ones(size) > 0)
             qs = A[0] # from query
             gs = A[1] # to gallery
-        
+
             attended_gallery = self.query_guided_attention(x[gs].cuda(x.get_device()), x[qs].cuda(x.get_device())) # x, x_query
         else:
             A = torch.zeros(size)
             A[:num_query, num_query:] = 1
+
+            # if with self-attention
+            for i in range(num_query):
+                A[i, i] = 1
+
             A = torch.where(A > 0)
             qs = A[0] # from query
             gs = A[1] # to gallery
@@ -162,7 +249,7 @@ class Query_Guided_Attention_Layer(nn.Module):
                 x2 = x * x2  
 
             # transformer style
-            if self.post_agg:
+            if self.post_agg: 
                 x2 = self.dropout1(x2)
                 x = x2 + x if self.res1 else x2
                 x = self.norm(x) if self.norm is not None else x
@@ -213,7 +300,7 @@ class Query_Guided_Attention_Layer(nn.Module):
             x2 = _x * attended_gallery
 
             # transformer style
-            if self.post_class:
+            if self.post_non_agg:
                 x2 = self.dropout1(x2)
                 _x = x2 + _x if self.res1 else x2
                 _x = self.norm(_x) if self.norm is not None else _x
@@ -228,13 +315,19 @@ class Query_Guided_Attention_Layer(nn.Module):
             _x = self.avgpool(_x)
             _x = torch.flatten(_x, 1)
 
+            if self.neck:
+                _x = self.bottleneck(_x)
+
             if self.class_non_agg:
                 fc_x = self.fc(_x)
-        
+            
+            if output_option == 'plain':
+                _x = F.normalize(_x, p=2, dim=1)
+
         else:
             fc_x = _x = None
 
-        return aggregated, fc_x_agg, dist, qs, gs, _x, fc_x     
+        return aggregated, fc_x_agg, dist, qs, gs, _x, fc_x, attended_gallery
 
 
 class GNNNetwork(nn.Module):

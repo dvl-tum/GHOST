@@ -30,7 +30,7 @@ warnings.filterwarnings("ignore")
 
 def init_args():
     parser = argparse.ArgumentParser(description='Person Re-ID with GNN')
-    parser.add_argument('--config_path', type=str, default='config/config_market.yaml', help='Path to config file')
+    parser.add_argument('--config_path', type=str, default='config/config_MOT.yaml', help='Path to config file')
 
     return parser.parse_args()
 
