@@ -65,8 +65,8 @@ def main(args):
             if config['tracker']['mode'] == 'hyper_search':
                 # act_reid_thresh, inact_reid_thresh, avg_inact: num, proxy
                 
-                config['tracker']['act_reid_thresh'] = random.uniform(0.2, 0.5) #0.088, 0.108
-                config['tracker']['inact_reid_thresh'] = random.uniform(0.2, config['tracker']['act_reid_thresh']) #0.064, 0.084
+                config['tracker']['act_reid_thresh'] = random.uniform(0.25, 0.8) #0.088, 0.108
+                config['tracker']['inact_reid_thresh'] = random.uniform(0.25, config['tracker']['act_reid_thresh']) #0.064, 0.084
                 config['tracker']['avg_inact']['num'] = random.randint(0, 100)
                 config['tracker']['avg_inact']['proxy'] = random.choice(['mean', 'median']) #'mode', 'mean', 'median'
                 config['tracker']['avg_act']['num'] = random.randint(0, 100)
