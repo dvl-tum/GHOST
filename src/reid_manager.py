@@ -81,7 +81,6 @@ class ManagerReID(Manager):
 
             if mode == 'train':
                 continue
-            
                 ddict = defaultdict(list)
                 for idx, label in enumerate(dataset.ys):
                     ddict[label].append(idx)
@@ -108,8 +107,10 @@ class ManagerReID(Manager):
                     gallery_dls = list()
                     seq_list = list()
                     for seq in seqs: 
+                        print(seq)
                         seq_list.append(seq)
-                        query_dataset = dataset = ReIDDataset(dataset_cfg['splits'], [seq], dataset_cfg, self.tracker_cfg, dir, 'query')
+                        query_dataset = dataset = ReIDDataset(dataset_cfg['splits'], [seq], \
+                            dataset_cfg, self.tracker_cfg, dir, 'query', mode=mode)
                         query_dl = torch.utils.data.DataLoader(
                             query_dataset,
                             batch_size=256,
@@ -119,7 +120,8 @@ class ManagerReID(Manager):
                         )
                         query_dls.append(query_dl)
                         if query_dataset.different_gallery_set:
-                            gallery_dataset = dataset = ReIDDataset(dataset_cfg['splits'], [seq], dataset_cfg, self.tracker_cfg, dir, 'gallery')
+                            gallery_dataset = dataset = ReIDDataset(dataset_cfg['splits'], [seq], \
+                                dataset_cfg, self.tracker_cfg, dir, 'gallery', mode=mode)
                             gallery_dl = torch.utils.data.DataLoader(
                                 gallery_dataset,
                                 batch_size=256,

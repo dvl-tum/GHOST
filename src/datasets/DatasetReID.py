@@ -1,5 +1,7 @@
 from collections import defaultdict
 from types import new_class
+
+from numpy.lib.shape_base import split
 from main_analysis import analysis
 import torch
 import os
@@ -25,7 +27,10 @@ def collate(batch):
 
 
 class ReIDDataset(MOTDataset):
-    def __init__(self, split, sequences, dataset_cfg, tracker_cfg, dir, data_type='query', datastorage='data'):
+    def __init__(self, split, sequences, dataset_cfg, tracker_cfg, dir, \
+        data_type='query', datastorage='data', mode='test'):
+
+        self.split = split
         self.vis_thresh = tracker_cfg['iou_thresh']
         self.jaccard_thresh = tracker_cfg['jaccard_thresh']
         self.occluder_thresh = tracker_cfg['occluder_thresh']
@@ -35,7 +40,7 @@ class ReIDDataset(MOTDataset):
         self.gallery_vis_thresh = tracker_cfg['gallery_vis_thresh']
         self.rel_gallery_vis_thresh = tracker_cfg['rel_gallery_vis_thresh']
         self.only_next_frame = tracker_cfg['only_next_frame']
-        self.mode = split.split('_')[-1]
+        self.mode = mode
         self.data_type = data_type
         self.gallery_mask = None
         self.data_unclipped = list()
@@ -47,7 +52,7 @@ class ReIDDataset(MOTDataset):
 
     def process(self):
         self.transform = make_transform_bot(is_train=False, sz_crop=[256, 128])
-        print(self.transform)
+
         self.id_to_y = dict()
 
         for seq in self.sequences:
@@ -55,7 +60,7 @@ class ReIDDataset(MOTDataset):
             seq_ids = dict()
             if not self.preprocessed_exists or self.dataset_cfg['prepro_again']:
                 loader = MOTLoader([seq], self.dataset_cfg, self.dir)
-                loader.get_seqs()
+                loader.get_seqs(split=self.split)
                 
                 dets = loader.dets
                 os.makedirs(self.preprocessed_dir, exist_ok=True)
@@ -72,9 +77,7 @@ class ReIDDataset(MOTDataset):
                 dets_unclipped = pd.read_pickle(self.preprocessed_paths[seq][:-4] + '_unclipped.pkl')
 
             dets['gt_id'] = copy.deepcopy(dets['id'].values)
-            print(dets, seq)
-            print(dets[(dets['frame'] == 10)])
-            quit()
+
             for i, row in dets.iterrows():
                 if row['id'] not in seq_ids.keys():
                     seq_ids[row['id']] = self.id
@@ -95,8 +98,7 @@ class ReIDDataset(MOTDataset):
         self.seperate_seqs()
 
         #self.occurance_analysis()
-        
-        if self.mode == 'test':
+        if self.mode == 'test' or self.mode == 'val':
             self.make_query_gal()
 
     def occurance_analysis(self):
