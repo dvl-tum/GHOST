@@ -1,5 +1,6 @@
 import os.path as osp
 import os
+from numpy.lib.shape_base import split
 import pandas as pd
 from torchvision.ops import box_iou 
 import scipy
@@ -28,7 +29,7 @@ class MOTLoader():
         self.det_dir = osp.join(dataset_cfg['det_dir'], dir)
         self.det_file = dataset_cfg['det_file']
 
-    def get_seqs(self):
+    def get_seqs(self, split='split-1'):
         for s in self.sequence:
             gt_file = osp.join(self.mot_dir, s, 'gt', 'gt.txt')
             exist_gt = os.path.isfile(gt_file)
@@ -54,7 +55,7 @@ class MOTLoader():
             
             self.dets['detection_id'] = np.arange(self.dets.shape[0])
             if exist_gt:
-                self.assign_gt()
+                self.assign_gt(split)
             self.dets.attrs.update(self.seq_info)
 
         return exist_gt
@@ -128,7 +129,13 @@ class MOTLoader():
         
         return df
 
-    def assign_gt(self):
+    def assign_gt(self, split='split-1'):
+        if split == '50-50':
+            test_data = pd.read_csv('test_data.csv')
+            test_data = test_data[test_data['Sequence'] == '-'.join(self.sequence[0].split('-')[:-1])]
+            test_data_gt = self.gt.iloc[test_data['path'].values.tolist()]
+            test_data_ids = test_data_gt['id'].unique()
+
         cols = ['frame', 'id', 'bb_left', 'bb_top', 'bb_width', 'bb_height', 'conf', 'label', 'vis']
         self.corresponding_gt = pd.DataFrame(columns=cols)
         if self.seq_info['has_gt']:
@@ -161,7 +168,9 @@ class MOTLoader():
                 self.dets.loc[assigned_detect_index, 'vis'] = corresponding_vis
                 self.dets.loc[unassigned_detect_index, 'vis'] = -1  # False Positives
 
-        
+        if split == '50-50':
+            self.dets = self.dets[self.dets['id'].isin(test_data_ids)]
+
         #pd.set_option('display.max_columns', None)
         #print(self.dets[self.dets['id'] == -1])
         #self.dets[self.dets['id'] == -1].to_csv('unassigned_check.csv')
@@ -170,9 +179,7 @@ class MOTLoader():
             mask = self.dets['id'] != -1
             self.dets = self.dets[mask]
             self.dets_unclipped = self.dets_unclipped[mask]
-        
-        print(self.dets[self.dets['id'] == -1].shape)
-        
+                
         #print(self.dets.shape)
         #print(self.dets_unclipped.shape)
         #print(self.dets)

@@ -77,9 +77,10 @@ class Tracker():
             tracks = list()
             with torch.no_grad():
                 if self.net_type == 'resnet50_attention':
-                    _, feats, feat_maps = self.encoder(frame, output_option='plain') 
+                    _, feats, feat_maps = self.encoder(frame, output_option=self.output)
                     if self.gnn:
-                        feats = feat_maps
+                        feats = [[fe, fc] for fe, fc in zip(feat_maps, feats)]
+
                 elif self.net_type == 'resnet50_analysis' or self.net_type == 'bot' or \
                     self.net_type == 'batch_drop_block' or self.net_type == 'LUP' or \
                         self.net_type == 'transreid' or self.net_type == 'os':
@@ -102,8 +103,6 @@ class Tracker():
                     # remove repeated sample again
                     if added:
                         feats = feats[0].unsqueeze(dim=0)
-                elif self.net_type == 'resnet50_attention':
-                    _, _, feats = self.encoder(frame, output_option=self.output)
                 else:   
                     _, feats = self.encoder(frame, output_option=self.output)
 
@@ -163,8 +162,13 @@ class Tracker():
                 self.assign(tracks, dist, row, col, ids, dist_l, sep=self.tracker_cfg['assign_separately'])
 
     def get_hungarian(self, tracks, sep=False):
-        x = torch.stack([t['feats'] for t in tracks])
-        num_detects = x.shape[0]
+        if self.net_type == 'resnet50_attention' and self.gnn:
+            x_1 = torch.stack([t['feats'][0] for t in tracks])
+            x_2 = torch.stack([t['feats'][1] for t in tracks])
+            x = [x_1, x_2] # feats, fc7
+        else:
+            x = torch.stack([t['feats'] for t in tracks])
+        num_detects =len(tracks)
         gt_n = [v['id'] for v in tracks]
         ids, gt_t = list(), list()
         y_inactive, y = None, None
@@ -174,7 +178,12 @@ class Tracker():
             if self.tracker_cfg['avg_act']['do']:
                 y = self.avg_it(self.tracks, 'act')
             else:
-                y = torch.stack([v[-1]['feats'] for v in self.tracks.values()])
+                if self.net_type == 'resnet50_attention' and self.gnn:
+                    y_1 = torch.stack([v[-1]['feats'][0] for v in self.tracks.values()])
+                    y_2 = torch.stack([v[-1]['feats'][1] for v in self.tracks.values()])
+                    y = [y_1, y_2] # feats, fc7
+                else:
+                    y = torch.stack([v[-1]['feats'] for v in self.tracks.values()])
             
             ids += list(self.tracks.keys())
             gt_t += [v[-1]['id'] for v in self.tracks.values()]
@@ -187,10 +196,18 @@ class Tracker():
             if self.tracker_cfg['avg_inact']['do']:
                 y_inactive = self.avg_it(curr_it, 'inact')
             else:
-                y_inactive = torch.stack([v[-1]['feats'] for v in curr_it.values()])
+                if self.net_type == 'resnet50_attention' and self.gnn:
+                    y_1 = torch.stack([v[-1]['feats'][0] for v in curr_it.values()])
+                    y_2 = torch.stack([v[-1]['feats'][1] for v in curr_it.values()])
+                    y_inactive = [y_1, y_2] # feats, fc7
+                else:
+                    y_inactive = torch.stack([v[-1]['feats'] for v in curr_it.values()])
 
             if len(self.tracks) > 0 and not sep:
-                y = torch.cat([y, y_inactive])
+                if self.net_type == 'resnet50_attention' and self.gnn:
+                    y = [torch.cat([y[0], y_inactive[0]]), torch.cat([y[1], y_inactive[1]])]
+                else:
+                    y = torch.cat([y, y_inactive])
             elif not sep:
                 y = y_inactive
             
@@ -216,11 +233,18 @@ class Tracker():
             dist = sum(dist_l)
         else:
             if not sep:
-                dist = sklearn.metrics.pairwise_distances(x.cpu().numpy(), y.cpu().numpy(), metric='cosine') #'euclidean')#'cosine')
-                '''print(dist)
-                print(gt_n, gt_t)
-                quit()'''
+                if self.net_type == 'resnet50_attention' and self.gnn:
+                    dist = np.asarray([sklearn.metrics.pairwise_distances(t.unsqueeze(0).cpu().numpy(), \
+                        d.cpu().numpy(), metric='cosine') for t, d in zip(y, x)]).squeeze().T #'euclidean')#'cosine')
+                else:
+                    dist = sklearn.metrics.pairwise_distances(x.cpu().numpy(), y.cpu().numpy(), metric='cosine') #'euclidean')#'cosine')
+                dist = np.atleast_2d(dist)
                 row, col = solve_dense(dist)
+                '''print(np.round(dist, decimals=2))
+                print(gt_n, gt_t)
+                print(row, col)
+                quit()'''
+
                 '''# bi-softmax
                 feats = torch.mm(x.cpu(), y.cpu().t())
                 d2t_scores = F.softmax(feats, dim=1)
@@ -251,61 +275,79 @@ class Tracker():
         avg = self.tracker_cfg['avg_' + mode]['num'] 
         proxy = self.tracker_cfg['avg_' + mode]['proxy']
 
+        if self.net_type == 'resnet50_attention' and self.gnn:
+            it_1 = {i: [{'feats': t['feats'][0]} for t in it] for i, it in curr_it.items()}
+            it_2 = {i: [{'feats': t['feats'][1]} for t in it] for i, it in curr_it.items()}
+            curr_its = [it_1, it_2]
+        else:
+            curr_its = [curr_it]
+
         if type(avg) != str:
             if proxy != 'mv_avg':
                 avg = int(avg)
             else:
                 avg = float(avg)
+        for curr_it in curr_its:
+            feat = list()
+            for i, it in curr_it.items():
+                # take all bbs until now
+                if avg == 'all' or (proxy != 'frames_gnn' and avg != 'first' and proxy != 'mv_avg' and len(it) < avg):
+                    if proxy == 'mean':
+                        f = torch.mean(torch.stack([t['feats'] for t in it]), dim=0)
+                    elif proxy == 'median':
+                        f = torch.median(torch.stack([t['feats'] for t in it]), dim=0)[0]
+                    elif proxy == 'mode':
+                        f = torch.mode(torch.stack([t['feats'] for t in it]), dim=0)[0]
 
-        for i, it in curr_it.items():
-            # take all bbs until now
-            if avg == 'all' or (proxy != 'frames_gnn' and avg != 'first' and proxy != 'mv_avg' and len(it) < avg):
-                if proxy == 'mean':
-                    f = torch.mean(torch.stack([t['feats'] for t in it]), dim=0)
-                elif proxy == 'median':
-                    f = torch.median(torch.stack([t['feats'] for t in it]), dim=0)[0]
-                elif proxy == 'mode':
-                    f = torch.mode(torch.stack([t['feats'] for t in it]), dim=0)[0]
-
-            # take the last avg
-            elif proxy != 'frames_gnn' and avg != 'first' and proxy != 'mv_avg' and len(it) >= avg:
-                if proxy == 'mean':
-                    f = torch.mean(torch.stack([t['feats'] for t in it[-avg:]]), dim=0)
-                elif proxy == 'median':
-                    f = torch.median(torch.stack([t['feats'] for t in it[-avg:]]), dim=0)[0]
-                elif proxy == 'mode':
-                    f = torch.mode(torch.stack([t['feats'] for t in it[-avg:]]), dim=0)[0]
-            elif proxy == 'mv_avg':
-                if i not in self.mv_avg.keys():
-                    f = it[-1]['feats']
-                else:
-                    f = self.mv_avg[i] * avg + it[-1]['feats'] * (1-avg) 
-                self.mv_avg[i] = f
-            # take the first only
-            elif avg == 'first':
-                f = it[0]['feats']
-            # for gnn 
-            elif proxy == 'frames_gnn':
-                if type(avg) != int:
-                    num = int(avg.split('_')[-1])
-                    k = int((len(it)-1)/(num-1))
-                    f = [it[i*k]['feats'] for i in range(num)]
-                else:
-                    f = [t['feats'] for t in it][-avg:]
-                    num = avg
-                c = 1
-                while len(f) < num:
-                    f.append(f[-c])
-                    c += 1 if c+1 < num else 0
-                f = torch.stack(f)
-            feats.append(f)
-
-        if len(feats[0].shape) == 1:
-            return torch.stack(feats)
-        if len(feats[0].shape) == 3:
-            return torch.cat([f.unsqueeze(0) for f in feats], dim=0)
-        else: 
-            return torch.cat(feats, dim=0)
+                # take the last avg
+                elif proxy != 'frames_gnn' and avg != 'first' and proxy != 'mv_avg' and len(it) >= avg:
+                    if proxy == 'mean':
+                        f = torch.mean(torch.stack([t['feats'] for t in it[-avg:]]), dim=0)
+                    elif proxy == 'median':
+                        f = torch.median(torch.stack([t['feats'] for t in it[-avg:]]), dim=0)[0]
+                    elif proxy == 'mode':
+                        f = torch.mode(torch.stack([t['feats'] for t in it[-avg:]]), dim=0)[0]
+                elif proxy == 'mv_avg':
+                    if i not in self.mv_avg.keys():
+                        f = it[-1]['feats']
+                    else:
+                        f = self.mv_avg[i] * avg + it[-1]['feats'] * (1-avg) 
+                    self.mv_avg[i] = f
+                # take the first only
+                elif avg == 'first':
+                    f = it[0]['feats']
+                # for gnn 
+                elif proxy == 'frames_gnn':
+                    if type(avg) != int:
+                        num = int(avg.split('_')[-1])
+                        k = int((len(it)-1)/(num-1))
+                        f = [it[i*k]['feats'] for i in range(num)]
+                    else:
+                        f = [t['feats'] for t in it][-avg:]
+                        num = avg
+                    c = 1
+                    while len(f) < num:
+                        f.append(f[-c])
+                        c += 1 if c+1 < num else 0
+                    f = torch.stack(f)
+                feat.append(f)
+            feats.append(feat)
+        
+        res = list()
+        for feat in feats:
+            if len(feat[0].shape) == 1:
+                feat = torch.stack(feat)
+            elif len(feat[0].shape) == 3:
+                feat = torch.cat([f.unsqueeze(0) for f in feat], dim=0)
+            elif len(feat) == 1:
+                feat = feat
+            else: 
+                feat = torch.cat(feat, dim=0)
+            res.append(feat)
+        if self.net_type != 'resnet50_attention':
+            return res[0]
+        else:
+            return res
 
     def assign_act_inact_same_time(self, row, col, dist, tracks, active_tracks, ids):
         assigned = list()
@@ -403,8 +445,8 @@ class Tracker():
             y = feats[-1][num_detects:, :]
             y = [torch.stack([y[j] for j in range(i, y.shape[0], num_frames)]) for i in range(num_frames)]
         else:
-            #print("just concat x and y")
-            feats = torch.cat([x, y])
+            # for gnn
+            '''feats = torch.cat([x, y])
             with torch.no_grad():
                 self.gnn.eval()
                 if self.tracker_cfg['gallery_att']:
@@ -413,7 +455,22 @@ class Tracker():
                     edge_attr, edge_ind, feats = self.graph_gen.get_graph(feats)
                 _, feats, _ = self.gnn(feats, edge_ind, edge_attr, 'plain')
             x = feats[-1][:num_detects, :]
-            y = feats[-1][num_detects:, :]    
+            y = feats[-1][num_detects:, :]'''
+
+            # for spatial attention
+            feats = torch.cat([y[0], x[0]])
+            fc7 = y[1]
+            with torch.no_grad():
+                self.gnn.eval()
+                _, _, _, qs, gs, attended_feats, _, att_g = self.gnn(feats, num_query=y[0].shape[0])
+            
+            # if self attention
+            # x = attended_feats[y[0].shape[0]:, :].view(y[0].shape[0], num_detects, 2048)
+            # y = attended_feats[:y[0].shape[0], :] 
+
+            # if not self attention
+            x = attended_feats.view(y[0].shape[0], num_detects, 2048)
+            y = fc7
         
         return x, y
 

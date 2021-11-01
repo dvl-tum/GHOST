@@ -3,7 +3,7 @@ import os.path as osp
 import PIL.Image as Image
 from torchvision.transforms import ToTensor
 from torchvision import transforms
-from ReID.dataset.utils import make_transform_bot
+from ReID.dataset.utils import make_transform_bot, make_transfor_obj_det
 from torch.utils.data import Dataset
 import pandas as pd
 import torch
@@ -27,6 +27,7 @@ class MOTDataset(Dataset):
         
         self.to_tensor = ToTensor()
         self.to_pil = transforms.ToPILImage()
+        self.transform_det = make_transfor_obj_det(is_train=False)
         self.transform = make_transform_bot(is_train=False)
         self.process()
     

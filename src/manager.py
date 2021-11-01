@@ -279,12 +279,13 @@ class Manager():
         # self.reid_net_cfg['gnn_params']['classifier']['num_classes'] = self.num_classes
         self.gnn = None
         in_channels = self.sz_embed[0]
+        self.graph_gen = None
 
-        self.query_guided_attention = ReID.net.Query_Guided_Attention_Layer(in_channels, \
-            gnn_params=self.model_params['gnn_params']['gnn'],
-            num_classes=self.config['dataset']['num_classes'],
+        self.gnn = ReID.net.Query_Guided_Attention_Layer(in_channels, \
+            gnn_params=self.reid_net_cfg['gnn_params']['gnn'],
+            num_classes=self.reid_net_cfg['gnn_params']['classifier']['num_classes'],
             non_agg=True, class_non_agg=True,
-            neck=self.model_params['gnn_params']['classifier']['neck']).cuda(self.device)
+            neck=self.reid_net_cfg['gnn_params']['classifier']['neck']).cuda(self.device)
 
         if self.reid_net_cfg['gnn_params']['pretrained_path'] != "no":
             load_dict = torch.load(
@@ -294,7 +295,7 @@ class Manager():
 
             model_dict = self.gnn.state_dict()
             model_dict.update(load_dict)
-            self.query_guided_attention.load_state_dict(model_dict)
+            self.gnn.load_state_dict(model_dict)
 
     
     def _get_loaders(self, dataset_cfg):
