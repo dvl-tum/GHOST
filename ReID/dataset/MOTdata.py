@@ -150,10 +150,13 @@ class MOTSeqDataset(ImageDataset):
             test_id = [i for ids in test_id.values for i in ids]
             train_df = df[~df['reid_id'].isin(test_id)]
             test = df[df['reid_id'].isin(test_id)]
+            '''
+            # get ids for re-id analysis
+            test_data = test[['Sequence', 'path']]
+            test_data['path'] = test_data['path'].apply(lambda x: int(x.split('.')[0][-10:]))
+            test_data.to_csv('test_data.csv')
 
-            '''print(train_df)
-            print(test)
-
+            quit()
             import json
             train_test_ids = {
                 'train': train_df['old_id_seq'].unique().tolist(),
@@ -162,8 +165,8 @@ class MOTSeqDataset(ImageDataset):
             with open('50-50-split.json', 'w') as file:
                 json.dump(train_test_ids, file)
 
-            quit()'''
-        
+            quit()
+            '''  
         test['index'] = test.index.values
         
         query_per_id = test.groupby('reid_id')['index'].agg(lambda x: np.random.choice(list(x.unique())))

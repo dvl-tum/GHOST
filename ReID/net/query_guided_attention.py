@@ -234,9 +234,9 @@ class Query_Guided_Attention_Layer(nn.Module):
             A[:num_query, num_query:] = 1
 
             # if with self-attention
-            for i in range(num_query):
-                A[i, i] = 1
-
+            #for i in range(num_query):
+            #    A[i, i] = 1
+ 
             A = torch.where(A > 0)
             qs = A[0] # from query
             gs = A[1] # to gallery

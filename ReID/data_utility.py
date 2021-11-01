@@ -44,7 +44,7 @@ def create_loaders(data_root, num_workers, num_classes_iter=None,
     return dl_tr, dl_ev, query, gallery, dl_ev_gnn
 
 
-def get_train_dataloader(config, labels, paths, data_root, rand_scales, split='split_3'):
+def get_train_dataloader(config, labels, paths, data_root, rand_scales, split='split_2'):
     # get dataset
     if data_root == 'MOT17':
         Dataset = get_sequence_class(split=split)
@@ -99,7 +99,7 @@ def get_train_dataloader(config, labels, paths, data_root, rand_scales, split='s
     return dl_tr
 
 
-def get_val_dataloader(config, data, data_root, rand_scales=False, split='split_3'):
+def get_val_dataloader(config, data, data_root, rand_scales=False, split='split_2'):
     if data is not None:
         labels_ev, paths_ev, query, gallery = data
 
@@ -159,7 +159,7 @@ def get_val_dataloader(config, data, data_root, rand_scales=False, split='split_
                 batch_size=256,
                 shuffle=False,
                 sampler=sampler,
-                num_workers=1,
+                num_workers=0,
                 pin_memory=True)
             dl_ev = torch.utils.data.DataLoader(
                 copy.deepcopy(dataset_ev),
@@ -255,7 +255,7 @@ def get_market_and_cuhk03(labels, paths, data_root):
     return data, data_root
 
 
-def get_single(labels, paths, data_root, sample_sub=True):
+def get_single(labels, paths, data_root, sample_sub=False):
     logger.info("Sampling subset {}".format(sample_sub))
     if sample_sub:
         import random

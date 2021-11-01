@@ -258,12 +258,12 @@ class Evaluator():
                         visualize_att_map(att_g, P)
 
                     # get distance
-                    #dist = sklearn.metrics.pairwise_distances(features[P[0]].unsqueeze(0).cpu().numpy(), \
-                    #     attended_feats.cpu().numpy(), metric='euclidean')
+                    dist = sklearn.metrics.pairwise_distances(features[P[0]].unsqueeze(0).cpu().numpy(), \
+                         attended_feats.cpu().numpy(), metric='euclidean')
 
                     # with self attention
-                    dist = sklearn.metrics.pairwise_distances(attended_feats[0].unsqueeze(0).cpu().numpy(), \
-                        attended_feats[1:].cpu().numpy(), metric='euclidean')
+                    #dist = sklearn.metrics.pairwise_distances(attended_feats[0].unsqueeze(0).cpu().numpy(), \
+                    #    attended_feats[1:].cpu().numpy(), metric='euclidean')
                     
                     for d, p in zip(dist[0], P[1:]):
                         qg_dists[p] = d

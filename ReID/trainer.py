@@ -45,7 +45,7 @@ class Trainer():
             self.attention = 1
         else:
             self.config['models']['attention'] = 0
-            self.attention = 0
+            self.attention = 0 
 
         self.device = device
         self.save_folder_results = save_folder_results
@@ -81,7 +81,7 @@ class Trainer():
         self.model_params = self.config['models']
 
         if self.write:
-            path = 'runs/' + "lsce1.0_RedTwiceFinalTraining_split-3"
+            path = 'runs/' + "Finetune_split_2"
             self.writer = SummaryWriter(path) # + str(i))
             logger.info("Writing to {}.".format(path))
 
@@ -414,9 +414,7 @@ class Trainer():
                         self.writer.add_scalar('Accuracy/test/' + str(rank), t, e)
 
                 scores.append((mAP, [top[setting][k - 1] for k in [1, 5, 10]]))
-                #rank = top[setting][0]
-
-                rank = e
+                rank = top[setting][0]
                 
                 self.encoder.current_epoch = e
                 if rank > best_rank_iter and self.write:

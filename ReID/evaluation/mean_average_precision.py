@@ -108,7 +108,6 @@ def mean_ap(dist, ql, qc, gl, gc):
     if type(dist) != np.ndarray:
         dist = dist.cpu().numpy()
     dist = np.atleast_2d(dist)
-
     indices = np.argsort(dist, axis=1)
     matches = (gl[indices] == ql[:, np.newaxis])
 
@@ -121,9 +120,10 @@ def mean_ap(dist, ql, qc, gl, gc):
         # filter out samples of class -1 (distractors)
         junk = gl[indices[k]] != -1
         pos &= junk
-
+        
         y_true = matches[k, pos]
         y_score = -dist[k][indices[k]][pos]
+
         if not np.any(y_true): continue
         aps.append(average_precision_score(y_true, y_score))
 
@@ -134,17 +134,19 @@ def mean_ap(dist, ql, qc, gl, gc):
     return np.mean(aps)
 
 
-def evaluate_all(distmat, query=None, gallery=None):
-    query_ids = np.asarray(
-        [int(os.path.basename(path).split('_')[0]) for path in query])
-    gallery_ids = np.asarray(
-        [int(os.path.basename(path).split('_')[0]) for path in
-         gallery])
-    query_cams = np.asarray(
-        [int(os.path.basename(path).split('_')[1]) for path in query])
-    gallery_cams = np.asarray(
-        [int(os.path.basename(path).split('_')[1]) for path in
-         gallery])
+def evaluate_all(distmat, query=None, gallery=None, query_cams=None,\
+    gallery_cams=None, query_ids=None, gallery_ids=None):
+    if query_cams is None:
+        query_ids = np.asarray(
+            [int(os.path.basename(path).split('_')[0]) for path in query])
+        gallery_ids = np.asarray(
+            [int(os.path.basename(path).split('_')[0]) for path in
+            gallery])
+        query_cams = np.asarray(
+            [int(os.path.basename(path).split('_')[1]) for path in query])
+        gallery_cams = np.asarray(
+            [int(os.path.basename(path).split('_')[1]) for path in
+            gallery])
 
     # Compute mean AP
     mAP = mean_ap(distmat, query_ids, query_cams, gallery_ids, gallery_cams)
@@ -275,7 +277,8 @@ def re_ranking(features, query, gallery, k1=20, k2=6, lambda_value=0.3,
 
 
 def calc_mean_average_precision(features, query, gallery, re_rank=False,
-                                lamb=0.3, k1=20, k2=6, distmat=None):
+                                lamb=0.3, k1=20, k2=6, distmat=None, 
+                                qc=None, gc=None, qi=None, gi=None):
 
     if re_rank:
         distmat = re_ranking(features, query, gallery, k1=k1, k2=k2,
@@ -283,4 +286,5 @@ def calc_mean_average_precision(features, query, gallery, re_rank=False,
     elif distmat is None:
         distmat = pairwise_distance(features, query, gallery)
 
-    return evaluate_all(distmat, query=query, gallery=gallery)
+    return evaluate_all(distmat, query=query, gallery=gallery, query_cams=qc, \
+        gallery_cams=gc, query_ids=qi, gallery_ids=gi)
