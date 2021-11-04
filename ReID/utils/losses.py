@@ -365,6 +365,7 @@ class TripletLoss(nn.Module):
 
 def multi_pos_cross_entropy(pred,
                             label,
+                            remove_self_dist=True,
                             weight=None,
                             reduction='mean',
                             avg_factor=None):
@@ -385,8 +386,11 @@ def multi_pos_cross_entropy(pred,
     # use -inf to mask out unwanted elements.
     # --> don't take distance to itself into account (should be in pos anyway)
 
-    self_dist = torch.diag(torch.ones(label.shape[0])).bool().to(neg_inds.get_device())
-    pred_pos[neg_inds | self_dist] = pred_pos[neg_inds | self_dist] + float('inf')
+    if remove_self_dist:
+        self_dist = torch.diag(torch.ones(label.shape[0])).bool().to(neg_inds.get_device())
+        pred_pos[neg_inds | self_dist] = pred_pos[neg_inds | self_dist] + float('inf')
+    else:
+        pred_pos[neg_inds] = pred_pos[neg_inds] + float('inf')
     pred_neg[pos_inds] = pred_neg[pos_inds] + float('-inf')
 
     _pos_expand = torch.repeat_interleave(pred_pos, pred.shape[1], dim=1)
@@ -415,12 +419,31 @@ class MultiPosCrossEntropyLoss(nn.Module):
     def forward(self,
                 cls_score,
                 label,
+                label_2 = None,
+                label_corr=None,
                 weight=None,
                 avg_factor=None,
                 reduction_override=None,
                 **kwargs):
+
+        # label_2 == query labels --> if no specific query labels are 
+        # given: remove the self-distance bc same features are used as q and g
+        if label_2 is None:
+            label_2 = label
+            remove_self_dist = True
+        else:
+            remove_self_dist = False
+
         label = torch.atleast_2d(label)
-        label = label == label.T
+        label_2 = torch.atleast_2d(label_2)
+
+        label = label_2 == label.T
+        # label_corr == second label of image if images corrupted
+        if label_corr is not None:
+            label_corr = torch.atleast_2d(label_corr)
+            label_corr = label_2 == label_corr.T
+            label = label_corr | label
+
         assert cls_score.size() == label.size()
         assert reduction_override in (None, 'none', 'mean', 'sum')
         reduction = (
@@ -428,6 +451,7 @@ class MultiPosCrossEntropyLoss(nn.Module):
         loss_cls = self.loss_weight * multi_pos_cross_entropy(
             cls_score,
             label,
+            remove_self_dist,
             weight,
             reduction=reduction,
             avg_factor=avg_factor,

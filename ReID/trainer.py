@@ -24,7 +24,7 @@ import os
 import json
 from torch import autograd
 import numpy as np
-from evaluation.utils import visualize_att_map
+#from evaluation.utils import visualize_att_map
 from torch.utils.tensorboard import SummaryWriter
 autograd.set_detect_anomaly(True)
 
@@ -80,15 +80,18 @@ class Trainer():
         self.train_params = self.config['train_params']
         self.model_params = self.config['models']
 
-        if self.write:
-            path = 'runs/' + "Finetune_split_2"
+        if self.write and not 'hyper' in self.config['mode'].split('_'):
+            path = 'runs/' + "RandOrdCorr_MPCFC7_NoSig_BCE_WithConv1x1_WithRes" 
             self.writer = SummaryWriter(path) # + str(i))
             logger.info("Writing to {}.".format(path))
 
-        self.make_det(random.randint(0, 100))
         logger.info('Search iteration {}'.format(i + 1))
         mode = self.get_save_name()
         self.update_params()
+
+        if not 'hyper' in self.config['mode'].split('_'):
+            self.make_det(random.randint(0, 100))
+
         logger.info(self.config)
         logger.info(self.timer)
         self.device = 0
@@ -118,14 +121,11 @@ class Trainer():
                 add_distractors=self.config['dataset']['add_distractors'],
                 **self.model_params['encoder_params'])
             self.encoder = encoder.cuda(self.device)  # to(self.device)
-            params = self.get_gnn(sz_embed)
+            param_groups = self.get_gnn(sz_embed)
             
             # get evaluator
             self.evaluator = Evaluator(**self.config['eval_params'])    
 
-            # get optimizer
-            param_groups = [{'params': params,
-                             'lr': self.train_params['lr']}]
             self.opt = RAdam(param_groups,
                              weight_decay=self.train_params[
                                  'weight_decay'])
@@ -161,7 +161,7 @@ class Trainer():
             logger.info('Best Rank-1: {}'.format(best_rank_iter))
 
             # save best model of iterations
-            if best_rank_iter > best_rank and self.write:
+            if best_rank_iter > best_rank and self.write and not 'hyper' in self.config['mode'].split('_'):
                 os.rename(osp.join(self.save_folder_nets, self.fn + '.pth'),
                           str(best_rank_iter) + mode + self.net_type + '_' +
                           self.dataset_short + '.pth')
@@ -177,7 +177,7 @@ class Trainer():
                 best_hypers = ', '.join(
                     [str(k) + ': ' + str(v) for k, v in self.config.items()])
             
-            if self.write:
+            if self.write and not 'hyper' in self.config['mode'].split('_'):
                 self.writer.close()
 
         logger.info("Best Hyperparameters found: " + best_hypers)
@@ -189,15 +189,12 @@ class Trainer():
         best_rank_iter = 0
         scores = list()
 
-        best_rank_iter = self.evaluate(eval_params, scores, 0,
-                                best_rank_iter)
-
-        for e in range(1, train_params['num_epochs'] + 1):
- 
-            if 'test' in self.config['mode'].split('_'):
+        #best_rank_iter = self.evaluate(eval_params, scores, 0,
+        #                        best_rank_iter)
+        if 'test' in self.config['mode'].split('_'):
                 best_rank_iter = self.evaluate(eval_params, scores, 0, 0)
-            # If not testing
-            else:
+        else:
+            for e in range(1, train_params['num_epochs'] + 1):
                 logger.info(
                     'Epoch {}/{}'.format(e, train_params['num_epochs']))
 
@@ -221,10 +218,10 @@ class Trainer():
                 best_rank_iter = self.evaluate(eval_params, scores, e,
                                 best_rank_iter)
 
-            self.log()
-            # compute ranks and mAP at the end of each epoch
-            if e > 5 and best_rank_iter < 0.1 and self.num_iter > 1:
-                break
+                self.log()
+                # compute ranks and mAP at the end of each epoch
+                if e > 5 and best_rank_iter < 0.1 and self.num_iter > 1:
+                    break
 
         return best_rank_iter, self.encoder
 
@@ -232,10 +229,32 @@ class Trainer():
         Y = Y.cuda(self.device)
         self.opt.zero_grad()
         
+        # get sencond image to corrupt
+        corruption_img_ind = torch.stack([random.choice(torch.arange(x.shape[0])[Y[i] != Y]) for i in range(x.shape[0])])
+        x_cor = x[corruption_img_ind]
+
+        # randomly get position
+        position = torch.tensor([random.randint(0, 1) for _ in range(x.shape[0])]).bool()
+        imgs = list()
+
+        # corrupt
+        for i in range(x.shape[0]):
+            if position[i]:
+                corrupted = torch.cat([x[i], x_cor[i]], dim=-1)
+            else:
+                corrupted = torch.cat([x_cor[i], x[i]], dim=-1)
+            imgs.append(corrupted)        
+        x_cor = torch.stack(imgs)
+
         # bb for spatial attention (same bb but different output)
         if self.model_params['attention']:
             probs, fc7, attention_features = self.encoder(x.cuda(self.device),
                                 output_option=train_params['output_train_enc'])
+            
+            # if corruption
+            _, _, attention_features_cor = self.encoder(x_cor.cuda(self.device),
+                                output_option=train_params['output_train_enc'])
+
         else:
             # bb for training with distractors (same bb but different output)
             if self.config['dataset']['add_distractors']:
@@ -252,11 +271,21 @@ class Trainer():
 
         # query guided attention output
         if self.model_params['attention'] and not self.gnn:
-            _, _, _, qs, gs, attended_feats, fc_x, att_maps = \
-                self.query_guided_attention(attention_features)
+            if attention_features_cor is None:
+                _, _, dist, qs, gs, attended_feats, fc_x, x2, fc_x2, att_maps = \
+                    self.query_guided_attention(attention_features)
+            else:
+                _, _, dist, qs, gs, attended_feats, fc_x, x2, fc_x2, att_maps = \
+                    self.query_guided_attention(attention_features, attention_features_cor)
         
         '''if e == 3:
             visualize_att_map(attended_feats, P, 'visualization_attention_maps_train_' + str(e))'''
+        
+        '''att_g = copy.deepcopy(att_maps.detach().cpu())
+        att_g = att_g.view(x.shape[0], -1, att_g.shape[-2], att_g.shape[-1])
+        for i in range(x.shape[0]):
+            visualize_att_map(att_g[i], x_cor[gs[qs==i]], P[i], [p for j, p in enumerate(P) if j in gs[qs==i]], [P[cp] for j, cp in enumerate(corruption_img_ind) if j in gs[qs==i]], save_dir='Corr_MPCFC7_Sig_BCE_Train')
+        quit()'''
 
         # Compute CE Loss
         loss = 0
@@ -291,30 +320,54 @@ class Trainer():
         if self.bceattention:
             ql = Y[qs]
             gl = Y[gs]
-            same_class = (ql == gl).float().cuda(self.device)
-            bceattloss = self.bceattention(dist[qs, gs].squeeze(), same_class.squeeze())
+
+            if attention_features_cor is None:
+                same_class = (ql == gl).float().cuda(self.device)
+            else:
+                gl_cor = Y[corruption_img_ind[gs]]
+                same_class = ((ql == gl)|(ql == gl_cor)).float().cuda(self.device)
+            
+            bceattloss = self.bceattention(dist.squeeze(), same_class.squeeze())
             loss += train_params['loss_fn']['scaling_bce'] * bceattloss
             self.losses['BCE Loss Atttention ' + str(i)].append(bceattloss.item())
         
         if self.multiattention:
-            # only take samples that were attended by positive queries, query label == gallery label
-            mask = Y[gs] == Y[qs]
-            multattloss = self.multiattention(fc_x[mask]/self.train_params['temperatur'], Y[gs][mask])
-            # multattloss = self.multiattention(fc_x/self.train_params['temperatur'], Y[gs])
-            scale = train_params['loss_fn']['scaling_multiattention']
-            loss += scale * multattloss
-            self.losses['CE Loss Atttention ' + str(i)].append(scale * multattloss.item())
+            for i, fc in enumerate([fc_x]): #, fc_x2
+                # only take samples that were attended by positive queries, query label == gallery label
+                if attention_features_cor is None:
+                    mask = Y[gs] == Y[qs]
+                else:
+                    mask = (Y[gs] == Y[qs]) | (Y[corruption_img_ind[gs]] == Y[qs])
 
-            self.losses['Classification Accuracy after QG'].append((torch.argmax(\
-            fc_x[mask], dim=1)==Y[gs][mask]).float().mean())
+                multattloss = self.multiattention(fc[mask]/self.train_params['temperatur'], Y[gs][mask])
+                # multattloss = self.multiattention(fc_x/self.train_params['temperatur'], Y[gs])
+                scale = train_params['loss_fn']['scaling_multiattention']
+                loss += scale * multattloss
+                self.losses['CE Loss Atttention ' + str(i)].append(scale * multattloss.item())
+
+                self.losses['Classification Accuracy after QG'].append((torch.argmax(\
+                fc_x[mask], dim=1)==Y[gs][mask]).float().mean())
         
         # Compute MultiPositiveContrastive
         if self.multposcont:
-            dist = self.get_dist(attended_feats, attended_feats)
-            loss0 = self.multposcont(dist, Y[gs])
-            scale = train_params['loss_fn']['scaling_multiposcont']
-            loss += scale * loss0
-            self.losses['Multi Positive Contrastive ' + str(i)].append(scale * loss0.item())
+            for i, att_feats in enumerate([attended_feats]): #, x2
+                # only samples after spatial attention for pos con
+                #dist = self.get_dist(att_feats, att_feats)
+                #if attention_features_cor is None:
+                #    loss0 = self.multposcont(dist, Y[gs])
+                #else:
+                #    loss0 = self.multposcont(dist, Y[gs], label_corr=Y[corruption_img_ind[gs]])
+
+                # use features after bb as pos and neg samples
+                dist = self.get_dist(att_feats, fc7)
+                if attention_features_cor is None:
+                    loss0 = self.multposcont(dist, Y[gs], Y)
+                else:
+                    loss0 = self.multposcont(dist, Y[gs], label_2=Y, label_corr=Y[corruption_img_ind[gs]])
+
+                scale = train_params['loss_fn']['scaling_multiposcont']
+                loss += scale * loss0
+                self.losses['Multi Positive Contrastive ' + str(i)].append(scale * loss0.item())
 
         if self.gnn_loss:
 
@@ -359,7 +412,7 @@ class Trainer():
             loss += train_params['loss_fn']['scaling_triplet'] * triploss
             self.losses['Triplet'].append(triploss.item())
 
-        if self.write:
+        if self.write and not 'hyper' in self.config['mode'].split('_'):
             for k, v in self.losses.items():
                 self.writer.add_scalar('Loss/train/' + k, v[-1], e)
             
@@ -408,7 +461,7 @@ class Trainer():
 
                 setting = 'Market'
 
-                if self.write:
+                if self.write and not 'hyper' in self.config['mode'].split('_'):
                     logger.info("write evaluation")
                     for t, rank in zip([top[setting][0], top[setting][4], top[setting][9], mAP], ['rank-1', 'rank-5', 'rank-10', 'mAP']):
                         self.writer.add_scalar('Accuracy/test/' + str(rank), t, e)
@@ -417,20 +470,21 @@ class Trainer():
                 rank = top[setting][0]
                 
                 self.encoder.current_epoch = e
-                if rank > best_rank_iter and self.write:
+                if True: #rank > best_rank_iter:
                     best_rank_iter = rank
-                    torch.save(self.encoder.state_dict(),
-                               osp.join(self.save_folder_nets,
-                                        self.fn + '.pth'))
-                    if self.gnn is not None:
-                        torch.save(self.gnn.state_dict(),
-                               osp.join(self.save_folder_nets,
-                                        'gnn_' + self.fn + '.pth'))
-                    
-                    elif self.query_guided_attention is not None:
-                        torch.save(self.query_guided_attention.state_dict(),
-                               osp.join(self.save_folder_nets,
-                                        'gnn_' + self.fn + '.pth'))
+                    if True: #self.write and not 'hyper' in self.config['mode'].split('_'):
+                        torch.save(self.encoder.state_dict(),
+                                osp.join(self.save_folder_nets,
+                                            self.fn + '.pth'))
+                        if self.gnn is not None:
+                            torch.save(self.gnn.state_dict(),
+                                osp.join(self.save_folder_nets,
+                                            'gnn_' + self.fn + '.pth'))
+                        
+                        elif self.query_guided_attention is not None:
+                            torch.save(self.query_guided_attention.state_dict(),
+                                osp.join(self.save_folder_nets,
+                                            'gnn_' + self.fn + '.pth'))
                 
         else:
             logger.info(
@@ -505,7 +559,7 @@ class Trainer():
 
         # for distance computation
         if 'bceattention' in params['fns'].split('_'):
-            self.bceattention = nn.BCELoss()
+            self.bceattention = nn.BCEWithLogitsLoss(pos_weight=torch.tensor(270/36))
         else:
             self.bceattention = None
         
@@ -559,7 +613,7 @@ class Trainer():
                   'num_classes_iter': random.randint(6, 9),  # 100
                   'num_elements_class': random.randint(3, 4),
                   'temperatur': random.random(),
-                  'num_epochs': 40}
+                  'num_epochs': 30}
         self.train_params.update(config)
 
         config = {'num_layers': random.randint(1, 4)}
@@ -611,7 +665,8 @@ class Trainer():
                 val=config['val'],
                 bssampling=self.config['dataset']['bssampling'],
                 rand_scales=config['rand_scales'],
-                add_distractors=config['add_distractors'])
+                add_distractors=config['add_distractors'],
+                split=config['split'])
 
     def get_gnn(self, sz_embed):
         # pretrined gnn path
@@ -670,15 +725,24 @@ class Trainer():
 
             if path != "no":
                 load_dict = torch.load(path, map_location='cpu')
-                self.query_guided_attention.load_state_dict(load_dict)
+                load_dict = {k: v for k, v in load_dict.items() if 'fc_beforeRes' not in k}
+                state_dict = self.query_guided_attention.state_dict()
+                state_dict.update(load_dict)
+                self.query_guided_attention.load_state_dict(state_dict)
 
-            params = list(set(self.encoder.parameters())) + \
-                list(set(self.query_guided_attention.parameters()))
+            params = list(set(self.encoder.parameters())) + list(set(self.query_guided_attention.parameters()))
+
+            #param_groups = [{'params': list(set(self.query_guided_attention.parameters())), 'lr': self.train_params['lr']}, 
+            #                {'params': list(set(self.encoder.parameters())), 'lr': self.train_params['lr']}]
 
         else:
             params = list(set(self.encoder.parameters()))
-
-        return params
+        
+        # get optimizer
+        param_groups = [{'params': params,
+                            'lr': self.train_params['lr']}]
+        
+        return param_groups
 
     def milestones(self, e, train_params, logger):
         if e == 31:
@@ -736,3 +800,50 @@ class Trainer():
             return torch.mm(x, y.t())/temp
         else:
             return torch.mm(x, y.t())
+
+
+import cv2
+def visualize_att_map(att_g, x_cor, q_path, g_paths, corr_paths, save_dir='visualization_attention_maps'):
+    mean = [0.485, 0.456, 0.406]
+    std = [0.299, 0.224, 0.225]
+    import matplotlib.pyplot as plt
+    from matplotlib.pyplot import figure
+    import PIL.Image as Image
+    query = cv2.imread(q_path, 1)
+    min_att = att_g.min().cpu().numpy()
+    max_att = att_g.max().cpu().numpy()
+    for g, gc, gallery, attention_map in zip(g_paths, corr_paths, x_cor, att_g):
+        gallery = torch.stack([(img * std[i]) + mean[i] for i, img in enumerate(gallery)])
+        gallery = np.transpose(gallery.cpu().numpy(), (1, 2, 0))[:,:,::-1]
+        attention_map = cv2.resize(attention_map.squeeze().cpu().numpy(), (gallery.shape[1], gallery.shape[0]))
+        attention_map = (attention_map-min_att)/max_att
+
+        cam = show_cam_on_image(gallery, attention_map)        
+        
+        fig = figure(figsize=(10, 6), dpi=80)
+        # Create figure and axes
+        fig.add_subplot(1,3,1)
+        plt.imshow(cv2.cvtColor(query, cv2.COLOR_BGR2RGB))
+        plt.axis('off')
+
+        fig.add_subplot(1,3,2)
+        plt.imshow(cv2.cvtColor(gallery, cv2.COLOR_BGR2RGB))
+        plt.axis('off')
+
+        fig.add_subplot(1,3,3)
+        plt.imshow(cv2.cvtColor(cam, cv2.COLOR_BGR2RGB))
+        plt.axis('off')
+
+        os.makedirs(save_dir, exist_ok=True)
+
+        plt.savefig(os.path.join(save_dir, \
+            os.path.basename(q_path)[:-4] + '_' + os.path.basename(g)[:-4] + '_' + os.path.basename(gc)[:-4] + '.png'))
+
+
+def show_cam_on_image(img, mask):
+    img = np.float32(img) / 255
+    heatmap = cv2.applyColorMap(np.uint8(255 * mask), cv2.COLORMAP_JET)
+    heatmap = np.float32(heatmap) / 255
+    cam = heatmap + np.float32(img)
+    cam = cam / np.max(cam)
+    return np.uint8(255 * cam)
