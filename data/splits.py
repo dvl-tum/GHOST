@@ -38,8 +38,8 @@ _SPLITS['debug_train']['test'] = {'seq': ['MOT17-02'], 'dir': 'train'}
 #_SPLITS['debug_test']['test'] = {'seq': ['MOT17-13'], 'dir': 'train'}
 
 # Remove IDs later
-_SPLITS['50-50']['test'] = {'seq': [f'MOT17-{seq_num:02}' for seq_num in train_seq_nums], 'dir': 'train'}
-
+_SPLITS['50-50-1']['test'] = {'seq': [f'MOT17-{seq_num:02}' for seq_num in train_seq_nums], 'dir': 'train'}
+_SPLITS['50-50-2']['test'] = {'seq': [f'MOT17-{seq_num:02}' for seq_num in train_seq_nums], 'dir': 'train'}
 
 # Test sequences
 test_seq_nums=  (1, 3, 6, 7, 8, 12, 14)

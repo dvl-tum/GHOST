@@ -23,7 +23,7 @@ class Evaluator():
     def evaluate(self, model, dataloader, query=None, gallery=None, 
             gnn=None, graph_generator=None, add_dist=False, batchwise_rank=False,
             query_guided=False, dl_ev_gnn=None, queryguided=False, 
-            attention=False):
+            attention=False, visualize=False):
         # query_guided == use QG network
         # queryguided == evaluate for each gallery and each query
         model_is_training = model.training
@@ -50,7 +50,7 @@ class Evaluator():
 
             mAP, cmc = self.predict_reid_features_qg(model, gnn,
                     dataloader, dataloader_queryguided=dl_ev_gnn, 
-                    query=query, gallery=gallery)
+                    query=query, gallery=gallery, visualize=visualize)
 
             gnn.train(gnn_is_training)
         else:
@@ -252,11 +252,11 @@ class Evaluator():
                     fc7 = torch.cat([feature_maps[p].unsqueeze(0) for p in P], 0)
 
                     # get attended features
-                    _, _, _, qs, gs, attended_feats, _, att_g = gnn(fc7, num_query=1)
+                    _, _, _, qs, gs, attended_feats, _, _, _, att_g = gnn(fc7, num_query=1, output_option=self.output_test, eval=True)
 
-                    if visualize:
+                    if visualize and i == 1:
                         visualize_att_map(att_g, P)
-
+                    
                     # get distance
                     dist = sklearn.metrics.pairwise_distances(features[P[0]].unsqueeze(0).cpu().numpy(), \
                          attended_feats.cpu().numpy(), metric='euclidean')
@@ -272,7 +272,7 @@ class Evaluator():
                         for path, c, y in zip(P[1:], camid[1:], Y):
                             labels[path] = y
                             camids[path] = c
-                    
+                   
                 dist = np.asarray([v for v in qg_dists.values()])
                 gallery = [k for k in qg_dists.keys()]
                 query = [P[0]]
@@ -286,7 +286,9 @@ class Evaluator():
 
                 maP, cmc = calc_mean_average_precision(None, query=query, gallery=gallery, \
                     distmat=dist, gc=gc, qc=qc, gi=gi, qi=qi)
-
+                if visualize and i == 1:
+                    print(maP, cmc)
+                    quit()
                 if cmc is not None and maP is not None:
                     CMC.append(cmc)
                     mAP.append(maP)
@@ -306,34 +308,43 @@ class Evaluator():
             return 0, {'Market': [0]*50}
         
 
-def visualize_att_map(attention_maps, paths, save_dir='visualization_attention_maps'):
+def visualize_att_map(attention_maps, paths, save_dir='test_samples'):
     import matplotlib.pyplot as plt
     from matplotlib.pyplot import figure
     import PIL.Image as Image
     # paths[0] = query path, rest gallery paths
     query = cv2.imread(paths[0], 1)
+    min_att = attention_maps.min().cpu().numpy()
+    max_att = attention_maps.max().cpu().numpy()
+    #print(min_att, max_att)
     for path, attention_map in zip(paths[1:], attention_maps):
         gallery = cv2.imread(path, 1)
-        attention_map = cv2.resize(attention_map.squeeze().cpu().numpy(), (gallery.shape[1], gallery.shape[0]))
+        attention_map = attention_map.squeeze().cpu().numpy() 
+        print(attention_map, path, paths[0])
+        attention_map = (attention_map-min_att)/(max_att-min_att)
+        print(attention_map)
+        attention_map = cv2.resize(attention_map, (gallery.shape[1], gallery.shape[0]))
+        
         cam = show_cam_on_image(gallery, attention_map)        
         
-        fig = figure(figsize=(6, 10), dpi=80)
+        fig = figure(figsize=(10, 6), dpi=80)
         # Create figure and axes
         fig.add_subplot(1,3,1)
         plt.imshow(cv2.cvtColor(query, cv2.COLOR_BGR2RGB))
+        plt.axis('off')
 
         fig.add_subplot(1,3,2)
         plt.imshow(cv2.cvtColor(gallery, cv2.COLOR_BGR2RGB))
+        plt.axis('off')
 
         fig.add_subplot(1,3,3)
         plt.imshow(cv2.cvtColor(cam, cv2.COLOR_BGR2RGB))
-        
         plt.axis('off')
+
         os.makedirs(save_dir, exist_ok=True)
         plt.savefig(os.path.join(save_dir, \
             os.path.basename(paths[0])[:-4]  + "_" +os.path.basename(path)))
-    quit()
-
+        
 def show_cam_on_image(img, mask):
     img = np.float32(img) / 255
     heatmap = cv2.applyColorMap(np.uint8(255 * mask), cv2.COLORMAP_JET)

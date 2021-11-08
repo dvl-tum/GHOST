@@ -11,7 +11,7 @@ from .utils import weights_init_kaiming, weights_init_classifier
 
 def load_net(dataset, nb_classes, mode, attention, net_type, bn_inception={'embed': 0, 'sz_embedding': 512},
              last_stride=0, neck=0, pretrained_path=None, weight_norm=0, final_drop=0.5, stoch_depth=0.8, red=1,
-             add_distractors=False):
+             add_distractors=False, pool='avg'):
             
     if net_type == 'resnet18':
         red = 1
@@ -64,7 +64,7 @@ def load_net(dataset, nb_classes, mode, attention, net_type, bn_inception={'embe
     elif net_type == 'resnet50':
         model = resnet50(pretrained=True, last_stride=last_stride, neck=neck, 
                     final_drop=final_drop, stoch_depth=stoch_depth, red=red, 
-                    attention=attention, add_distractors=add_distractors)
+                    attention=attention, add_distractors=add_distractors, pool=pool)
         
         if attention:
             sz_embed, dim_fc = [2048, 8, 4], 2048
@@ -93,8 +93,9 @@ def load_net(dataset, nb_classes, mode, attention, net_type, bn_inception={'embe
             else:
                 state_dict = torch.load(pretrained_path)
 
-            state_dict = {k: v for k, v in state_dict.items() if 'fc' not in k.split('.')}
+            state_dict = {k: v for k, v in state_dict.items() if 'fc' not in k.split('.') and 'fc_person' not in k.split('.')}
             #state_dict = {k[7:]: v for k, v in state_dict.items()}
+
             model_dict = model.state_dict()
             model_dict.update(state_dict)
             model.load_state_dict(model_dict)

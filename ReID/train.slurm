@@ -3,9 +3,10 @@
 #SBATCH --nodes=1
 #SBATCH --partition=DEADLINE
 #SBATCH --comment='For CVPR submission.'
-#SBATCH --gpus=titan:1
-#SBATCH --cpus-per-gpu=3
+#SBATCH --gres=gpu:1
+#SBATCH --cpus-per-gpu=1
 #SBATCH --mem=128G
+#SBATCH --exclude=node14
 #SBATCH --partition=DEADLINE
 #SBATCH --comment='For CVPR submission.'
 #SBATCH --time=40:00:00

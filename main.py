@@ -65,12 +65,12 @@ def main(args):
             if config['tracker']['mode'] == 'hyper_search':
                 # act_reid_thresh, inact_reid_thresh, avg_inact: num, proxy
                 
-                config['tracker']['act_reid_thresh'] = random.uniform(0.25, 0.8) #0.088, 0.108
-                config['tracker']['inact_reid_thresh'] = random.uniform(0.25, config['tracker']['act_reid_thresh']) #0.064, 0.084
+                config['tracker']['act_reid_thresh'] = random.uniform(0.1, 0.7) #0.088, 0.108
+                config['tracker']['inact_reid_thresh'] = random.uniform(0.1, config['tracker']['act_reid_thresh']) #0.064, 0.084
                 config['tracker']['avg_inact']['num'] = random.randint(0, 100)
-                config['tracker']['avg_inact']['proxy'] = random.choice(['mean', 'median']) #'mode', 'mean', 'median'
+                config['tracker']['avg_inact']['proxy'] = random.choice(['mode', 'mean', 'median']) #'mode', 'mean', 'median'
                 config['tracker']['avg_act']['num'] = random.randint(0, 100)
-                config['tracker']['avg_act']['proxy'] = random.choice(['mean', 'median']) #'mean', 'median'
+                config['tracker']['avg_act']['proxy'] = random.choice(['mode', 'mean', 'median']) #'mean', 'median'
             logger.info('Iteration {}'.format(i+1))
             logger.info(config)
             manager = Manager(device, time.time(), config['dataset'],

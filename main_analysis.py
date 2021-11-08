@@ -67,7 +67,7 @@ def main(args):
     variables = list(var_dict_init.keys()) 
 
     # choose which ones to use 
-    uses = [['vis'], ['size'], ['frame_dist'], ['size_diff'], ['gallery_vis', 'vis']] #['vis']
+    uses = [[]] #[['vis'], ['size'], ['frame_dist'], ['size_diff'], ['gallery_vis', 'vis']] #['vis']
     for use in uses:
         print(use)
         var_dict = copy.deepcopy(var_dict_init)
@@ -106,7 +106,7 @@ def main(args):
 
 
                                                 manager = src.reid_manager.ManagerReID(device, time.time(), config['dataset'],
-                                                                    config['reid_net'], config['tracker'], experiment_name='Split_2')
+                                                                    config['reid_net'], config['tracker'], experiment_name='analysis_MOT/Split_3.csv')
                                                 if precomp is not None:
                                                     manager.ys = precomp_ys
                                                     manager.dist = precomp_dist

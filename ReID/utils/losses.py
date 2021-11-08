@@ -1,3 +1,4 @@
+from numpy.core.fromnumeric import take
 import torch
 from torch import nn
 import torch.nn.functional as F
@@ -281,36 +282,63 @@ class CenterLoss(torch.nn.Module):
         loss = dist.clamp(min=1e-12, max=1e+12).sum() / batch_size
         return loss
 
+def dist_comp(inputs_1, inputs_2):
+    m, n = inputs_1.size(0), inputs_2.size(0)
+    x = inputs_1.view(m, -1)
+    y = inputs_2.view(n, -1)
+    dist = torch.pow(x, 2).sum(dim=1, keepdim=True).expand(m, n) + \
+        torch.pow(y, 2).sum(dim=1, keepdim=True).expand(n, m).t()
 
-class TripletLoss(nn.Module):
-    def __init__(self, margin=0.1):
-        super(TripletLoss, self).__init__()
+    dist.addmm_(1, -2, x, y.t())
+
+    return dist, n
+
+class TripletLossAtt(nn.Module):
+    def __init__(self, margin=0.3):
+        super(TripletLossAtt, self).__init__()
+        print("HERE")
         self.margin = margin
         self.ranking_loss = nn.MarginRankingLoss(margin=margin)
 
-    def forward(self, inputs=None, targets=None, dist=None):
-        # Compute pairwise distance
-        if dist is None:
-            m, n = inputs.size(0), inputs.size(0)
-            x = inputs.view(m, -1)
-            y = inputs.view(n, -1)
-            dist = torch.pow(x, 2).sum(dim=1, keepdim=True).expand(m, n) + \
-                torch.pow(y, 2).sum(dim=1, keepdim=True).expand(n, m).t()
+    def forward(self, inputs=None, targets=None, dist=None, label=None, \
+        label_cor=None, label_2=None, att_feats=None, fc7=None, qs=None, gs=None,
+        corruption_img_ind=None, ind=None):
+        
+        if label is not None:
+            ind = torch.arange(ind.shape[0])
+            dist_1, _ = dist_comp(att_feats, att_feats)
+            dist_2, _ = dist_comp(att_feats, fc7)
+            
+            # query labels = label_2
+            label = torch.atleast_2d(label)
+            label_cor = torch.atleast_2d(label_cor)
+            label_2 = torch.atleast_2d(label_2)
 
-            dist.addmm_(1, -2, x, y.t())
+            # get pos distance
+            dist_ap = dist_2[torch.arange(dist_2.shape[0]), qs]
 
-        mask = targets.type(torch.ByteTensor).cuda()
+            # make sure no double negs
+            neg = torch.logical_and(torch.atleast_2d(ind[qs]) == torch.atleast_2d(ind[corruption_img_ind[gs]]).T, \
+                torch.atleast_2d(ind[gs]) == torch.atleast_2d(ind[gs]).T)
+            dist_an = dist_1[neg]
 
-        # for numerical stability
-        # For each anchor, find the hardest positive and negative
-        #mask = targets.expand(n, n).eq(targets.expand(n, n).t())
-        dist_ap, dist_an = [], []
-        for i in range(n):
-            mask = targets == targets[i]
-            dist_ap.append(dist[i][mask].max().unsqueeze(dim=0)) #hp
-            dist_an.append(dist[i][mask == 0].min().unsqueeze(dim=0)) #hn
-        dist_ap = torch.cat(dist_ap)
-        dist_an = torch.cat(dist_an)
+        else:
+            # Compute pairwise distance
+            if dist is None:
+                dist, n = dist_comp(inputs_1=inputs, inputs_2=inputs)
+            mask = targets.type(torch.ByteTensor).cuda()
+
+            # for numerical stability
+            # For each anchor, find the hardest positive and negative
+            #mask = targets.expand(n, n).eq(targets.expand(n, n).t())
+            dist_ap, dist_an = [], []
+            for i in range(n):
+                mask = targets == targets[i]
+                dist_ap.append(dist[i][mask].max().unsqueeze(dim=0)) #hp
+                dist_an.append(dist[i][mask == 0].min().unsqueeze(dim=0)) #hn
+            dist_ap = torch.cat(dist_ap)
+            dist_an = torch.cat(dist_an)
+
         # Compute ranking hinge loss
         y = dist_an.data.new()
 
@@ -319,6 +347,7 @@ class TripletLoss(nn.Module):
         y = Variable(y)
         loss = self.ranking_loss(dist_an, dist_ap, y)
         prec = (dist_an.data > dist_ap.data).sum() * 1. / y.size(0)
+        
         return loss, prec
 
 
@@ -365,6 +394,7 @@ class TripletLoss(nn.Module):
 
 def multi_pos_cross_entropy(pred,
                             label,
+                            ignore=None,
                             remove_self_dist=True,
                             weight=None,
                             reduction='mean',
@@ -388,10 +418,20 @@ def multi_pos_cross_entropy(pred,
 
     if remove_self_dist:
         self_dist = torch.diag(torch.ones(label.shape[0])).bool().to(neg_inds.get_device())
-        pred_pos[neg_inds | self_dist] = pred_pos[neg_inds | self_dist] + float('inf')
+        if ignore is not None:
+            pred_pos[neg_inds | self_dist | ignore] = pred_pos[neg_inds | self_dist | ignore] + float('inf')
+        else:
+            pred_pos[neg_inds | self_dist] = pred_pos[neg_inds | self_dist] + float('inf')
     else:
-        pred_pos[neg_inds] = pred_pos[neg_inds] + float('inf')
-    pred_neg[pos_inds] = pred_neg[pos_inds] + float('-inf')
+        if ignore is not None:
+            pred_pos[neg_inds | ignore] = pred_pos[neg_inds | ignore] + float('inf')
+        else:
+            pred_pos[neg_inds] = pred_pos[neg_inds] + float('inf')
+    
+    if ignore is not None:
+        pred_neg[pos_inds | ignore] = pred_neg[pos_inds | ignore] + float('-inf')
+    else:
+        pred_neg[pos_inds] = pred_neg[pos_inds] + float('-inf')
 
     _pos_expand = torch.repeat_interleave(pred_pos, pred.shape[1], dim=1)
     _neg_expand = pred_neg.repeat(1, pred.shape[1])
@@ -422,28 +462,82 @@ class MultiPosCrossEntropyLoss(nn.Module):
                 label_2 = None,
                 label_corr=None,
                 weight=None,
+                dist_2=None,
                 avg_factor=None,
                 reduction_override=None,
+                which='MPCFC7',
+                qs=None,
+                gs=None,
                 **kwargs):
 
-        # label_2 == query labels --> if no specific query labels are 
-        # given: remove the self-distance bc same features are used as q and g
-        if label_2 is None:
-            label_2 = label
-            remove_self_dist = True
-        else:
-            remove_self_dist = False
-
+        # query labels = label_2
         label = torch.atleast_2d(label)
+        label_corr = torch.atleast_2d(label_corr)
         label_2 = torch.atleast_2d(label_2)
 
-        label = label_2 == label.T
-        # label_corr == second label of image if images corrupted
-        if label_corr is not None:
-            label_corr = torch.atleast_2d(label_corr)
-            label_corr = label_2 == label_corr.T
-            label = label_corr | label
+        if which == 'MPCQG':
+            # where query == either label or label_corr --> positive
+            pos = torch.logical_or(label == label_2.T, label_corr == label_2.T)
 
+            # negative
+            neg = torch.logical_and(torch.logical_and(label != label_2.T , label_corr != label_2.T), label_2 == label_2.T)
+
+            # ignore
+            ignore = torch.logical_and(torch.logical_and(label != label_2.T , label_corr != label_2.T) , label_2 != label_2.T)
+
+            label = torch.zeros(pos.shape)
+            label[pos] = 1
+            label[neg] = 0
+            label = label.bool().to(cls_score.get_device())
+
+            ign = torch.zeros(pos.shape)
+            ign[ignore] = 1
+            ign = ign.bool().to(cls_score.get_device())
+
+            remove_self_dist = True
+        
+        elif which == "MPCFC7":
+            ign = None
+            # label_2 == query labels --> if no specific query labels are 
+            # given: remove the self-distance bc same features are used as q and g
+            if label_2 is None:
+                label_2 = label
+                remove_self_dist = True
+            else:
+                remove_self_dist = False
+            
+            label = label_2 == label.T
+            # label_corr == second label of image if images corrupted
+            if label_corr is not None:
+                label_corr = torch.atleast_2d(label_corr)
+                label_corr = label_2 == label_corr.T
+                label = label_corr | label
+
+        elif which == "MPCFC7QG":
+            ign = torch.zeros([qs.shape[0], qs.shape[0]]).to(cls_score.get_device())
+            cls_score = cls_score.repeat_interleave(cls_score.shape[1]-1, dim=1)
+
+            # where query == either label or label_corr --> positive
+            pos = torch.logical_or(torch.eye(cls_score.shape[0]).bool().to(label.get_device()), label_corr == label_2.T)
+
+            # negative
+            neg = torch.logical_and(torch.logical_or(torch.logical_or(torch.logical_or(label == label.T , label_corr == label_corr.T), label_corr == label.T), label == label_corr.T), label_2 != label_2.T)
+
+            # get labels matrix
+            label = torch.zeros([qs.shape[0], qs.shape[0]])
+            label[pos] = 1
+            label[neg] = 0
+            label = label.bool().to(cls_score.get_device())
+
+            # get ignore matrix
+            ign[pos] = 0
+            ign[neg] = 0
+            ign = ign.bool().to(cls_score.get_device()) 
+            # update cls_score with negative values
+            cls_score[neg] = dist_2[neg]
+
+            remove_self_dist = False
+            
         assert cls_score.size() == label.size()
         assert reduction_override in (None, 'none', 'mean', 'sum')
         reduction = (
@@ -451,9 +545,11 @@ class MultiPosCrossEntropyLoss(nn.Module):
         loss_cls = self.loss_weight * multi_pos_cross_entropy(
             cls_score,
             label,
+            ign,
             remove_self_dist,
             weight,
             reduction=reduction,
             avg_factor=avg_factor,
             **kwargs)
+
         return loss_cls

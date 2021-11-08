@@ -1,5 +1,7 @@
 import pandas as pd
 from collections import defaultdict, Counter
+
+from pandas.core import frame
 import torch
 import sklearn.metrics
 import scipy
@@ -124,7 +126,7 @@ class Tracker():
                     #    self.tracks[gt_id].append(track)
 
             ### track
-            self._track(tracks, i)  
+            self._track(tracks, i, frame=frame)  
             i += 1
             
         # add inactive tracks to active tracks for evaluation
@@ -142,7 +144,7 @@ class Tracker():
         self.write_results(results, self.output_dir, seq.name)
         self.hidden = dict()
 
-    def _track(self, tracks, i):
+    def _track(self, tracks, i, frame=None):
         if i == 0:
             # just add all bbs to self.tracks / intitialize
             for tr in tracks:
@@ -150,7 +152,7 @@ class Tracker():
                 self.id += 1
         elif i > 0:
             # get hungarian matching
-            dist, row, col, ids, dist_l = self.get_hungarian(tracks, sep=self.tracker_cfg['assign_separately'])
+            dist, row, col, ids, dist_l = self.get_hungarian(tracks, sep=self.tracker_cfg['assign_separately'], img_for_vis=frame)
 
             if type(dist) == list:
                 dist[0] = dist[0] * self.scale
@@ -161,7 +163,7 @@ class Tracker():
                 # get bb assignment
                 self.assign(tracks, dist, row, col, ids, dist_l, sep=self.tracker_cfg['assign_separately'])
 
-    def get_hungarian(self, tracks, sep=False):
+    def get_hungarian(self, tracks, sep=False, img_for_vis=None):
         if self.net_type == 'resnet50_attention' and self.gnn:
             x_1 = torch.stack([t['feats'][0] for t in tracks])
             x_2 = torch.stack([t['feats'][1] for t in tracks])
@@ -222,7 +224,7 @@ class Tracker():
 
         # compute gnn features
         if self.gnn:
-            x, y = self.get_gnn_feats(x, y, num_detects)
+            x, y, fc7s = self.get_gnn_feats(x, y, num_detects, img_for_vis=img_for_vis, gt_n=gt_n, gt_t=gt_t)
 
         # compute distance
         dist_l = list()
@@ -236,9 +238,18 @@ class Tracker():
                 if self.net_type == 'resnet50_attention' and self.gnn:
                     dist = np.asarray([sklearn.metrics.pairwise_distances(t.unsqueeze(0).cpu().numpy(), \
                         d.cpu().numpy(), metric='cosine') for t, d in zip(y, x)]).squeeze().T #'euclidean')#'cosine')
+                    dist = np.atleast_2d(dist)
+
+                    # add dist after bb to spatial dist
+                    if self.tracker_cfg['gnn_and_bb']:
+                        dist_fc7s = sklearn.metrics.pairwise_distances(fc7s[0].cpu().numpy(), \
+                            fc7s[1].cpu().numpy(), metric='cosine')
+                        dist_fc7s = np.atleast_2d(dist_fc7s)
+
+                        dist = dist + dist_fc7s
                 else:
                     dist = sklearn.metrics.pairwise_distances(x.cpu().numpy(), y.cpu().numpy(), metric='cosine') #'euclidean')#'cosine')
-                dist = np.atleast_2d(dist)
+                
                 row, col = solve_dense(dist)
                 '''print(np.round(dist, decimals=2))
                 print(gt_n, gt_t)
@@ -274,24 +285,33 @@ class Tracker():
         feats = list()
         avg = self.tracker_cfg['avg_' + mode]['num'] 
         proxy = self.tracker_cfg['avg_' + mode]['proxy']
+        avg_spat = self.tracker_cfg['avg_' + mode]['num_spat'] 
+        proxy_spat = self.tracker_cfg['avg_' + mode]['proxy_spat']
 
         if self.net_type == 'resnet50_attention' and self.gnn:
             it_1 = {i: [{'feats': t['feats'][0]} for t in it] for i, it in curr_it.items()}
             it_2 = {i: [{'feats': t['feats'][1]} for t in it] for i, it in curr_it.items()}
-            curr_its = [it_1, it_2]
+            curr_its = [it_1, it_2] # feature maps, fc7
+            
+            avgs = [0 if avg_spat == 'no' else avg_spat, 0 if avg == 'no' else avg]
+            proxys = ['last' if proxy_spat == 'no' else proxy_spat, 'last' if proxy == 'no' else proxy]
         else:
             curr_its = [curr_it]
+            avgs = [avg]
+            proxys = [proxy]
 
         if type(avg) != str:
             if proxy != 'mv_avg':
                 avg = int(avg)
             else:
                 avg = float(avg)
-        for curr_it in curr_its:
+        for avg, proxy, curr_it in zip(avgs, proxys, curr_its):
             feat = list()
             for i, it in curr_it.items():
                 # take all bbs until now
-                if avg == 'all' or (proxy != 'frames_gnn' and avg != 'first' and proxy != 'mv_avg' and len(it) < avg):
+                if proxy == 'last':
+                    f = it[-1]['feats']
+                elif avg == 'all' or (proxy != 'frames_gnn' and avg != 'first' and proxy != 'mv_avg' and len(it) < avg):
                     if proxy == 'mean':
                         f = torch.mean(torch.stack([t['feats'] for t in it]), dim=0)
                     elif proxy == 'median':
@@ -344,7 +364,7 @@ class Tracker():
             else: 
                 feat = torch.cat(feat, dim=0)
             res.append(feat)
-        if self.net_type != 'resnet50_attention':
+        if self.net_type != 'resnet50_attention' or (self.net_type == 'resnet50_attention' and not self.gnn):
             return res[0]
         else:
             return res
@@ -427,7 +447,7 @@ class Tracker():
                 self.tracks[self.id].append(tracks[i])
                 self.id += 1
 
-    def get_gnn_feats(self, x, y, num_detects):
+    def get_gnn_feats(self, x, y, num_detects, visualize=True, img_for_vis=None, gt_n=None, gt_t=None):
         if self.tracker_cfg['avg_inact']['proxy'] == 'frames_gnn':
             if type(self.tracker_cfg['avg_inact']['num']) == int: 
                 num_frames = self.tracker_cfg['avg_inact']['num'] 
@@ -460,10 +480,20 @@ class Tracker():
             # for spatial attention
             feats = torch.cat([y[0], x[0]])
             fc7 = y[1]
+            fc7s = [x[1], y[1]]
             with torch.no_grad():
                 self.gnn.eval()
                 _, _, _, qs, gs, attended_feats, _, att_g = self.gnn(feats, num_query=y[0].shape[0])
             
+
+            if visualize:
+                att_g = att_g.view(y[0].shape[0], num_detects, att_g.shape[-2], att_g.shape[-1])
+                # iterate over all querys
+                for i in range(y[0].shape[0]):
+                    print(att_g[i])
+                    print(gt_t[i], gt_n)
+                    quit()
+                    visualize_att_map(att_g[i], gt_t[i], gt_n, img_for_vis, save_dir='visualization_attention_maps')
             # if self attention
             # x = attended_feats[y[0].shape[0]:, :].view(y[0].shape[0], num_detects, 2048)
             # y = attended_feats[:y[0].shape[0], :] 
@@ -472,7 +502,7 @@ class Tracker():
             x = attended_feats.view(y[0].shape[0], num_detects, 2048)
             y = fc7
         
-        return x, y
+        return x, y, fc7s
 
     def make_results(self, seq_name):
         results = defaultdict(dict)
@@ -692,3 +722,40 @@ class Tracker():
             aps.append(average_precision_score(y_true, y_score))
 
         logger.info("mAP {}".format(np.mean(aps)))
+
+import cv2
+def visualize_att_map(attention_maps, qs, gs, img_for_vis, save_dir='visualization_attention_maps'):
+    mean = [0.485, 0.456, 0.406]
+    std = [0.299, 0.224, 0.225]
+    import matplotlib.pyplot as plt
+    from matplotlib.pyplot import figure
+    import PIL.Image as Image
+    # paths[0] = query path, rest gallery paths
+    for g, gallery, attention_map in zip(gs, img_for_vis, attention_maps):
+        gallery = torch.stack([(img * std[i]) + mean[i] for i, img in enumerate(gallery)])
+        gallery = np.transpose(gallery.cpu().numpy(), (1, 2, 0))
+        attention_map = cv2.resize(attention_map.squeeze().cpu().numpy(), (gallery.shape[1], gallery.shape[0]))
+
+        cam = show_cam_on_image(gallery, attention_map)        
+        
+        fig = figure(figsize=(6, 7), dpi=80)
+
+        fig.add_subplot(1,2,1)
+        plt.imshow(cv2.cvtColor(gallery, cv2.COLOR_BGR2RGB))
+
+        fig.add_subplot(1,2,2)
+        plt.imshow(cv2.cvtColor(cam, cv2.COLOR_BGR2RGB))
+        
+        plt.axis('off')
+        os.makedirs(save_dir, exist_ok=True)
+        plt.savefig(os.path.join(save_dir, \
+            os.path.basename(str(qs) + '_' + str(g) + '.png')))
+    quit()
+
+def show_cam_on_image(img, mask):
+    img = np.float32(img) / 255
+    heatmap = cv2.applyColorMap(np.uint8(255 * mask), cv2.COLORMAP_JET)
+    heatmap = np.float32(heatmap) / 255
+    cam = heatmap + np.float32(img)
+    cam = cam / np.max(cam)
+    return np.uint8(255 * cam)

@@ -8,13 +8,15 @@ from .utils import *
 import torch.nn.functional as F
 
 class _Query_Guided_Attention(nn.Module):
-    def __init__(self, in_channels, inter_channels=None, norm='size', message='attention_map'): #'attention_map', 'masked_image', with_residual''
+    def __init__(self, in_channels, inter_channels=None, norm='size',
+    message='attention_map', sig=0): #'attention_map', 'masked_image', with_residual''
         super(_Query_Guided_Attention, self).__init__()
 
         self.in_channels = in_channels
         self.inter_channels = inter_channels
         self.norm = norm
         self.message = message
+        self.sig = sig
         print("Sending the following message {}".format(self.message))
 
         if self.inter_channels is None:
@@ -24,7 +26,7 @@ class _Query_Guided_Attention(nn.Module):
 
         conv_nd = nn.Conv2d
         self.max_pool_layer = nn.MaxPool2d(kernel_size=(2, 2))
-        
+
         self.theta = conv_nd(in_channels=self.in_channels, out_channels=self.inter_channels,
                              kernel_size=1, stride=1, padding=0)
 
@@ -68,7 +70,9 @@ class _Query_Guided_Attention(nn.Module):
             f = f.view(batch_size, *x_gallery.size()[2:]).unsqueeze(1)
             
             if self.message == 'attention_map':
-                return self.sigi(f)
+                if self.sig:
+                    return self.sigi(f)
+                return f
 
             # mask image
             z = x_gallery * f 
@@ -146,7 +150,9 @@ class Query_Guided_Attention_Layer(nn.Module):
             gnn_params=None, post_agg=False, num_classes=751, 
             post_dist=False, post_non_agg=False, aggregate=False, 
             class_agg=False, non_agg=False, class_non_agg=True, 
-            distance=False, aggr=None, neck=False):
+            distance=True, aggr=None, neck=False, sig=False,
+            last_stride=False, corrupt=False, inter_chan_fin=0, 
+            pool='avg', transformer=None):
         super(Query_Guided_Attention_Layer, self).__init__()
         self.aggregate = aggregate
         self.class_agg = class_agg
@@ -162,18 +168,18 @@ class Query_Guided_Attention_Layer(nn.Module):
         self.aggr = aggr
         self.neck = neck
 
+        self.last_stride = last_stride
+
         print('Aggregate branch', self.aggregate, self.class_agg, self.post_agg)
         print('Non-aggregate branch', self.non_agg, self.class_non_agg, self.post_non_agg)
         print('Distance branch', self.distance, self.post_dist)
 
-        if inter_channels is None:
-            inter_channels = in_channels
-
-        self.query_guided_attention = _Query_Guided_Attention(in_channels=in_channels, 
-                inter_channels=inter_channels)
-        
-        #self.query_guided_attention = Matrix_Self_Attention_Block(in_channels=in_channels,
-        #        inter_channels=inter_channels)
+        if not transformer:
+            self.query_guided_attention = _Query_Guided_Attention(in_channels=in_channels, 
+                    inter_channels=inter_channels, sig=sig)
+        else:
+            self.query_guided_attention = Matrix_Self_Attention_Block(in_channels=in_channels,
+                   inter_channels=inter_channels)
 
         self.res1 = gnn_params['res1']
         self.res2 = gnn_params['res2']
@@ -194,14 +200,20 @@ class Query_Guided_Attention_Layer(nn.Module):
             self.dropout2 = nn.Dropout(gnn_params['dropout_2'])
             self.norm2 = nn.LayerNorm([in_channels, 8, 4]) if gnn_params['norm2'] else None
 
-        self.avgpool = nn.AdaptiveAvgPool2d((1, 1))
+        if pool == 'avg':
+            print("Using avg pool")
+            self.avgpool = nn.AdaptiveAvgPool2d((1, 1))
+        else:
+            self.avgpool = nn.AdaptiveMaxPool2d((1, 1))
 
+        dim = 128 if last_stride else 32
+        factor = 2 if corrupt else 1
+        inter_chan_fin = inter_chan_fin if inter_chan_fin != 0 else int(in_channels/2)
         if self.distance:
             self.final = nn.Sequential(
-                nn.Linear(in_channels, int(in_channels/2)),
+                nn.Linear(dim*factor, inter_chan_fin),
                 nn.ReLU(),
-                nn.Linear(int(in_channels/2), 1))
-            self.sig = nn.Sigmoid()
+                nn.Linear(inter_chan_fin, 1))
 
         if self.non_agg:
             if self.neck:
@@ -214,21 +226,24 @@ class Query_Guided_Attention_Layer(nn.Module):
 
             else:
                 self.fc = nn.Linear(in_channels, num_classes)
+                self.fc_beforeRes = nn.Linear(in_channels, num_classes)
 
         if self.aggregate:
             self.fc_agg = nn.Linear(in_channels, num_classes)
 
-    def forward(self, x, num_query=None, output_option='plain'):
+    def forward(self, x, x_g=None, num_query=None, output_option='plain', eval=False):
+        if x_g is None:
+            x_g = x
 
         size = (x.shape[0], x.shape[0])
+
         if num_query is None:
             # let every sample attend over every sample but no "self-loop-attention"
             A = torch.where(torch.ones(size)-torch.diag(torch.ones(x.shape[0])) > 0)
             #A = torch.where(torch.ones(size) > 0)
             qs = A[0] # from query
             gs = A[1] # to gallery
-
-            attended_gallery = self.query_guided_attention(x[gs].cuda(x.get_device()), x[qs].cuda(x.get_device())) # x, x_query
+            #attended_gallery = self.query_guided_attention(x[gs].cuda(x.get_device()), x[qs].cuda(x.get_device())) # x, x_query
         else:
             A = torch.zeros(size)
             A[:num_query, num_query:] = 1
@@ -240,13 +255,14 @@ class Query_Guided_Attention_Layer(nn.Module):
             A = torch.where(A > 0)
             qs = A[0] # from query
             gs = A[1] # to gallery
-            attended_gallery = self.query_guided_attention(x[gs], x[qs])
+        
+        attended_gallery = self.query_guided_attention(x_g[gs], x[qs])
 
         # idea: aggregate attention maps for Graph Neural Netowrk
         if self.aggregate:
-            x2 = self.aggr(attended_gallery, gs.cuda(x.get_device()), 0, x.shape[0])
+            x2 = self.aggr(attended_gallery, gs.cuda(x.get_device()), 0, x.shape[0])[0]
             if self.query_guided_attention.message == 'attention_map':
-                x2 = x * x2  
+                x2 = x * x2
 
             # transformer style
             if self.post_agg: 
@@ -261,10 +277,12 @@ class Query_Guided_Attention_Layer(nn.Module):
                 x = x2
 
             # classify aggregated feature maps and get embedding
-            x = self.avgpool(x)
-            x = torch.flatten(x, 1)
             if self.class_agg:
-                fc_x_agg = self.fc_agg(x)        
+                x = self.avgpool(x)
+                x = torch.flatten(x, 1)
+                fc_x_agg = self.fc_agg(x)
+            else:
+                fc_x_agg = None
             aggregated = x
 
         else:
@@ -275,28 +293,26 @@ class Query_Guided_Attention_Layer(nn.Module):
 
             # transformer style
             if self.post_dist:
-                x = self.dropout1(x)
-                x = self.norm(x) if self.norm is not None else x
-                x = self.conv2(self.dropout(self.act(self.conv1(x)))) if self.conv1 else x
-                x = self.dropout2(x)
-                x = self.norm2(x) if self.norm2 is not None else x
+                _x = self.dropout1(x)
+                _x = self.norm(_x) if self.norm is not None else _x
+                _x = self.conv2(self.dropout(self.act(self.conv1(_x)))) if self.conv1 else _x
+                _x = self.dropout2(_x)
+                _x = self.norm2(_x) if self.norm2 is not None else _x
             else:
-                x = attended_gallery
+                _x = attended_gallery
 
             # get distance from attention matrix
-            x = self.avgpool(x)
-            x = torch.flatten(x, 1)
-            x = self.final(x)
-            x = self.sig(x)
-            dist = torch.zeros(size).cuda(x.get_device())
-            dist[qs, gs] = x.squeeze()
+            _x = _x.view(_x.shape[0], _x.shape[1], -1)
+            _x = torch.flatten(_x, 1)
+            dist = self.final(_x) if not eval else None
+            
         else:
             dist = None
 
         # idea: classidy each gallery that was attendet over
         if self.non_agg:
 
-            _x = x[gs].cuda(x.get_device())
+            _x = x_g[gs].cuda(x.get_device())
             x2 = _x * attended_gallery
 
             # transformer style
@@ -310,24 +326,28 @@ class Query_Guided_Attention_Layer(nn.Module):
                 _x = self.norm2(_x) if self.norm2 is not None else _x
             else:
                 _x = x2 + _x
-
+ 
             # classify attended gallery images 
             _x = self.avgpool(_x)
             _x = torch.flatten(_x, 1)
+
+            x2 = self.avgpool(x2)
+            x2 = torch.flatten(x2, 1)
 
             if self.neck:
                 _x = self.bottleneck(_x)
 
             if self.class_non_agg:
                 fc_x = self.fc(_x)
+                fc_x2 = self.fc_beforeRes(x2)
             
             if output_option == 'plain':
                 _x = F.normalize(_x, p=2, dim=1)
 
         else:
-            fc_x = _x = None
+            fc_x = _x = x2 = fc_x2 = None
 
-        return aggregated, fc_x_agg, dist, qs, gs, _x, fc_x, attended_gallery
+        return aggregated, fc_x_agg, dist, qs, gs, _x, fc_x, x2, fc_x2, attended_gallery
 
 
 class GNNNetwork(nn.Module):
@@ -340,7 +360,9 @@ class GNNNetwork(nn.Module):
         new_dim = int(in_channels/red)
         self.downsample = nn.Conv2d(in_channels, new_dim, kernel_size=1)
         print(self.downsample)
-        layers = [Query_Guided_Attention_Layer(new_dim, aggr=aggr, gnn_params=gnn_params) for _
+
+        layers = [Query_Guided_Attention_Layer(new_dim, aggr=aggr, aggregate=True, \
+            gnn_params=gnn_params, distance=False, class_non_agg=False) for _
                   in range(num_layers)]
 
         self.layers = Sequential(*layers)
@@ -350,9 +372,9 @@ class GNNNetwork(nn.Module):
         out = list()
         for layer in self.layers:
             # feats = aggregated from QGAL
-            feats, _, _, _, _, _, _ = layer(feats) 
+            feats, _, _, _, _, _x_, _, _, _, _ = layer(feats) 
             out.append(feats)
-        
+
         return out, edge_index, edge_attr
 
 
@@ -430,7 +452,6 @@ class SpatialGNNReID(nn.Module):
     def forward(self, feats, edge_index, edge_attr=None, Y=None, output_option='norm', mode='test'):
 
         feats, _, _ = self.gnn_model(feats, edge_index, edge_attr)
-        
         if not self.params['every']:
             fc7 = [torch.flatten(self.avgpool(feats[-1]), 1)]       
         else:
@@ -443,9 +464,9 @@ class SpatialGNNReID(nn.Module):
         if self.neck:
             features = [layer(f) for layer, f in zip(self.bottleneck, fc7)]
         else:
-            features = [feats] 
+            features = fc7
 
-        x = [layer(f) for layer, f in zip(self.fc7, features)]
+        x = [layer(f) for layer, f in zip(self.fc, features)]
 
         if output_option == 'norm':
             return x, features

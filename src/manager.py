@@ -38,11 +38,11 @@ sys.path.insert(0, '/usr/wiss/seidensc/Documents/ABD-Net')
 from get_model_abd import get_model_abd
 sys.path.insert(0, '/usr/wiss/seidensc/Documents/deep-person-reid')
 from get_model_os import get_model_os'''
-sys.path.insert(0, '/usr/wiss/seidensc/Documents/mot_neural_solver')
+'''sys.path.insert(0, '/usr/wiss/seidensc/Documents/mot_neural_solver')
 from get_detector import get_detection_model
 '''
 from torchreid import models
-import torchreid'''
+import torchreid
 
 
 logger = logging.getLogger('AllReIDTracker.Manager')

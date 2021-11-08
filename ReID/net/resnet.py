@@ -156,7 +156,7 @@ class ResNet(nn.Module):
     def __init__(self, block, layers, last_stride, neck, num_classes=1000,
                  zero_init_residual=False, groups=1, width_per_group=64,
                  replace_stride_with_dilation=None, norm_layer=None, final_drop=0.5,
-                 stoch_depth=0.8, red=1, add_distractors=False, attention=False):
+                 stoch_depth=0.8, red=1, add_distractors=False, attention=False, pool='avg'):
         super(ResNet, self).__init__()
         self.neck = neck
         self.stoch_depth = stoch_depth
@@ -197,10 +197,12 @@ class ResNet(nn.Module):
 
         self.layer4 = self._make_layer(block, 512, layers[3], stride=last,
                                        dilate=replace_stride_with_dilation[2])
+        if pool == 'avg':
+            print("Using avg pool")
+            self.avgpool = nn.AdaptiveAvgPool2d((1, 1))
+        else:
+            self.avgpool = nn.AdaptiveMaxPool2d((1, 1))
         
-        #print("Using avg pool")
-        #self.avgpool = nn.AdaptiveAvgPool2d((1, 1))
-        self.avgpool = nn.AdaptiveMaxPool2d((1, 1))
         self.final_drop = nn.Dropout(final_drop)
         
         if red == 1:
@@ -359,10 +361,10 @@ class ResNet(nn.Module):
 
 def _resnet(arch, block, layers, pretrained, progress, last_stride=0, neck=0,
             final_drop=0.5, stoch_depth=0.8, red=1, attention=0, 
-            add_distractors=False, **kwargs):
+            add_distractors=False, pool='avg', **kwargs):
     model = ResNet(block, layers, last_stride=last_stride, neck=neck, 
             final_drop=final_drop, stoch_depth=stoch_depth, red=red, 
-            add_distractors=add_distractors, attention=attention, **kwargs)
+            add_distractors=add_distractors, attention=attention, pool=pool, **kwargs)
     if pretrained:
         if not neck:
             state_dict = load_state_dict_from_url(model_urls[arch],
@@ -404,7 +406,7 @@ def resnet34(pretrained=False, progress=True, last_stride=0, neck=0, final_drop=
 
 
 def resnet50(pretrained=False, progress=True, last_stride=0, neck=0, final_drop=0.5, 
-            stoch_depth=0.8, red=1, add_distractors=False, **kwargs):
+            stoch_depth=0.8, red=1, add_distractors=False, pool='avg', **kwargs):
     r"""ResNet-50 model from
     `"Deep Residual Learning for Image Recognition" <https://arxiv.org/pdf/1512.03385.pdf>`_
     Args:
@@ -413,7 +415,7 @@ def resnet50(pretrained=False, progress=True, last_stride=0, neck=0, final_drop=
     """
     return _resnet('resnet50', Bottleneck, [3, 4, 6, 3], pretrained, progress,
                    last_stride, neck, final_drop, stoch_depth, red=red, 
-                   add_distractors=add_distractors, **kwargs)
+                   add_distractors=add_distractors, pool=pool, **kwargs)
 
 
 def resnet101(pretrained=False, progress=True, **kwargs):

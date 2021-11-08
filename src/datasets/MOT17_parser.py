@@ -130,7 +130,7 @@ class MOTLoader():
         return df
 
     def assign_gt(self, split='split-1'):
-        if split == '50-50':
+        if split == '50-50-1' or split == '50-50-2':
             test_data = pd.read_csv('test_data.csv')
             test_data = test_data[test_data['Sequence'] == '-'.join(self.sequence[0].split('-')[:-1])]
             test_data_gt = self.gt.iloc[test_data['path'].values.tolist()]
@@ -168,8 +168,10 @@ class MOTLoader():
                 self.dets.loc[assigned_detect_index, 'vis'] = corresponding_vis
                 self.dets.loc[unassigned_detect_index, 'vis'] = -1  # False Positives
 
-        if split == '50-50':
+        if split == '50-50-1':
             self.dets = self.dets[self.dets['id'].isin(test_data_ids)]
+        elif split == '50-50-2':
+            self.dets = self.dets[~self.dets['id'].isin(test_data_ids)]
 
         #pd.set_option('display.max_columns', None)
         #print(self.dets[self.dets['id'] == -1])
