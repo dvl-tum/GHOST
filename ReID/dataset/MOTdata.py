@@ -101,7 +101,14 @@ def relabel_ids(df):
 
 split_dict = {'split_1': {'train': (2, 5, 9, 10, 13), 'test': (4, 11)},
               'split_2': {'train': (2, 4, 11, 10, 13), 'test': (5, 9)},
-              'split_3': {'train': (4, 5, 9, 11), 'test': (2, 10, 13)}}
+              'split_3': {'train': (4, 5, 9, 11), 'test': (2, 10, 13)},
+              'split_S2': {'train': (4, 5, 9, 10, 11, 13), 'test': [2]},
+              'split_S4': {'train': (2, 5, 9, 10, 11, 13), 'test': [4]},
+              'split_S5': {'train': (2, 4, 9, 10, 11, 13), 'test': [5]},
+              'split_S9': {'train': (2, 4, 5, 10, 11, 13), 'test': [9]},
+              'split_S10': {'train': (2, 4, 5, 9, 11, 13), 'test': [10]},
+              'split_S11': {'train': (2, 4, 5, 9, 10, 13), 'test': [11]},
+              'split_S13': {'train': (2, 4, 5, 9, 10, 11), 'test': [13]}}
 
 class MOTSeqDataset(ImageDataset):
     def __init__(self,ann_files, img_dir, min_vis=0.3, min_h=50, min_w=25, \
@@ -109,6 +116,13 @@ class MOTSeqDataset(ImageDataset):
             seq_names=None, mode='train', **kwargs):
         np.random.seed(0)
 
+        split = split.split('+')
+        if len(split)> 1:
+            split_seq = split[1]
+        else:
+            split_seq = None
+        split = split[0]
+        
         for i, (ann_file, seq_name) in enumerate(zip(ann_files, seq_names)):
             # Create a Pandas DataFrame out of json annotations file
             print("Reading json...")
@@ -138,7 +152,8 @@ class MOTSeqDataset(ImageDataset):
             index=False, name=None))
         df['cam_id'] = 0
 
-        if split != '50-50':
+        if '50-50' not in split:
+            print(split_dict[split]['test'], split_dict[split]['train'])
             test_seqs = ["MOT17-{:02d}".format(seq) for seq in split_dict[split]['test']]
 
             train_df = df[~df['Sequence'].isin(test_seqs)]
@@ -148,10 +163,14 @@ class MOTSeqDataset(ImageDataset):
             test_id = df.groupby('Sequence')['reid_id'].apply(lambda x: \
                 np.random.choice(x.unique(), size=math.ceil(x.unique().shape[0]*0.5)))
             test_id = [i for ids in test_id.values for i in ids]
-            train_df = df[~df['reid_id'].isin(test_id)]
-            test = df[df['reid_id'].isin(test_id)]
-            '''
-            # get ids for re-id analysis
+            if split == '50-50-1':
+                train_df = df[~df['reid_id'].isin(test_id)]
+                test = df[df['reid_id'].isin(test_id)]
+            else:
+                train_df = df[df['reid_id'].isin(test_id)]
+                test = df[~df['reid_id'].isin(test_id)]
+            
+            '''# get ids for re-id analysis
             test_data = test[['Sequence', 'path']]
             test_data['path'] = test_data['path'].apply(lambda x: int(x.split('.')[0][-10:]))
             test_data.to_csv('test_data.csv')
@@ -165,13 +184,25 @@ class MOTSeqDataset(ImageDataset):
             with open('50-50-split.json', 'w') as file:
                 json.dump(train_test_ids, file)
 
-            quit()
-            '''  
+            quit()'''
+            
         test['index'] = test.index.values
         
         query_per_id = test.groupby('reid_id')['index'].agg(lambda x: np.random.choice(list(x.unique())))
         query_df = test.loc[query_per_id.values].copy()
         gallery_df = test.drop(query_per_id).copy()
+
+        '''train_df.to_csv("train_df.csv")
+        query_df.to_csv("query_df.csv")
+        gallery_df.to_csv("gallery_df.csv")'''
+
+        if split_seq:
+            print('splitting for 50-50 per seq evaluation')
+            test_seqs = ["MOT17-{:02d}".format(seq) for seq in split_dict[split_seq]['test']]
+            train_df = train_df[~train_df['Sequence'].isin(test_seqs)]
+            query_df = query_df[query_df['Sequence'].isin(test_seqs)]
+            gallery_df = gallery_df[gallery_df['Sequence'].isin(test_seqs)]
+
 
         train = to_tuple_list(train_df)
         # IMPORTANT: For testing, torchreid only compares gallery and query images from different cam_ids
@@ -247,5 +278,5 @@ def get_sequence_class(seq_names=None, split='split_1', eval_reid=False):
 
 
 if __name__ == '__main__':
-    dataset = get_sequence_class(split='50-50')
+    dataset = get_sequence_class(split='50-50-1')
     dataset = dataset()
