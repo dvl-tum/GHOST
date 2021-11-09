@@ -5,7 +5,7 @@ visualize: 1
 models:
   freeze_bb: 0
   encoder_params:
-    pretrained_path: "search_results_net/Market_intermediate_model_1636355053.0828881.pth" #"models/0.8422818791946308neck_resnet50_Market.pth" #"models/QG_redLRtwice/0.8187919463087249neck_resnet50_Market.pth" #"0.7818791946308725neck_resnet50_Market.pth" #"models/0.8590604026845637neck_resnet50_Market.pth" #"models/0.8422818791946308neck_resnet50_Market.pth" 
+    pretrained_path: "0.785234899328859neck_resnet50_Market.pth" #"models/0.8422818791946308neck_resnet50_Market.pth" #"models/QG_redLRtwice/0.8187919463087249neck_resnet50_Market.pth" #"0.7818791946308725neck_resnet50_Market.pth" #"models/0.8590604026845637neck_resnet50_Market.pth" #"models/0.8422818791946308neck_resnet50_Market.pth" 
     net_type: "resnet50" #"resnet50FPN"
     neck: 1
     red: 1
@@ -19,7 +19,7 @@ models:
       sz_embedding: 512
 
   gnn_params:
-    pretrained_path: "search_results_net/gnn_Market_intermediate_model_1636355053.0828881.pth" #"models/0.8422818791946308gnn_neck_resnet50_Market.pth" #"models/QG_redLRtwice/0.8187919463087249gnn_neck_resnet50_Market.pth" #"models/0.8590604026845637gnn_neck_resnet50_Market.pth" #"models/0.8422818791946308gnn_neck_resnet50_Market.pth" 
+    pretrained_path: "0.785234899328859gnn_neck_resnet50_Market.pth" #"models/0.8422818791946308gnn_neck_resnet50_Market.pth" #"models/QG_redLRtwice/0.8187919463087249gnn_neck_resnet50_Market.pth" #"models/0.8590604026845637gnn_neck_resnet50_Market.pth" #"models/0.8422818791946308gnn_neck_resnet50_Market.pth" 
     use_edge_encoder: 0
     use_edge_model: 0
     use_node_encoder: 0
