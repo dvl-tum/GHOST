@@ -30,17 +30,14 @@ logger = logging.getLogger('AllReIDTracker.Tracker')
 class Tracker():
     def __init__(self, tracker_cfg, encoder, gnn=None, graph_gen=None, proxy_gen=None, 
                     dev=None, net_type='resnet50', test=0, sr_gan=None, output='plain'):
-        self.counter_iou = 0
         self.net_type = net_type
         self.encoder = encoder
         self.gnn = gnn
         self.graph_gen = graph_gen
-        self.proxy_gen = proxy_gen
+
         self.tracker_cfg = tracker_cfg
         self.output = output
         self.device = dev
-        self.hidden = dict()
-        self.position_fails = list()
 
         self.inact_thresh = tracker_cfg['inact_thresh']
         self.act_reid_thresh = tracker_cfg['act_reid_thresh']
@@ -49,12 +46,9 @@ class Tracker():
         
         self.get_name()
         os.makedirs(osp.join(self.output_dir, self.experiment), exist_ok=True)
-
-        if self.tracker_cfg['use_sr_gan']:
-            self.sr_gan = sr_gan.eval()
         
         if self.tracker_cfg['eval_bb']:
-                self.encoder.eval()
+            self.encoder.eval()
 
     def track(self, seq, scale=1.0):
         # sclae LUP by 1000000
@@ -62,18 +56,23 @@ class Tracker():
         # scale resnet triplet neck dist by 10
         self.scale = scale
         logger.info("scaling by {}".format(self.scale))
+
         self.tracks = defaultdict(list)
         self.inactive_tracks = defaultdict(list)
+
         self.mv_avg = dict()
         logger.info("Tracking sequence {} of lenght {}".format(seq.name, seq.num_frames))
+
+        # if random patches should be sampled
         seq.random_patches = self.tracker_cfg['random_patches'] or self.tracker_cfg[
             'random_patches_first'] or self.tracker_cfg['random_patches_several_frames']
         
         i, self.id = 0, 0
-        self.normalization_before(seq)
+        # batch norm experiemnts
+        #self.normalization_before(seq)
 
         for frame, g, path, boxes, tracktor_ids, gt_ids, vis, random_patches, img_for_det in seq:
-            self.normalization_experiments(random_patches, frame, i)
+            #self.normalization_experiments(random_patches, frame, i)
             ### GET BACKBONE
             frame_id = int(path.split(os.sep)[-1][:-4])
             tracks = list()
@@ -105,7 +104,7 @@ class Tracker():
                     # remove repeated sample again
                     if added:
                         feats = feats[0].unsqueeze(dim=0)
-                else:   
+                else:  
                     _, feats = self.encoder(frame, output_option=self.output)
 
             ### iterate over bbs in current frame 
@@ -114,17 +113,6 @@ class Tracker():
                     track = {'bbox': b, 'feats': f, 'im_index': frame_id, \
                         'tracktor_id': tr_id, 'id': gt_id, 'vis': v}           
                     tracks.append(track)
-                    
-                    # oracle
-                    #if gt_id == -1:
-                    #    continue
-                    #if gt_id in self.tracks.keys():
-                    #    self.tracks[gt_id].append(track)
-                    #elif gt_id in self.inactive_tracks.keys():
-                    #    self.inactive_tracks[gt_id].append(track)
-                    #else:
-                    #    self.tracks[gt_id].append(track)
-
             ### track
             self._track(tracks, i, frame=frame)  
             i += 1
@@ -142,7 +130,6 @@ class Tracker():
             logger.info("Interpolate")
             results = interpolate(results)
         self.write_results(results, self.output_dir, seq.name)
-        self.hidden = dict()
 
     def _track(self, tracks, i, frame=None):
         if i == 0:
@@ -210,6 +197,7 @@ class Tracker():
                     y = [torch.cat([y[0], y_inactive[0]]), torch.cat([y[1], y_inactive[1]])]
                 else:
                     y = torch.cat([y, y_inactive])
+
             elif not sep:
                 y = y_inactive
             
@@ -248,9 +236,10 @@ class Tracker():
 
                         dist = dist + dist_fc7s
                 else:
-                    dist = sklearn.metrics.pairwise_distances(x.cpu().numpy(), y.cpu().numpy(), metric='cosine') #'euclidean')#'cosine')
+                    dist = sklearn.metrics.pairwise_distances(x.cpu().numpy(), y.cpu().numpy(), metric='cosine')#'cosine')
                 
                 row, col = solve_dense(dist)
+
                 '''print(np.round(dist, decimals=2))
                 print(gt_n, gt_t)
                 print(row, col)
@@ -277,7 +266,7 @@ class Tracker():
             
 
         # row represent current frame, col represents last frame + inactiva tracks
-        # row, col = scipy.optimize.linear_sum_assignment(dist)
+        #row, col = scipy.optimize.linear_sum_assignment(dist)
 
         return dist, row, col, ids, dist_l
 
@@ -300,12 +289,12 @@ class Tracker():
             avgs = [avg]
             proxys = [proxy]
 
-        if type(avg) != str:
-            if proxy != 'mv_avg':
-                avg = int(avg)
-            else:
-                avg = float(avg)
         for avg, proxy, curr_it in zip(avgs, proxys, curr_its):
+            if type(avg) != str:
+                if proxy != 'mv_avg':
+                    avg = int(avg)
+                else:
+                    avg = float(avg)
             feat = list()
             for i, it in curr_it.items():
                 # take all bbs until now
@@ -583,6 +572,8 @@ class Tracker():
 
         self.experiment = '_'.join(t) + self.experiment
 
+        self.experiment = 'CT_BBs_old_model'
+
     def normalization_experiments(self, random_patches, frame, i):
         ###### Normalization experiments ######
         if self.tracker_cfg['random_patches'] or self.tracker_cfg['random_patches_first'] :
@@ -723,7 +714,7 @@ class Tracker():
 
         logger.info("mAP {}".format(np.mean(aps)))
 
-import cv2
+#import cv2
 def visualize_att_map(attention_maps, qs, gs, img_for_vis, save_dir='visualization_attention_maps'):
     mean = [0.485, 0.456, 0.406]
     std = [0.299, 0.224, 0.225]

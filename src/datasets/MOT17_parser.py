@@ -147,7 +147,7 @@ class MOTLoader():
                 # Compute IoU for each pair of detected / GT bounding box
                 iou_matrix = box_iou(torch.tensor(frame_detects[['bb_top', 'bb_left', 'bb_bot', 'bb_right']].values),
                                  torch.tensor(frame_gt[['bb_top', 'bb_left', 'bb_bot', 'bb_right']].values))
-                iou_matrix[iou_matrix < self.dataset_cfg['gt_assign_min_iou']] = np.nan
+                iou_matrix[iou_matrix < self.dataset_cfg['gt_assign_min_iou']] = 0 #np.nan
                 dist = 1 - iou_matrix
                 assigned_detects, corresponding_gt = solve_dense(dist)
                 unassigned_detect = np.array(list(set(range(frame_detects.shape[0])) - set(assigned_detects)))

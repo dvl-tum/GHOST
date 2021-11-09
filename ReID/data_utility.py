@@ -55,6 +55,7 @@ def get_train_dataloader(config, labels, paths, data_root, rand_scales, split='s
                                 paths=paths['bounding_box_train'],
                                 trans=config['trans'], rand_scales=rand_scales)
     else:
+        print("HERE")
         Dataset = dataset.All(root=data_root,
                               labels=labels['bounding_box_train'],
                               paths=paths['bounding_box_train'],
@@ -118,8 +119,9 @@ def get_val_dataloader(config, data, data_root, rand_scales=False, split='split_
             rand_scales=rand_scales)
 
     else:
+        print("AND HERE")
         dataset_ev = dataset.All(
-            root - data_root,
+            root=data_root,
             labels=labels_ev,
             paths=paths_ev,
             trans=config['trans'],
@@ -242,7 +244,7 @@ def get_market_and_cuhk03(labels, paths, data_root):
                  in paths['query']['cuhk03']] + \
                 [os.path.join(data_root, 'Market-1501-v15.09.15', 'images',
                 '{:05d}'.format(int(q.split('_')[0])), q) for q 
-                in paths['query']['labeled']]
+                in paths['query']['market']]
     gallery = [os.path.join(data_root, 'cuhk03', 'detected', 'images',
                 '{:05d}'.format(int(g.split('_')[0])), g) for g
                 in paths['bounding_box_test']['cuhk03']] + \
@@ -255,7 +257,7 @@ def get_market_and_cuhk03(labels, paths, data_root):
     return data, data_root
 
 
-def get_single(labels, paths, data_root, sample_sub=True):
+def get_single(labels, paths, data_root, sample_sub=False):
     logger.info("Sampling subset {}".format(sample_sub))
     if sample_sub:
         import random

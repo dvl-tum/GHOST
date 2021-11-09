@@ -3,7 +3,7 @@ import torch
 from torch import nn
 from torch.nn import functional as F
 from time import time
-from torch_scatter import scatter_add
+#from torch_scatter import scatter_add
 from .utils import *
 import torch.nn.functional as F
 

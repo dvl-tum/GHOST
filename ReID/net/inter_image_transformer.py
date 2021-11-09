@@ -5,7 +5,7 @@ from torch import nn
 from torch.nn import functional as F
 import math
 from .utils import *
-from torch_scatter import scatter_add
+#from torch_scatter import scatter_add
 
 class Matrix_Self_Attention_Block(nn.Module):
     def __init__(self, in_channels, inter_channels=None, nhead=1): #'attention_map', 'masked_image', with_residual''

@@ -97,7 +97,9 @@ class Trainer():
                                 self.config['eval_params']['output_test_gnn'],
                                 self.model_params['encoder_params']['pool'],
                                 self.model_params['gnn_params']['gnn']['pool'],
-                                str(self.model_params['gnn_params']['gnn']['transformer'])])
+                                str(self.model_params['gnn_params']['gnn']['transformer']),
+                                self.config['mode'], str(self.model_params['encoder_params']['red']),
+                                str(self.model_params['encoder_params']['neck'])])
             self.writer = SummaryWriter(path) # + str(i))
             logger.info("Writing to {}.".format(path))  
 
@@ -128,6 +130,10 @@ class Trainer():
             # init writer, make det det save name and update params
             mode = self.init_iter(i)
             self.corrupt = self.config['dataset']['corrupt'] != 'no'
+
+            # get data
+            self.get_data(self.config['dataset'], self.train_params,
+                          self.config['mode'])
 
             # get models
             encoder, sz_embed = net.load_net(
@@ -161,10 +167,6 @@ class Trainer():
             # do paralel training in case there are more than one gpus
             if torch.cuda.device_count() > 1:
                 self.encoder = nn.DataParallel(self.encoder)
-
-            # get data
-            self.get_data(self.config['dataset'], self.train_params,
-                          self.config['mode'])
 
             # execute training
             best_rank_iter, model = self.execute(
@@ -245,7 +247,6 @@ class Trainer():
     def forward_pass(self, x, Y, I, P, train_params, e):
         Y = Y.cuda(self.device)
         self.opt.zero_grad()
-        
         # get sencond image to corrupt
         '''cost_mat = (torch.atleast_2d(Y) == torch.atleast_2d(Y).T).float() * 100000000
         from lapsolver import solve_dense
@@ -322,7 +323,6 @@ class Trainer():
         
         self.losses['Classification Accuracy'].append((torch.argmax(\
             probs, dim=1)==Y).float().mean())
- 
 
         # query guided attention output
         if self.model_params['attention'] and not self.gnn:
@@ -362,9 +362,8 @@ class Trainer():
         
         if self.bce_distractor:
             # -2 again is distractor label
-            bce_lab = torch.zeros(Y.shape)
+            bce_lab = torch.zeros(Y.shape).to(self.device)
             bce_lab[Y!=-2] = 1
-            
             distrloss = self.bce_distractor(distractor_bce.squeeze(), bce_lab.squeeze())
             loss += train_params['loss_fn']['scaling_bce'] * distrloss
             self.losses['BCE Loss Distractors ' + str(i)].append(distrloss.item())
@@ -456,7 +455,6 @@ class Trainer():
                 self.losses['Multi Positive Contrastive ' + str(i)].append(scale * loss0.item())
 
         if self.gnn_loss:
-
             data = self.graph_generator.get_graph(fc7, Y)
             edge_attr = data[0].cuda(self.gnn_dev)
             edge_index = data[1].cuda(self.gnn_dev)
@@ -467,29 +465,42 @@ class Trainer():
 
             if type(loss) != int:
                 loss = loss.cuda(self.gnn_dev)
-            pred, feats = self.gnn(fc7, edge_index, edge_attr, Y,
+            if self.bce_distractor_gnn:
+                pred, feats, pred_person = self.gnn(fc7, edge_index, edge_attr,
+                                            train_params['output_train_gnn'],
+                                            mode='train')
+            else:
+                pred, feats = self.gnn(fc7, edge_index, edge_attr,
                                         train_params['output_train_gnn'],
                                         mode='train')
-            
+            pred = [p[Y!=-2] for p in pred]
+            _Y = Y[Y!=-2]
             self.losses['Classification Accuracy after GNN'].append((torch.argmax(\
-                pred[-1], dim=1)==Y).float().mean())
+                pred[-1], dim=1)==_Y).float().mean())
 
-            if self.gnn_loss:
-                if self.every:
-                    loss1 = [gnn_loss(
-                        pr / self.train_params['temperatur'],
-                        Y.cuda(self.gnn_dev)) for gnn_loss, pr in
-                                zip(self.gnn_loss, pred)]
-                else:
-                    loss1 = [self.gnn_loss(
-                        pred[-1] / self.train_params[
-                            'temperatur'], Y.cuda(self.gnn_dev))]
+            if self.every:
+                loss1 = [gnn_loss(
+                    pr / self.train_params['temperatur'],
+                    _Y.cuda(self.gnn_dev)) for gnn_loss, pr in
+                            zip(self.gnn_loss, pred)]
+            else:
+                loss1 = [self.gnn_loss(
+                    pred[-1] / self.train_params[
+                        'temperatur'], _Y.cuda(self.gnn_dev))]
 
-                loss += sum([train_params['loss_fn']['scaling_gnn'] * l
-                                for l in loss1])
+            loss += sum([train_params['loss_fn']['scaling_gnn'] * l
+                            for l in loss1])
 
-                [self.losses['GNN' + str(i)].append(l.item()) for i, l in
-                    enumerate(loss1)]
+            [self.losses['GNN' + str(i)].append(l.item()) for i, l in
+                enumerate(loss1)]
+
+            if self.bce_distractor_gnn:
+                # -2 again is distractor label
+                bce_lab = torch.zeros(Y.shape).to(self.device)
+                bce_lab[Y!=-2] = 1
+                distrloss = self.bce_distractor_gnn(pred_person.squeeze(), bce_lab.squeeze())
+                loss += train_params['loss_fn']['scaling_bce'] * distrloss
+                self.losses['BCE Loss Distractors GNN ' + str(i)].append(distrloss.item())
 
 
         # Compute Triplet Loss
@@ -510,7 +521,7 @@ class Trainer():
         if mode == 'val':
             with torch.no_grad():
                 logger.info('EVALUATION')
-                if self.config['mode'] in ['train', 'test', 'hyper_search']:
+                if self.config['mode'] in ['train', 'test', 'hyper_search', 'all', 'test_all']:
                     mAP, top = self.evaluator.evaluate(self.encoder,
                                                        self.dl_ev,
                                                        self.query,
@@ -613,6 +624,11 @@ class Trainer():
                 self.gnn_loss = losses.FocalLoss().cuda(self.gnn_dev)
             else:
                 self.gnn_loss = None
+            
+            if add_distractors:
+                self.bce_distractor_gnn = nn.BCELoss()
+            else:
+                self.bce_distractor_gnn = None
 
         # GNN loss after every layer
         else:  
@@ -767,6 +783,10 @@ class Trainer():
                 rand_scales=config['rand_scales'],
                 add_distractors=config['add_distractors'],
                 split=config['split'])
+            
+        self.config['dataset']['num_classes'] = len(set(self.dl_tr.dataset.ys)) - 1
+        self.model_params['gnn_params']['classifier']['num_classes'] = len(set(self.dl_tr.dataset.ys)) - 1
+
 
     def get_gnn(self, sz_embed):
         # pretrined gnn path
@@ -799,7 +819,8 @@ class Trainer():
         elif 'gnn' in self.train_params['loss_fn']['fns']:
             self.gnn = net.GNNReID(self.gnn_dev,
                                 self.model_params['gnn_params'],
-                                sz_embed).cuda(self.gnn_dev)
+                                sz_embed, 
+                                add_distractors=self.config['dataset']['add_distractors']).cuda(self.gnn_dev)
 
             if path != "no":
                 load_dict = torch.load(path, map_location='cpu')
@@ -841,9 +862,14 @@ class Trainer():
                 self.query_guided_attention.load_state_dict(state_dict)
 
             params = list(set(self.query_guided_attention.parameters()))
+        
+        else:
+            self.gnn = None
 
-        if not self.model_params['freeze_bb']:
+        if not self.model_params['freeze_bb'] and self.gnn:
             params += list(set(self.encoder.parameters()))
+        elif not self.gnn:
+            params = list(set(self.encoder.parameters()))
         else:
             for param in self.encoder.parameters():
                 param.requires_grad = False

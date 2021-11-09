@@ -55,7 +55,7 @@ class MetaLayer(torch.nn.Module):
 
 
 class GNNReID(nn.Module):
-    def __init__(self, dev, params: dict = None, embed_dim: int = 2048):
+    def __init__(self, dev, params: dict = None, embed_dim: int = 2048, add_distractors: int = 0):
         super(GNNReID, self).__init__()
         num_classes = params['classifier']['num_classes']
         self.dev = dev
@@ -64,6 +64,7 @@ class GNNReID(nn.Module):
         self.edge_encoder_params = params['edge_encoder']
         self.edge_params = params['edge']
         self.gnn_params = params['gnn']
+        self.distractor_bce = add_distractors
         
         self.dim_red = nn.Linear(embed_dim, int(embed_dim/params['red']))
         logger.info("Embed dim old {}, new".format(embed_dim, embed_dim/params['red'])) 
@@ -97,6 +98,9 @@ class GNNReID(nn.Module):
         else:
             layers = [nn.Linear(dim, num_classes) for _ in range(self.gnn_params['num_layers'])] if every else [nn.Linear(dim, num_classes)]
             self.fc = Sequential(*layers)
+            if self.distractor_bce:
+                self.fc_person = nn.Linear(dim, 1,bias=False)
+                self.sig = nn.Sigmoid()
 
     def _build_GNN_Net(self, embed_dim: int = 2048):
 
@@ -134,7 +138,7 @@ class GNNReID(nn.Module):
 
         return MetaLayer(edge_model=edge_model, node_model=gnn)
 
-    def forward(self, feats, edge_index, edge_attr=None, output_option='norm'):
+    def forward(self, feats, edge_index, edge_attr=None, output_option='norm', mode='train'):
         r, c = edge_index[:, 0], edge_index[:, 1]
         
         if self.dim_red is not None:
@@ -164,6 +168,10 @@ class GNNReID(nn.Module):
                 features.append(f)
         else:
             features = feats 
+        
+        if self.distractor_bce:
+            x_person = self.fc_person(features[-1])
+            x_person = self.sig(x_person)
 
         x = list()
         for i, layer in enumerate(self.fc):
@@ -171,12 +179,20 @@ class GNNReID(nn.Module):
             x.append(f)
         
         if output_option == 'norm':
+            if self.distractor_bce:
+                return x, feats, x_person
             return x, feats
         elif output_option == 'plain':
+            if self.distractor_bce:
+                return x, [F.normalize(f, p=2, dim=1) for f in feats], x_person
             return x, [F.normalize(f, p=2, dim=1) for f in feats]
         elif output_option == 'neck' and self.neck:
+            if self.distractor_bce:
+                return x, features, x_person
             return x, features
         elif output_option == 'neck' and not self.neck:
+            if self.distractor_bce:
+                return x, feats, x_person
             print("Output option neck only avaiable if bottleneck (neck) is "
                   "enabeled - giving back x and fc7")
             return x, feats

@@ -47,6 +47,11 @@ def init_args():
 
 
 def main(args):
+    import torchvision
+    logger.info(torchvision.__version__)
+    import torch
+    logger.info(torch.__version__)
+    #quit()
     with open(args.config_path, 'r') as f:
         config = yaml.load(f, Loader=yaml.FullLoader)
     import random

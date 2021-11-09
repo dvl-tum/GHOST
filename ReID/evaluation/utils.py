@@ -24,6 +24,7 @@ class Evaluator():
             gnn=None, graph_generator=None, add_dist=False, batchwise_rank=False,
             query_guided=False, dl_ev_gnn=None, queryguided=False, 
             attention=False, visualize=False):
+
         # query_guided == use QG network
         # queryguided == evaluate for each gallery and each query
         model_is_training = model.training
@@ -254,9 +255,9 @@ class Evaluator():
                     # get attended features
                     _, _, _, qs, gs, attended_feats, _, _, _, att_g = gnn(fc7, num_query=1, output_option=self.output_test, eval=True)
 
-                    if visualize and i == 1:
+                    if visualize and i == 0:
                         visualize_att_map(att_g, P)
-                    
+
                     # get distance
                     dist = sklearn.metrics.pairwise_distances(features[P[0]].unsqueeze(0).cpu().numpy(), \
                          attended_feats.cpu().numpy(), metric='euclidean')
@@ -320,9 +321,9 @@ def visualize_att_map(attention_maps, paths, save_dir='test_samples'):
     for path, attention_map in zip(paths[1:], attention_maps):
         gallery = cv2.imread(path, 1)
         attention_map = attention_map.squeeze().cpu().numpy() 
-        print(attention_map, path, paths[0])
+        #print(attention_map, path, paths[0])
         attention_map = (attention_map-min_att)/(max_att-min_att)
-        print(attention_map)
+        #print(attention_map)
         attention_map = cv2.resize(attention_map, (gallery.shape[1], gallery.shape[0]))
         
         cam = show_cam_on_image(gallery, attention_map)        
@@ -344,6 +345,9 @@ def visualize_att_map(attention_maps, paths, save_dir='test_samples'):
         os.makedirs(save_dir, exist_ok=True)
         plt.savefig(os.path.join(save_dir, \
             os.path.basename(paths[0])[:-4]  + "_" +os.path.basename(path)))
+        print(os.path.basename(path).split('_')[0])
+        if os.path.basename(path).split('_')[0] == '0275':
+            quit()
         
 def show_cam_on_image(img, mask):
     img = np.float32(img) / 255

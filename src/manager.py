@@ -41,8 +41,8 @@ from get_model_os import get_model_os'''
 '''sys.path.insert(0, '/usr/wiss/seidensc/Documents/mot_neural_solver')
 from get_detector import get_detection_model
 '''
-from torchreid import models
-import torchreid
+#from torchreid import models
+#import torchreid
 
 
 logger = logging.getLogger('AllReIDTracker.Manager')

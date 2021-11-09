@@ -41,14 +41,6 @@ class CombineSampler(Sampler):
         if self.sampler:
             self.cl_b, self.n_cl = self.sampler.sample()
 
-        if self.distractor_idx is not None:
-            split_list_of_distractor_indices = []
-            distractor_idx = copy.deepcopy(self.distractor_idx)
-            random.shuffle(distractor_idx)
-            while len(distractor_idx) >= self.n_cl:
-                split_list_of_distractor_indices.append(distractor_idx[:self.n_cl])
-                distractor_idx = distractor_idx[self.n_cl:]
-
         # shuffle elements inside each class
         l_inds = list(map(lambda a: random.sample(a, len(a)), self.l_inds))
 
@@ -69,10 +61,11 @@ class CombineSampler(Sampler):
             choose = copy.deepcopy(inds)
             while len(inds) < self.n_cl:
                 inds += [random.choice(choose)]
-        print("Num samples")
 
         # split lists of a class every n_cl elements
         split_list_of_indices = []
+        import time
+        s = time.time()
         for inds in l_inds:
             inds = inds + np.random.choice(inds, size=(len(inds) // self.n_cl + 1)*self.n_cl - len(inds), replace=False).tolist()
             # drop the last < n_cl elements
@@ -80,6 +73,17 @@ class CombineSampler(Sampler):
                 split_list_of_indices.append(inds[:self.n_cl])
                 inds = inds[self.n_cl:] 
             assert len(inds) == 0
+
+        s = time.time()
+        if self.distractor_idx is not None:
+            split_list_of_distractor_indices = []
+            distractor_idx = copy.deepcopy(self.distractor_idx)
+            random.shuffle(distractor_idx)
+            while len(distractor_idx) >= self.n_cl:
+                split_list_of_distractor_indices.append(distractor_idx[:self.n_cl])
+                distractor_idx = distractor_idx[self.n_cl:]
+                if len(split_list_of_distractor_indices) == len(split_list_of_indices)+5:
+                    break
         # shuffle the order of classes --> Could it be that same class appears twice in one batch?
         random.shuffle(split_list_of_indices)
         if len(split_list_of_indices) % self.cl_b != 0:
@@ -92,7 +96,7 @@ class CombineSampler(Sampler):
         if self.distractor_idx is not None:
             split_list_of_indices = [s + split_list_of_distractor_indices[i] \
                 for i, s in enumerate(split_list_of_indices)]
-        
+
         self.flat_list = [item for sublist in split_list_of_indices for item in sublist]
         return iter(self.flat_list)
 

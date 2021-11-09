@@ -151,14 +151,15 @@ class All(torch.utils.data.Dataset):
     def __init__(self, root, labels, paths, trans=None,
                  eval_reid=False):
         root = os.path.dirname(root)
-        self.dirs = {'market': os.path.join(os.path.dirname(root), 'Market-1501-v15.09.15'),
-                     'cuhk03': os.path.join(os.path.dirname(root), 'cuhk03', 'detected')}
+        self.dirs = {'market': os.path.join('/storage/slurm/seidensc/datasets', 'Market-1501-v15.09.15'),
+                     'cuhk03': os.path.join('/storage/slurm/seidensc/datasets', 'cuhk03', 'detected')}
         self.trans = trans
         self.eval_reid = eval_reid
         # e.g., labels = range(0, 50) for using first 50 classes only
         self.labels = labels
         self.ys = list()
         self.im_paths = list()
+        self.distractor_idx = None
 
         # when cuhk03 and market should be used
         i = 0
@@ -166,14 +167,23 @@ class All(torch.utils.data.Dataset):
         self.ys = list()
         self.im_paths = list()
         for dataset in labels.keys():
-            for lab, dat in zip(labels[dataset], paths[dataset]):
-                id = str(lab) + '_' + dataset
-                if id not in self.map.keys():
-                    self.map[id] = i
+            for lab in sorted(set(labels[dataset])):
+                if lab != -2:
+                    id = str(lab) + '_' + dataset
+                    self.map[id] = i 
                     i += 1
-                self.ys.append(self.map[id])
+            
+            for j, (y, dat) in enumerate(zip(labels[dataset], paths[dataset])):
+                id = str(y) + '_' + dataset
+                if y == -2:
+                    if self.distractor_idx is None:
+                        self.distractor_idx = list()
+                    self.distractor_idx.append(j)
+                    self.ys.append(y)
+                else:
+                    self.ys.append(self.map[id])
                 self.im_paths.append(os.path.join(self.dirs[dataset], 'images', '{:05d}'.format(
-                int(dat.split('_')[0])), dat))
+                    int(dat.split('_')[0])), dat))
 
         self.transform = self.get_transform()
 
@@ -194,7 +204,7 @@ class All(torch.utils.data.Dataset):
             trans = dict()
             for p, n in zip(ps, num_im):
                 trans[n] = utils.appearance_proportional_augmentation1(is_train=not self.eval_reid, app=p)
-
+        print(trans)
         return trans
 
     def nb_classes(self):
@@ -215,7 +225,7 @@ class All(torch.utils.data.Dataset):
         #show_dataset(im, self.ys[index])
 
         if self.eval_reid:
-            return im, self.ys[index], self.im_paths[index]
-        return im, self.ys[index], index
+            return im, self.ys[index], index, self.im_paths[index]
+        return im, self.ys[index], index, self.im_paths[index]
 
 
