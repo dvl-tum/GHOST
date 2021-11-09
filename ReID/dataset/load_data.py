@@ -143,10 +143,9 @@ def load_data(root: str = None, mode: str='single', val=0, seed=0, add_distracto
         for t in ['query', 'bounding_box_test', 'bounding_box_train']:
             l[t] = {'market': labels_market[t], 'cuhk03': labels_cuhk03[t]}
             d[t] = {'market': data_market[t], 'cuhk03': data_cuhk03[t]}
-
+        
         labels.append(l)
-        data.append(t)
-
+        data.append(d)
     else:
         # load image paths and labels for splits
         with open(os.path.join(root, 'info.json'), 'r') as file:
