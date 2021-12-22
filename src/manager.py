@@ -41,8 +41,20 @@ from get_model_os import get_model_os'''
 '''sys.path.insert(0, '/usr/wiss/seidensc/Documents/mot_neural_solver')
 from get_detector import get_detection_model
 '''
-#from torchreid import models
-#import torchreid
+
+frames = {'JDE': [299, 524, 418, 262, 326, 449, 368],
+            'CSTrack': [298, 523, 417, 261, 325, 448, 368],
+            'TraDeS': [299, 524, 418, 262, 326, 449, 374],
+            'CenterTrack': [299, 524, 418, 262, 326, 449, 374],
+            'CenterTrackPub': [299, 524, 418, 262, 326, 449, 374],
+            'qdtrack': [299, 524, 418, 262, 326, 449, 374],
+            'FairMOT': [300, 525, 419, 263, 327, 450, 369],
+            'TransTrack': [299, 524, 418, 262, 326, 449, 374],
+            'center_track': [300, 525, 419, 263, 327, 450, 375],
+            'tracktor_prepr_det': [300, 525, 419, 263, 327, 450, 375]}
+
+from torchreid import models
+import torchreid
 
 
 logger = logging.getLogger('AllReIDTracker.Manager')
@@ -133,13 +145,22 @@ class Manager():
 
         logger.info({k: sum(v)/len(v) for k, v in losses.items()})  
 
-    def _evaluate(self, mode='val'):
+    def _evaluate(self, mode='val', first=False):
         names = list()
         corresponding_gt = OrderedDict()
-        
+
         # get tracking files
         print(self.loaders)
         for seq in self.loaders[mode]:
+
+            '''# feed sequence data through backbon and update statistics before tracking
+            if first:
+                experiment = self.tracker.experiment
+                self._get_models()
+                self.tracker.experiment = experiment
+                self.tracker.gnn, self.tracker.encoder = self.gnn, self.encoder
+                self.tracker.track(seq[0], first=True)
+ 
             if self.dataset_cfg['splits'] != 'mot17_test':
                 df = seq[0].corresponding_gt
                 df = df.drop(['bb_bot', 'bb_right'], axis=1)
@@ -147,11 +168,16 @@ class Manager():
                 df = df.set_index(['FrameId', 'Id'])
                 corresponding_gt[seq[0].name] = df
             self.tracker.gnn, self.tracker.encoder = self.gnn, self.encoder
-            self.tracker.track(seq[0])
+            self.tracker.track(seq[0])'''
             names.append(seq[0].name)
 
-        #self.tracker.experiment = 'TMOH' # "center_track"
+        for what, dd in zip(['Interaction', 'Occlusion'], [self.tracker.interaction, self.tracker.occlusion]):
+            print('{} statistics'.format(what))
+            for k, v in dd.items():
+                print('{}: \t {} \t {}'.format(k, sum(v)/len(v), len(v)))
 
+        #self.tracker.experiment = 'FineTuned_median_63_0.2_last_frame_0.86' #'TMOH' # "center_track"
+        print(self.tracker.experiment)
         # get tracking results
         if self.dataset_cfg['splits'] != 'mot17_test':
             # evlauate only with gt files corresponding to detection files
@@ -186,7 +212,8 @@ class Manager():
                                 self.proxy_gen, dev=self.device,
                                 net_type=self.net_type,
                                 test=test, sr_gan=self.sr_gan,
-                                output=self.reid_net_cfg['output'])
+                                output=self.reid_net_cfg['output'],
+                                data=self.dataset_cfg['det_file'])
             self.tracker.num_el_id = self.reid_net_cfg['dl_params']['num_elements_class']
         else:
             self.gnn, self.graph_gen = None, None
@@ -194,7 +221,11 @@ class Manager():
                                 proxy_gen=self.proxy_gen, dev=self.device, 
                                 net_type=self.net_type,
                                 test=test, sr_gan=self.sr_gan,
-                                output=self.reid_net_cfg['output'])
+                                output=self.reid_net_cfg['output'],
+                                weight=self.reid_net_cfg['encoder_params']['pretrained_path'].split('/')[-1][:8] if self.reid_net_cfg['encoder_params']['net_type'][:8] == 'resnet50' and self.reid_net_cfg['encoder_params']['net_type'][:8] != 'resnet50_analysis' else '',
+                                data=self.dataset_cfg['det_file'])
+
+        
 
     def _get_proxy_gen(self):
         # currently no proxy gen implemented
@@ -275,27 +306,40 @@ class Manager():
         self.encoder = encoder.to(self.device)
     
     def _get_gnn(self):
-        # currently no GNN implemented
-        # self.reid_net_cfg['gnn_params']['classifier']['num_classes'] = self.num_classes
         self.gnn = None
-        in_channels = self.sz_embed[0]
         self.graph_gen = None
 
-        self.gnn = ReID.net.Query_Guided_Attention_Layer(in_channels, \
-            gnn_params=self.reid_net_cfg['gnn_params']['gnn'],
-            num_classes=self.reid_net_cfg['gnn_params']['classifier']['num_classes'],
-            non_agg=True, class_non_agg=True,
-            neck=self.reid_net_cfg['gnn_params']['classifier']['neck']).cuda(self.device)
+        # Transformer
+        self.reid_net_cfg['gnn_params']['classifier']['num_classes'] = self.num_classes
+        if self.reid_net_cfg['encoder_params']['net_type'] == 'resnet50FPN':
+            self.gnn = ReID.net.GNNReID(self.device,
+                                self.reid_net_cfg['gnn_params'],
+                                4 * self.sz_embed).to(self.device)
+        elif self.reid_net_cfg['encoder_params']['net_type'] == 'resnet50_attention':
+            in_channels = self.sz_embed[0]
+            self.gnn = ReID.net.Query_Guided_Attention_Layer(in_channels, \
+                gnn_params=self.reid_net_cfg['gnn_params']['gnn'],
+                num_classes=self.reid_net_cfg['gnn_params']['classifier']['num_classes'],
+                non_agg=True, class_non_agg=True,
+                neck=self.reid_net_cfg['gnn_params']['classifier']['neck']).cuda(self.device)
+
+        else:
+            self.gnn = ReID.net.GNNReID(self.device,
+                                self.reid_net_cfg['gnn_params'],
+                                self.sz_embed).to(self.device)
+            
+            self.graph_gen = ReID.net.GraphGenerator(self.device,
+                                                    **self.reid_net_cfg[
+                                                      'graph_params'])
 
         if self.reid_net_cfg['gnn_params']['pretrained_path'] != "no":
             load_dict = torch.load(
                 self.reid_net_cfg['gnn_params']['pretrained_path'],
                 map_location='cpu')
             load_dict = {k: v for k, v in load_dict.items() if 'fc' not in k.split('.')}
-
             model_dict = self.gnn.state_dict()
             model_dict.update(load_dict)
-            self.gnn.load_state_dict(model_dict)
+            self.gnn.load_state_dict(model_dict)    
 
     
     def _get_loaders(self, dataset_cfg):
@@ -450,11 +494,21 @@ class Manager():
         if get_gt_files:
             out_mot_files_path = 'gt_out'
         else:
-            out_mot_files_path = os.path.join('out', self.tracker.experiment)
+            out_mot_files_path = os.path.join("out", 'fairmot') #os.path.join('out', self.tracker.experiment)
 
         tsfiles = [os.path.join(out_mot_files_path, '%s' % i) for i in names]
         ts = OrderedDict([(os.path.splitext(Path(f).parts[-1])[0], mm.io.loadtxt(f, 
                             fmt='mot15-2D')) for f in tsfiles])
+
+        if self.dataset_cfg['validation_set_gt']:
+            for i, (k, v) in enumerate(gt.items()):
+                import numpy as np
+                min_frame = np.min(ts[k].index.get_level_values('FrameId').values)
+                print(np.min(gt[k].index.get_level_values('FrameId').values))
+                print('here', min_frame)
+                mask = v.index.get_level_values('FrameId').values >= min_frame
+                gt[k] = v[mask]
+                print(np.min(gt[k].index.get_level_values('FrameId').values))
 
         accs, names = self._compare_dataframes(gt, ts)
 
@@ -466,9 +520,17 @@ class Manager():
         accs = []
         names = []
         for k, tsacc in ts.items():
+            import pandas as pd
+            import numpy as np
+
             if k in gts:
+                print(np.unique(gts[k].index.get_level_values('FrameId').values))
+                print(np.unique(tsacc.index.get_level_values('FrameId').values))
                 accs.append(mm.utils.compare_to_groundtruth(gts[k], tsacc, 
                                     'iou', distth=0.5))
+                print(mm.utils.compare_to_groundtruth(gts[k], tsacc, 
+                                    'iou', distth=0.5))
+                quit()
                 names.append(k)
 
         return accs, names
