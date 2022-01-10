@@ -1,3 +1,4 @@
+from io import IOBase
 import pandas as pd
 from collections import defaultdict, Counter
 
@@ -21,6 +22,8 @@ from statistics import mean
 import json
 import matplotlib.pyplot as plt
 import torch.nn.functional as F
+from torchvision.ops import box_iou
+from math import floor
 
 from torch.utils.tensorboard import SummaryWriter
 
@@ -29,7 +32,8 @@ logger = logging.getLogger('AllReIDTracker.Tracker')
 
 class Tracker():
     def __init__(self, tracker_cfg, encoder, gnn=None, graph_gen=None, proxy_gen=None, 
-                    dev=None, net_type='resnet50', test=0, sr_gan=None, output='plain'):
+                    dev=None, net_type='resnet50', test=0, sr_gan=None, output='plain', weight='No',
+                    data='tracktor_preprocessed_files.txt'):
         self.net_type = net_type
         self.encoder = encoder
         self.gnn = gnn
@@ -43,22 +47,52 @@ class Tracker():
         self.act_reid_thresh = tracker_cfg['act_reid_thresh']
         self.inact_reid_thresh = tracker_cfg['inact_reid_thresh']
         self.output_dir = tracker_cfg['output_dir']
+
+        self.data = data
         
-        self.get_name()
+        self.get_name(weight)
+        print(self.experiment)
+
         os.makedirs(osp.join(self.output_dir, self.experiment), exist_ok=True)
-        
         if self.tracker_cfg['eval_bb']:
             self.encoder.eval()
 
-    def track(self, seq, scale=1.0):
+        self.distance_ = defaultdict(dict)
+        self.interaction = defaultdict(list)
+        self.occlusion = defaultdict(list)
+
+        self.store_dist = True
+
+    def track(self, seq, scale=1.0, first=False):
         # sclae LUP by 1000000
         # scale abd by 10
         # scale resnet triplet neck dist by 10
         self.scale = scale
         logger.info("scaling by {}".format(self.scale))
+        self.seq = f"Sequence{int(seq.name.split('-')[1])}_" + seq.name.split('-')[2]
+        self.thresh_every = True if self.act_reid_thresh == "every" else False
+        self.thresh_tbd = True if self.act_reid_thresh == "tbd" else False
 
         self.tracks = defaultdict(list)
         self.inactive_tracks = defaultdict(list)
+        if self.store_dist:
+            self.distance_[self.seq]['inact_dist_same'] = list()
+            self.distance_[self.seq]['act_dist_same'] = list()
+            self.distance_[self.seq]['inact_dist_diff'] = list()
+            self.distance_[self.seq]['act_dist_diff'] = list()
+            self.distance_[self.seq]['interaction_mat'] = list()
+            self.distance_[self.seq]['occlusion_mat'] = list()
+            self.distance_[self.seq]['active_inactive'] = list()
+            self.distance_[self.seq]['same_class_mat'] = list()
+            self.distance_[self.seq]['dist'] = list()
+
+            self.distance_[self.seq]['visibility_count'] = {-1:0, 0:0, 0.1:0, 0.2:0, 0.3:0, \
+                0.4:0, 0.5:0, 0.6:0, 0.7:0, 0.8:0, 0.9:0}
+
+        if self.tracker_cfg['eval_bb'] and not first:
+            self.encoder.eval()
+        elif first:
+            logger.info('Feeding sequence data before tracking once')
 
         self.mv_avg = dict()
         logger.info("Tracking sequence {} of lenght {}".format(seq.name, seq.num_frames))
@@ -69,7 +103,7 @@ class Tracker():
         
         i, self.id = 0, 0
         # batch norm experiemnts
-        #self.normalization_before(seq)
+        self.normalization_before(seq, first)
 
         for frame, g, path, boxes, tracktor_ids, gt_ids, vis, random_patches, img_for_det in seq:
             #self.normalization_experiments(random_patches, frame, i)
@@ -106,6 +140,9 @@ class Tracker():
                         feats = feats[0].unsqueeze(dim=0)
                 else:  
                     _, feats = self.encoder(frame, output_option=self.output)
+            
+            if first:
+                continue
 
             ### iterate over bbs in current frame 
             for f, b, tr_id, gt_id, v in zip(feats, boxes, tracktor_ids, gt_ids, vis):
@@ -113,10 +150,25 @@ class Tracker():
                     track = {'bbox': b, 'feats': f, 'im_index': frame_id, \
                         'tracktor_id': tr_id, 'id': gt_id, 'vis': v}           
                     tracks.append(track)
+
+                    if self.store_dist:
+                        if v == 1.0:
+                            v = 0.999
+                        self.distance_[self.seq]['visibility_count'][floor(v*10)/10] += 1
+
+                    #self.tracks[tr_id].append(track)
+            #continue
+
+            self.add_ioa(tracks)
+            
             ### track
             self._track(tracks, i, frame=frame)  
             i += 1
-            
+        
+        if first:
+            logger.info('Done with pre-tracking feed...')
+            return
+
         # add inactive tracks to active tracks for evaluation
         self.tracks.update(self.inactive_tracks)
 
@@ -131,6 +183,15 @@ class Tracker():
             results = interpolate(results)
         self.write_results(results, self.output_dir, seq.name)
 
+        if self.store_dist:
+            print(self.experiment + 'distances.json')
+            import json
+            with open(self.experiment + 'distances.json', 'w') as jf:
+                json.dump(self.distance_, jf)
+
+        #self.act_reid_thresh = self.inact_reid_thresh = 'every' if self.thresh_every else self.act_reid_thresh
+        #self.act_reid_thresh = self.inact_reid_thresh = 'tbd' if self.thresh_tbd else self.act_reid_thresh
+
     def _track(self, tracks, i, frame=None):
         if i == 0:
             # just add all bbs to self.tracks / intitialize
@@ -139,7 +200,10 @@ class Tracker():
                 self.id += 1
         elif i > 0:
             # get hungarian matching
-            dist, row, col, ids, dist_l = self.get_hungarian(tracks, sep=self.tracker_cfg['assign_separately'], img_for_vis=frame)
+            if not self.tracker_cfg['each_sample']:
+                dist, row, col, ids, dist_l = self.get_hungarian(tracks, sep=self.tracker_cfg['assign_separately'], img_for_vis=frame)
+            else:
+                dist, row, col, ids, dist_l = self.get_hungarian_all_samps(tracks)
 
             if type(dist) == list:
                 dist[0] = dist[0] * self.scale
@@ -149,6 +213,182 @@ class Tracker():
             if dist is not None:
                 # get bb assignment
                 self.assign(tracks, dist, row, col, ids, dist_l, sep=self.tracker_cfg['assign_separately'])
+    
+    def box_area(self, boxes):
+        """
+        Computes the area of a set of bounding boxes, which are specified by their
+        (x1, y1, x2, y2) coordinates.
+
+        Args:
+            boxes (Tensor[N, 4]): boxes for which the area will be computed. They
+                are expected to be in (x1, y1, x2, y2) format with
+                ``0 <= x1 < x2`` and ``0 <= y1 < y2``.
+
+        Returns:
+            Tensor[N]: the area for each box
+        """
+        return (boxes[:, 2] - boxes[:, 0]) * (boxes[:, 3] - boxes[:, 1])
+
+    def _box_inter_area(self, boxes1, boxes2):
+        area1 = self.box_area(boxes1)
+        area2 = self.box_area(boxes2)
+
+        lt = torch.max(boxes1[:, None, :2], boxes2[:, :2])  # [N,M,2]
+        rb = torch.min(boxes1[:, None, 2:], boxes2[:, 2:])  # [N,M,2]
+
+        wh = (rb - lt).clamp(min=0)  # [N,M,2]
+        inter = wh[:, :, 0] * wh[:, :, 1]  # [N,M]
+
+        return inter.numpy(), area1.numpy(), area2.numpy()
+
+
+    def add_ioa(self, tracks):
+        bbs = torch.from_numpy(np.vstack([tr['bbox'] for tr in tracks]))
+        inter, area, _ = self._box_inter_area(bbs, bbs)
+        ioa = inter / np.atleast_2d(area).T
+        ioa = ioa - np.eye(ioa.shape[0])
+
+        # not taking foot position into account --> ioa_nofoot
+        self.curr_interaction = ioa
+        ioa_nf = np.sum(ioa, axis=1).tolist()
+        self.interaction[self.seq] += ioa_nf
+        
+        for i, t in zip(ioa_nf, tracks):
+            t['ioa_nf'] = i
+
+        # taking foot position into account
+        bot = np.atleast_2d(bbs[:, 3]).T < np.atleast_2d(bbs[:, 3])
+        ioa[~bot] = 0
+        self.curr_occlusion = ioa
+        ioa = np.sum(ioa, axis=1).tolist()
+        self.occlusion[self.seq] += ioa
+
+        for i, t in zip(ioa, tracks):
+            t['ioa'] = i
+
+    def get_hungarian_all_samps(self, tracks):
+        x = torch.stack([t['feats'] for t in tracks])
+        gt_n = [v['id'] for v in tracks]
+        gt_t = list()
+        dist_all = list()
+        ids = list()
+
+        gt_t += [v[-1]['id'] for v in self.tracks.values()]
+        if not self.tracker_cfg['avg_act']['do']:
+            if len(tracks) > 0:
+                y = torch.stack([t[-1]['feats'] for t in self.tracks.values()])
+                ids.extend([i for i in self.tracks.keys()])
+                dist = sklearn.metrics.pairwise_distances(x.cpu().numpy(), y.cpu().numpy(), metric='cosine').T #'cosine')
+                dist_all.extend([d for d in dist])
+        else:
+            for id, tr in self.tracks.items():
+                y = torch.stack([t['feats'] for t in tr])
+                ids.append(id)
+                dist = sklearn.metrics.pairwise_distances(x.cpu().numpy(), y.cpu().numpy(), metric='cosine')#'cosine')
+                if self.tracker_cfg['each_sample'] == 1:
+                    dist_all.append(np.min(dist, axis=1))
+                elif self.tracker_cfg['each_sample'] == 2:
+                    dist_all.append(np.mean(dist, axis=1))
+                elif self.tracker_cfg['each_sample'] == 3:
+                    dist_all.append(np.max(dist, axis=1))
+                elif self.tracker_cfg['each_sample'] == 4:
+                    dist_all.append(np.max(dist, axis=1)+np.min(dist, axis=1))
+
+        
+        num_acite = len(ids)
+
+        # get inactive tracklets (inacht thresh = 100000)
+        curr_it = {k: v for k, v in self.inactive_tracks.items() 
+                                if v[-1]['inact_count'] <= self.inact_thresh}
+        gt_t += [v[-1]['id'] for v in curr_it.values()]
+        for id, tr in curr_it.items():
+            y = torch.stack([t['feats'] for t in tr])
+            ids.append(id)
+            dist = sklearn.metrics.pairwise_distances(x.cpu().numpy(), y.cpu().numpy(), metric='cosine')#'cosine')
+            if self.tracker_cfg['each_sample'] == 1:
+                dist_all.append(np.min(dist, axis=1))
+            elif self.tracker_cfg['each_sample'] == 2:
+                dist_all.append(np.mean(dist, axis=1))
+            elif self.tracker_cfg['each_sample'] == 3:
+                dist_all.append(np.max(dist, axis=1))
+            elif self.tracker_cfg['each_sample'] == 4:
+                dist_all.append((np.max(dist, axis=1)+np.min(dist, axis=1))/2)
+        
+        num_inacite = len([k for k, v in curr_it.items()])
+
+        dist = np.vstack(dist_all).T
+        row, col = solve_dense(dist)
+
+        if self.store_dist:
+            gt_n = np.atleast_2d(np.array(gt_n))
+            gt_t = np.atleast_2d(np.array(gt_t))
+
+            same_class = gt_t == gt_n.T
+            act = np.atleast_2d(np.array([1] * num_acite + [0] * num_inacite)) == np.atleast_2d(np.ones(dist.shape[0])).T
+            
+            self.distance_[self.seq]['inact_dist_same'].extend(dist[same_class & ~act].tolist())
+            self.distance_[self.seq]['act_dist_same'].extend(dist[same_class & act].tolist())
+            self.distance_[self.seq]['inact_dist_diff'].extend(dist[~same_class & ~act].tolist())
+            self.distance_[self.seq]['act_dist_diff'].extend(dist[~same_class & act].tolist())
+            self.distance_[self.seq]['interaction_mat'].append(self.curr_interaction.tolist())
+            self.distance_[self.seq]['occlusion_mat'].append(self.curr_occlusion.tolist())
+            self.distance_[self.seq]['active_inactive'].append(act.tolist())
+            self.distance_[self.seq]['same_class_mat'].append(same_class.tolist())
+            self.distance_[self.seq]['dist'].append(dist.tolist())
+
+        if self.act_reid_thresh == 'tbd' or self.thresh_every:
+            print('AM I IN')
+            quit()
+            gt_n = np.atleast_2d(np.array(gt_n))
+            gt_t = np.atleast_2d(np.array(gt_t))
+
+            same_class = gt_t == gt_n.T
+            act = np.atleast_2d(np.array([1] * num_acite + [0] * num_inacite)) == np.atleast_2d(np.ones(dist.shape[0])).T
+
+            #self.act_reid_thresh = np.mean(dist[~same_class & act]) - np.std(dist[~same_class & act])
+            if self.thresh_every:
+                self.act_reid_thresh = np.mean(dist[act]) - 0 * np.std(dist[act])
+            elif self.thresh_tbd:
+                self.act_reid_thresh = np.mean(dist[act]) - 0.5 * np.std(dist[act])
+        
+        if (self.inact_reid_thresh == 'tbd' or self.thresh_every) and num_inacite > 0:
+            print("I AM HERE")
+            quit()
+            gt_n = np.atleast_2d(np.array(gt_n))
+            gt_t = np.atleast_2d(np.array(gt_t))
+
+            same_class = gt_t == gt_n.T
+            act = np.atleast_2d(np.array([1] * num_acite + [0] * num_inacite)) == np.atleast_2d(np.ones(dist.shape[0])).T
+            #self.inact_reid_thresh = np.mean(dist[~same_class & ~act]) - np.std(dist[~same_class & ~act])
+            if self.thresh_every:
+                self.inact_reid_thresh = np.mean(dist[~act]) - 2 * np.std(dist[~act])
+            elif self.thresh_tbd:
+                self.inact_reid_thresh = np.mean(dist[~act]) - 1 * np.std(dist[~act])
+
+        return dist, row, col, ids, None
+
+    def get_hungarian_distribution(self, tracks):
+        x = torch.stack([t['feats'] for t in tracks])
+        dist_all = list()
+        ids = list()
+        for id, tr in self.tracks.items():
+            y = torch.stack([t['feats'] for t in tr])
+            ids.append(id)
+            dist = sklearn.metrics.pairwise_distances(x.cpu().numpy(), y.cpu().numpy(), metric='cosine')#'cosine')
+            mean = np.mean(dist, axis=1)
+            std = np.std(dist, axis=1)
+            dist_all.append(np.min(dist, axis=1))
+        
+        for id, tr in self.inactive_tracks.items():
+            y = torch.stack([t['feats'] for t in tr])
+            ids.append(id)
+            dist = sklearn.metrics.pairwise_distances(x.cpu().numpy(), y.cpu().numpy(), metric='cosine')#'cosine')
+            dist_all.append(np.max(dist, axis=1))
+        
+        dist = np.vstack(dist_all).T
+        row, col = solve_dense(dist)
+
+        return dist, row, col, ids, None
 
     def get_hungarian(self, tracks, sep=False, img_for_vis=None):
         if self.net_type == 'resnet50_attention' and self.gnn:
@@ -176,6 +416,7 @@ class Tracker():
             
             ids += list(self.tracks.keys())
             gt_t += [v[-1]['id'] for v in self.tracks.values()]
+            num_acite = len(ids)
 
         # get inactive tracklets (inacht thresh = 100000)
         curr_it = {k: v for k, v in self.inactive_tracks.items() 
@@ -200,15 +441,20 @@ class Tracker():
 
             elif not sep:
                 y = y_inactive
+                num_acite = 0
             
             ids += [k for k, v in curr_it.items()]
             gt_t += [v[-1]['id'] for v in curr_it.values()]
+            num_inacite = len([k for k, v in curr_it.items()])
 
         elif len(curr_it) == 0 and len(self.tracks) == 0:
             for tr in tracks:
                 self.tracks[self.id].append(tr)
                 self.id += 1
             return None, None, None, None
+        
+        else:
+            num_inacite = 0
 
         # compute gnn features
         if self.gnn:
@@ -236,11 +482,62 @@ class Tracker():
 
                         dist = dist + dist_fc7s
                 else:
-                    dist = sklearn.metrics.pairwise_distances(x.cpu().numpy(), y.cpu().numpy(), metric='cosine')#'cosine')
-                
-                row, col = solve_dense(dist)
+                    if not self.tracker_cfg['use_bism']:
+                        dist = sklearn.metrics.pairwise_distances(x.cpu().numpy(), y.cpu().numpy(), metric='cosine')#'cosine')
+                    else:
+                        dist = 1 - self.bisoftmax(x.cpu(), y.cpu())
 
-                '''print(np.round(dist, decimals=2))
+                if self.store_dist:
+                    gt_n = np.atleast_2d(np.array(gt_n))
+                    gt_t = np.atleast_2d(np.array(gt_t))
+
+                    same_class = gt_t == gt_n.T
+                    act = np.atleast_2d(np.array([1] * num_acite + [0] * num_inacite)) == np.atleast_2d(np.ones(dist.shape[0])).T
+                    
+                    self.distance_[self.seq]['inact_dist_same'].extend(dist[same_class & ~act].tolist())
+                    self.distance_[self.seq]['act_dist_same'].extend(dist[same_class & act].tolist())
+                    #print(dist[same_class & act].tolist(), dist[same_class & ~act].tolist())
+                    self.distance_[self.seq]['inact_dist_diff'].extend(dist[~same_class & ~act].tolist())
+                    self.distance_[self.seq]['act_dist_diff'].extend(dist[~same_class & act].tolist())
+                    self.distance_[self.seq]['interaction_mat'].append(self.curr_interaction.tolist())
+                    self.distance_[self.seq]['occlusion_mat'].append(self.curr_occlusion.tolist())
+                    self.distance_[self.seq]['active_inactive'].append(act.tolist())
+                    self.distance_[self.seq]['same_class_mat'].append(same_class.tolist())
+                    self.distance_[self.seq]['dist'].append(dist.tolist())
+
+                if self.act_reid_thresh == 'tbd' or self.thresh_every:
+                    print('AM I IN')
+                    quit()
+                    gt_n = np.atleast_2d(np.array(gt_n))
+                    gt_t = np.atleast_2d(np.array(gt_t))
+
+                    same_class = gt_t == gt_n.T
+                    act = np.atleast_2d(np.array([1] * num_acite + [0] * num_inacite)) == np.atleast_2d(np.ones(dist.shape[0])).T
+
+                    #self.act_reid_thresh = np.mean(dist[~same_class & act]) - np.std(dist[~same_class & act])
+                    if self.thresh_every:
+                        self.act_reid_thresh = np.mean(dist[act]) - 0 * np.std(dist[act])
+                    elif self.thresh_tbd:
+                        self.act_reid_thresh = np.mean(dist[act]) - 0.5 * np.std(dist[act])
+                
+                if (self.inact_reid_thresh == 'tbd' or self.thresh_every) and num_inacite > 0:
+                    print("I AM HERE")
+                    quit()
+                    gt_n = np.atleast_2d(np.array(gt_n))
+                    gt_t = np.atleast_2d(np.array(gt_t))
+
+                    same_class = gt_t == gt_n.T
+                    act = np.atleast_2d(np.array([1] * num_acite + [0] * num_inacite)) == np.atleast_2d(np.ones(dist.shape[0])).T
+                    #self.inact_reid_thresh = np.mean(dist[~same_class & ~act]) - np.std(dist[~same_class & ~act])
+                    if self.thresh_every:
+                        self.inact_reid_thresh = np.mean(dist[~act]) - 2 * np.std(dist[~act])
+                    elif self.thresh_tbd:
+                        self.inact_reid_thresh = np.mean(dist[~act]) - 1 * np.std(dist[~act])
+                    
+                row, col = solve_dense(dist)
+                
+                '''print()
+                print(np.round(dist, decimals=2))
                 print(gt_n, gt_t)
                 print(row, col)
                 quit()'''
@@ -269,6 +566,13 @@ class Tracker():
         #row, col = scipy.optimize.linear_sum_assignment(dist)
 
         return dist, row, col, ids, dist_l
+
+    def bisoftmax(self, x, y):
+        feats = torch.mm(x, y.t())
+        d2t_scores = feats.softmax(dim=1)
+        t2d_scores = feats.softmax(dim=0)
+        scores = (d2t_scores + t2d_scores) / 2
+        return scores.numpy()
 
     def avg_it(self, curr_it, mode='inact'):
         feats = list()
@@ -300,6 +604,11 @@ class Tracker():
                 # take all bbs until now
                 if proxy == 'last':
                     f = it[-1]['feats']
+                elif proxy == 'min_ioa':
+                    ioa = [t['ioa'] for t in it]
+                    ioa.reverse()
+                    f = [t['feats'] for t in it][-(ioa.index(min(ioa))+1)]
+
                 elif avg == 'all' or (proxy != 'frames_gnn' and avg != 'first' and proxy != 'mv_avg' and len(it) < avg):
                     if proxy == 'mean':
                         f = torch.mean(torch.stack([t['feats'] for t in it]), dim=0)
@@ -455,17 +764,18 @@ class Tracker():
             y = [torch.stack([y[j] for j in range(i, y.shape[0], num_frames)]) for i in range(num_frames)]
         else:
             # for gnn
-            '''feats = torch.cat([x, y])
+            feats = torch.cat([x, y])
             with torch.no_grad():
                 self.gnn.eval()
                 if self.tracker_cfg['gallery_att']:
                     edge_attr, edge_ind, feats = self.graph_gen.get_graph(feats, num_dets=num_detects)
                 else:    
                     edge_attr, edge_ind, feats = self.graph_gen.get_graph(feats)
-                _, feats, _ = self.gnn(feats, edge_ind, edge_attr, 'plain')
+                _, feats = self.gnn(feats, edge_ind, edge_attr, 'plain')
             x = feats[-1][:num_detects, :]
-            y = feats[-1][num_detects:, :]'''
+            y = feats[-1][num_detects:, :]
 
+            '''
             # for spatial attention
             feats = torch.cat([y[0], x[0]])
             fc7 = y[1]
@@ -489,9 +799,9 @@ class Tracker():
 
             # if not self attention
             x = attended_feats.view(y[0].shape[0], num_detects, 2048)
-            y = fc7
+            y = fc7'''
         
-        return x, y, fc7s
+        return x, y, feats
 
     def make_results(self, seq_name):
         results = defaultdict(dict)
@@ -542,37 +852,26 @@ class Tracker():
                          -1, -1, -1, -1])
 
 
-    def get_name(self):
-        inact_avg = self.tracker_cfg['avg_inact']['proxy'] + '_' + str(
+    def get_name(self, weight):
+        inact_avg = self.tracker_cfg['avg_inact']['proxy'] + str(
             self.tracker_cfg['avg_inact']['num']) if self.tracker_cfg['avg_inact']['do'] else 'last_frame'
-        act_avg = self.tracker_cfg['avg_act']['proxy'] + '_' + str(
+        act_avg = self.tracker_cfg['avg_act']['proxy'] + str(
             self.tracker_cfg['avg_act']['num']) if self.tracker_cfg['avg_act']['do'] else 'last_frame'
-        self.experiment = str(self.inact_thresh) + '_' + inact_avg  + '_' + str(
-            self.tracker_cfg['inact_reid_thresh']) + '_' + act_avg + '_' + str(self.tracker_cfg['act_reid_thresh'])
+        self.experiment = inact_avg  + ':' + str(self.tracker_cfg['inact_reid_thresh']) + \
+            ':' + act_avg + ':' + str(self.tracker_cfg['act_reid_thresh'])
+        
+        if self.tracker_cfg['use_bism']:
+            self.experiment += 'bism:1'
         
         if self.gnn:
             self.experiment = 'gnn_' + self.experiment
-        if self.tracker_cfg['init_tracktor']['do']:
-            self.experiment = 'init_tracktor_' + self.experiment
-        if self.tracker_cfg['interpolate']:
-            self.experiment = 'interpolate_' + self.experiment
-        if self.tracker_cfg['oracle_iou']:
-            self.experiment = 'oracle_iou' + str(self.tracker_cfg['iou_thresh']) + self.experiment
-        if self.tracker_cfg['oracle_size']:
-            self.experiment = 'oracle_size' + str(self.tracker_cfg['size_thresh']) + self.experiment
-        if self.tracker_cfg['oracle_frame_dist']:
-            self.experiment = 'oracle_frame_dist' + str(self.tracker_cfg['frame_dist_thresh']) + self.experiment
-        if self.tracker_cfg['oracle_size_diff']:
-            self.experiment = 'oracle_size_diff' + str(self.tracker_cfg['size_diff_thresh']) + self.experiment
         
-        self.experiment = 'oracle_without_clipped_gt'
-        
-        import time        
-        t = time.asctime().split(' ')[1:]
+        #import time        
+        #self.experiment = '_'.join(['_'.join(time.asctime().split(' ')[1:])[:-5], weight, self.experiment])
 
-        self.experiment = '_'.join(t) + self.experiment
+        self.experiment = '_'.join([self.data[:-4], weight, 'evalBB:' + str(self.tracker_cfg['eval_bb']), self.experiment])
 
-        self.experiment = 'CT_BBs_old_model'
+        logger.info(self.experiment)
 
     def normalization_experiments(self, random_patches, frame, i):
         ###### Normalization experiments ######
@@ -601,7 +900,7 @@ class Tracker():
                         m.reset_running_stats()
                         m.momentum = 1
                         m.first_batch_mean = True
-            elif  self.tracker_cfg['running_mean_seq_reset'] and i == 0:
+            elif  self.tracker_cfg['running_mean_seq_reset'] and i != 0:
                 logger.info("Setting mometum to 0.1 again")
                 for m in self.encoder.modules():
                     if isinstance(m, nn.BatchNorm2d):
@@ -646,7 +945,12 @@ class Tracker():
         ###################################
 
 
-    def normalization_before(self, seq, k=5):
+    def normalization_before(self, seq, k=5, first=False):
+        if first:
+            for m in self.encoder.modules():
+                if isinstance(m, nn.BatchNorm2d):
+                    m.reset_running_stats()
+
         i = 0
         if self.tracker_cfg['random_patches_several_frames'] or self.tracker_cfg['several_frames']:
             print("Using {} samples".format(k))

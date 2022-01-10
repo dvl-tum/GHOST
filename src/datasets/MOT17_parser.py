@@ -138,6 +138,11 @@ class MOTLoader():
 
         cols = ['frame', 'id', 'bb_left', 'bb_top', 'bb_width', 'bb_height', 'conf', 'label', 'vis']
         self.corresponding_gt = pd.DataFrame(columns=cols)
+        if len(set(self.dets['frame'].unique().tolist()).intersection(set(self.gt['frame'].unique().tolist()))) < 0.75 * len(self.gt['frame'].unique().tolist()):
+            if np.min(self.dets['frame'].unique()) == 1:
+                max_f = np.max(self.gt['frame'].unique()) - np.max(self.dets['frame'].unique())
+                self.gt['frame'] = self.gt['frame'] - max_f
+        
         if self.seq_info['has_gt']:
             for frame in self.dets['frame'].unique():
                 # get df entries of current frame 
@@ -172,6 +177,12 @@ class MOTLoader():
             self.dets = self.dets[self.dets['id'].isin(test_data_ids)]
         elif split == '50-50-2':
             self.dets = self.dets[~self.dets['id'].isin(test_data_ids)]
+
+        if self.dataset_cfg['validation_set']:
+            print(self.dets.shape)
+            self.dets = self.dets[self.dets['frame']>self.dets['frame'].values.max()*0.5]
+            print(self.dets.shape)
+        print(self.dets['frame'].unique())
 
         #pd.set_option('display.max_columns', None)
         #print(self.dets[self.dets['id'] == -1])

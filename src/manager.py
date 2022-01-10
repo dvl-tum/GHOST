@@ -152,33 +152,55 @@ class Manager():
         # get tracking files
         print(self.loaders)
         for seq in self.loaders[mode]:
-
-            '''# feed sequence data through backbon and update statistics before tracking
-            if first:
-                experiment = self.tracker.experiment
-                self._get_models()
-                self.tracker.experiment = experiment
+                #print('skip')
+                # feed sequence data through backbon and update statistics before tracking
+                if first:
+                    experiment = self.tracker.experiment
+                    self._get_models()
+                    self.tracker.experiment = experiment
+                    self.tracker.gnn, self.tracker.encoder = self.gnn, self.encoder
+                    self.tracker.track(seq[0], first=True)
+    
+                if self.dataset_cfg['splits'] != 'mot17_test':
+                    df = seq[0].corresponding_gt
+                    df = df.drop(['bb_bot', 'bb_right'], axis=1)
+                    df = df.rename(columns={"frame": "FrameId", "id": "Id", "bb_left": "X", "bb_top": "Y", "bb_width": "Width", "bb_height": "Height", "conf": "Confidence", "label": "ClassId", "vis": "Visibility"})
+                    df = df.set_index(['FrameId', 'Id'])
+                    corresponding_gt[seq[0].name] = df
+                
                 self.tracker.gnn, self.tracker.encoder = self.gnn, self.encoder
-                self.tracker.track(seq[0], first=True)
- 
-            if self.dataset_cfg['splits'] != 'mot17_test':
-                df = seq[0].corresponding_gt
-                df = df.drop(['bb_bot', 'bb_right'], axis=1)
-                df = df.rename(columns={"frame": "FrameId", "id": "Id", "bb_left": "X", "bb_top": "Y", "bb_width": "Width", "bb_height": "Height", "conf": "Confidence", "label": "ClassId", "vis": "Visibility"})
-                df = df.set_index(['FrameId', 'Id'])
-                corresponding_gt[seq[0].name] = df
-            self.tracker.gnn, self.tracker.encoder = self.gnn, self.encoder
-            self.tracker.track(seq[0])'''
-            names.append(seq[0].name)
+                self.tracker.track(seq[0])
+                #print('skipped...')
+                names.append(seq[0].name)
 
+        # print interaction and occlusion stats
         for what, dd in zip(['Interaction', 'Occlusion'], [self.tracker.interaction, self.tracker.occlusion]):
             print('{} statistics'.format(what))
             for k, v in dd.items():
                 print('{}: \t {} \t {}'.format(k, sum(v)/len(v), len(v)))
-
-        #self.tracker.experiment = 'FineTuned_median_63_0.2_last_frame_0.86' #'TMOH' # "center_track"
+        
+        # manually set experiment if already generated bbs
+        #self.tracker.experiment = 'qdrtack' #'FineTuned_median_63_0.2_last_frame_0.86' #'TMOH' # "center_track"
         print(self.tracker.experiment)
-        # get tracking results
+
+        # EVALUATION FROM FAIRMOT oder so 
+        from src.eval_fairmot import Evaluator
+        accs = list()
+        for seq in names:
+            evaluator = Evaluator('/storage/slurm/seidensc/datasets/MOT/MOT17/train', seq, 'mot')
+            accs.append(evaluator.eval_file(os.path.join('out/'+self.tracker.experiment, seq)))
+
+        metrics = mm.metrics.motchallenge_metrics
+        mh = mm.metrics.create()
+        summary = Evaluator.get_summary(accs, names, metrics)
+        strsummary = mm.io.render_summary(
+            summary,
+            formatters=mh.formatters,
+            namemap=mm.io.motchallenge_metric_names
+        )
+        print(strsummary)
+
+        # EVALUATION FROM MPNTRACK
         if self.dataset_cfg['splits'] != 'mot17_test':
             # evlauate only with gt files corresponding to detection files
             # --> no FN here
@@ -467,6 +489,7 @@ class Manager():
             g['lr'] = self.reid_net_cfg['train_params']['lr'] / 10.
     
     def _get_summary(self, accs, names, name):
+        print("SUMMARY")
         logger.info(name)
         mh = mm.metrics.create()
         metrics = mm.metrics.motchallenge_metrics + ['num_objects', 'idtp', 
@@ -494,21 +517,19 @@ class Manager():
         if get_gt_files:
             out_mot_files_path = 'gt_out'
         else:
-            out_mot_files_path = os.path.join("out", 'fairmot') #os.path.join('out', self.tracker.experiment)
+            out_mot_files_path = os.path.join('out', self.tracker.experiment)
 
         tsfiles = [os.path.join(out_mot_files_path, '%s' % i) for i in names]
         ts = OrderedDict([(os.path.splitext(Path(f).parts[-1])[0], mm.io.loadtxt(f, 
                             fmt='mot15-2D')) for f in tsfiles])
+        self.acc = mm.MOTAccumulator(auto_id=True)
 
         if self.dataset_cfg['validation_set_gt']:
             for i, (k, v) in enumerate(gt.items()):
                 import numpy as np
                 min_frame = np.min(ts[k].index.get_level_values('FrameId').values)
-                print(np.min(gt[k].index.get_level_values('FrameId').values))
-                print('here', min_frame)
                 mask = v.index.get_level_values('FrameId').values >= min_frame
                 gt[k] = v[mask]
-                print(np.min(gt[k].index.get_level_values('FrameId').values))
 
         accs, names = self._compare_dataframes(gt, ts)
 
@@ -524,13 +545,8 @@ class Manager():
             import numpy as np
 
             if k in gts:
-                print(np.unique(gts[k].index.get_level_values('FrameId').values))
-                print(np.unique(tsacc.index.get_level_values('FrameId').values))
                 accs.append(mm.utils.compare_to_groundtruth(gts[k], tsacc, 
                                     'iou', distth=0.5))
-                print(mm.utils.compare_to_groundtruth(gts[k], tsacc, 
-                                    'iou', distth=0.5))
-                quit()
                 names.append(k)
 
         return accs, names

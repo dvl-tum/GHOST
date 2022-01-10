@@ -28,7 +28,7 @@ class MOTDataset(Dataset):
         self.to_tensor = ToTensor()
         self.to_pil = transforms.ToPILImage()
         self.transform_det = make_transfor_obj_det(is_train=False)
-        self.transform = make_transform_bot(is_train=False)
+        self.transform = make_transform_bot(is_train=False, sz_crop=dataset_cfg['sz_crop'])
         self.process()
     
     def add_detector(self, sequence, detector):

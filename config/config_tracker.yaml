@@ -1,14 +1,17 @@
 dataset:
   mot_dir: "/storage/slurm/seidensc/datasets/MOT/MOT17" # mot17_test_FRCNN
   det_dir: "/storage/slurm/seidensc/datasets/MOT/MOT17Labels"
-  det_file: "center_track.txt" #"tracktor_prepr_det.txt" #"tmoh.txt" #"center_track.txt" 
-  detector: "all" #"FRCNN"
-  splits: "mot17_test" #"mot17_train_test" #"mot17_split_1_test" #
+  det_file: "qdtrack.txt" # "CenterTrack.txt" #"CenterTrackPub.txt" #"tracktor_prepr_det.txt" #"CSTrack.txt" #"FairMOT.txt" #"JDE.txt" #"TraDeS.txt" #"TransTrack.txt" #"center_track.txt" #"tmoh.txt" #
+  detector: "FRCNN"
+  splits: "mot17_train_test" #"mot17_split_1_test" #
+  validation_set: 0
+  validation_set_gt: 1
   gt_assign_min_iou: 0.5
   prepro_again: 0
   gt_training_min_vis: 0
   drop_unassigned: 0
   save_oracle: 0
+  sz_crop: [384, 128] #[256, 128]
 
 reid_net:
   mode: 'hyper_search'
@@ -28,8 +31,13 @@ reid_net:
     lr: 0.2
     weight_decay: 0.2 
   encoder_params:
-    pretrained_path: 'weights/0.9233103714051737resnet50_Market.pth'
-    # Transformer model 'weights/0.9233103714051737resnet50_Market.pth' 
+    pretrained_path: 'ReID/market_models/0.8518408551068883resnet50_Market.pth'
+    # 'ReID/0.9380530973451328resnet50_MOT17.pth', 'ReID/0.9285714285714286resnet50_MOT17.pth' , 'ReID/0.8859649122807017resnet50_MOT17.pth'
+    #'ReID/0.9073634204275535resnet50_Market.pth' #'ReID/0.9020190023752969resnet50_Market.pth' #'ReID/0.899643705463183resnet50_Market.pth' #'ReID/0.8364014251781473resnet50_Market.pth' #'ReID/0.8518408551068883resnet50_Market.pth'
+    #All Self-loops: 'ReID/0.6547426725132702resnet50_Market.pth'
+    #All Max CE loss new: 'ReID/0.7237479806138933resnet50_Market.pth'
+    #All Max CE loss: '../gnn_based_reid/storage/search_results_net/all_experiemnts/0.9094850426321114resnet50_Market.pth'
+    #Transformer model: 'weights/0.9233103714051737resnet50_Market.pth' 
     #ReID + triplet + neck + dist 'ReID/models/0.7779097387173397neck_resnet50_Market.pth' 
     #ReID + triplet + dist 'ReID/models/0.7586104513064132resnet50_Market.pth' 
     #ReID + neck + dist 'ReID/models/0.8966745843230404neck_resnet50_Market.pth' 
@@ -58,7 +66,7 @@ reid_net:
     thresh: 0
     set_negative: "hard"
   gnn_params:
-    pretrained_path: "ReID/models/0.8590604026845637gnn_neck_resnet50_Market.pth"
+    pretrained_path: "weights/0.9233103714051737gnn_resnet50_Market.pth"
     use_edge_encoder: 0
     use_edge_model: 0
     use_node_encoder: 0
@@ -68,9 +76,10 @@ reid_net:
     every: 0
     proxies: 0
     gnn:
-      num_layers: 1 #1 
+      use_attention: 1
+      num_layers: 2 #1 
       aggregator: "add"
-      num_heads: 4 #
+      num_heads: 8 #
       attention: "dot" #"dot_pygeo"
       mlp: 1
       dropout_mlp: 0.1
@@ -94,12 +103,13 @@ reid_net:
       dropout_p: 0.4
       use_batchnorm: 0
     classifier:
-      neck: 0
+      neck: 1
       num_classes: 2820 #751
       dropout_p: 0.4
       use_batchnorm: 0
 
 tracker:
+  use_bism: 0
   gnn_and_bb: 0
   pad_imgs: 0
   assign_separately: 0
@@ -112,9 +122,9 @@ tracker:
   running_mean_seq_reset: 0
   first_batch: 0
   first_batch_reset: 0
-  eval_bb: 0
+  eval_bb: 1
   use_sr_gan: 0
-  gallery_att: 1
+  gallery_att: 0
   norm_dist: 0
   get_reid_performance: 0
   oracle: 0
@@ -131,29 +141,32 @@ tracker:
   oracle_disappear: 0
   oracle_appear: 0
   interpolate: 0
+  #ResNet 92....: 0.675, 0.3, 63 mean
   #Torchreid: 0.6814211405013855, 0.14258016074055002, 90, mode
   #ResNet: 0.40925543677573695, 0.31084457476623506, 27, median
   #ResNet Neck: 0.18498964692794959, 0.05, 83, mode
   #ResNet Dist Neck: 0.098, 0.074, 62, mode
   #Detection Backbone: 0.3006055694824037, 0.3322236235805963, 77, mode
   #ResNet + GNN (not batchwise rank): 0.5651008171629721, 0.5035112091729865, 59, median
-  act_reid_thresh: 0.65 #0.6814211405013855 #0.47067762909880106 #1.9 #0.5 #0.9784526763106252 #0.632431273844204 #0.7 #0.2 #0.05 #0.45 #0.45 #0.35 #0.65 #0.55 #0.65 #0.7 #0.45
-  inact_reid_thresh: 0.5 #0.14258016074055002 #0.33205863801920266 #3322236235805963 #1.7 #0.25 #0.41154iv6056504569 #0.45 #0.35 #0.125 #0.901 #0.04 #0.35 #0.35 #0.35 #0.5 #0.5 #0.5 #0.5 #0.35
+  #Market model: 0.75/0.7 0.54/0.375, median 63 (non eval / eval)
+  act_reid_thresh: 0.7 #0.71 #0.67 #0.675 #0.7 #0.665 #0.75 #0.7 
+  inact_reid_thresh: 0.75 #0.75 #0.73 #0.74 #0.75 #0.72 #0.54 #0.375 
   inact_thresh: 100000
-  output_dir: 'out'
+  output_dir: 'out' 
+  each_sample: 2 # 1=min, 2=avg, 3=max, 4=0.5*(min+max)
   avg_act:
     do: 0
-    num: 60 #'uniform_2' #60 #10 #4 #20 #'all'
-    proxy: 'mean' #'frames_gnn' #'frames_gnn' #'frames_gnn' #'mode'
+    num: 0.95 #'uniform_2' #60 #10 #4 #20 #'all'
+    proxy: 'min_ioa' #'mv_avg' #'min_ioa' #'frames_gnn' #'frames_gnn' #'frames_gnn' #'mode'
     num_spat: 60 #'uniform_2' #60 #10 #4 #20 #'all'
     proxy_spat: 'mean' #'frames_gnn' #'frames_gnn' #'frames_gnn' #'mode'
   avg_inact: 
     do: 1
-    num: 60 #'uniform_2' #'mean' #'uniform_4' #10 #4 #20 #'all'
-    proxy: 'mean' #'frames_gnn' #'60' #'frames_gnn' #'frames_gnn' #'mode'
+    num: 63 #'uniform_2' #'mean' #'uniform_4' #10 #4 #20 #'all'
+    proxy: 'median' #'frames_gnn' #'60' #'frames_gnn' #'frames_gnn' #'mode'
     num_spat: 60 #'uniform_2' #60 #10 #4 #20 #'all'
     proxy_spat: 'mean' #'frames_gnn' #'frames_gnn' #'frames_gnn' #'mode'
   init_tracktor: 
     do: 0
-  h_w_thresh: 1000000
+  h_w_thresh: 8 #1000000
   length_thresh: 2
