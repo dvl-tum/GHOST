@@ -5,11 +5,16 @@ import motmetrics as mm
 import os
 from typing import Dict
 import numpy as np
+import logging
+
+
+logger = logging.getLogger('AllReIDTracker.EvalFairMOT')
+logger.propagate = False
 
 mm.lap.default_solver = 'lap'
 
 
-class Evaluator(object): 
+class Evaluator(object):
 
     def __init__(self, data_root, seq_name, data_type):
         self.data_root = data_root
@@ -22,9 +27,12 @@ class Evaluator(object):
     def load_annotations(self):
         assert self.data_type == 'mot'
 
-        gt_filename = os.path.join(self.data_root, self.seq_name, 'gt', 'gt.txt')
-        self.gt_frame_dict = read_results(gt_filename, self.data_type, is_gt=True)
-        self.gt_ignore_frame_dict = read_results(gt_filename, self.data_type, is_ignore=True)
+        gt_filename = os.path.join(
+            self.data_root, self.seq_name, 'gt', 'gt.txt')
+        self.gt_frame_dict = read_results(
+            gt_filename, self.data_type, is_gt=True)
+        self.gt_ignore_frame_dict = read_results(
+            gt_filename, self.data_type, is_ignore=True)
 
     def reset_accumulator(self):
         self.acc = mm.MOTAccumulator(auto_id=True)
@@ -42,53 +50,84 @@ class Evaluator(object):
         ignore_objs = self.gt_ignore_frame_dict.get(frame_id, [])
         ignore_tlwhs = unzip_objs(ignore_objs)[0]
 
+        # indicator if valid or ignore
+        # num_gt = len(gt_objs)
+        # num_ignore = len(ignore_objs)
+        # ndicator = np.array([0]*num_gt+[1]*num_ignore, dtype=bool)
+
+        # stack gt and ignore to match both at the same time
+        # ignore_tlwhs = np.vstack([gt_tlwhs, ignore_tlwhs])
+
         # remove ignored results
         keep = np.ones(len(trk_tlwhs), dtype=bool)
-        iou_distance = mm.distances.iou_matrix(ignore_tlwhs, trk_tlwhs, max_iou=0.5)
+        iou_distance = mm.distances.iou_matrix(
+            ignore_tlwhs, trk_tlwhs, max_iou=0.5)
         if len(iou_distance) > 0:
             match_is, match_js = mm.lap.linear_sum_assignment(iou_distance)
-            match_is, match_js = map(lambda a: np.asarray(a, dtype=int), [match_is, match_js])
+            match_is, match_js = map(
+                lambda a: np.asarray(
+                    a, dtype=int), [
+                    match_is, match_js])
             match_ious = iou_distance[match_is, match_js]
 
             match_js = np.asarray(match_js, dtype=int)
             match_js = match_js[np.logical_not(np.isnan(match_ious))]
+
+            # mask if matched to gt and not ignore
+            # match_js = match_js[indicator[match_is]]
+
             keep[match_js] = False
             trk_tlwhs = trk_tlwhs[keep]
             trk_ids = trk_ids[keep]
 
         # get distance matrix
-        iou_distance = mm.distances.iou_matrix(gt_tlwhs, trk_tlwhs, max_iou=0.5)
+        iou_distance = mm.distances.iou_matrix(
+            gt_tlwhs, trk_tlwhs, max_iou=0.5)
 
         # acc
         self.acc.update(gt_ids, trk_ids, iou_distance)
 
-        if rtn_events and iou_distance.size > 0 and hasattr(self.acc, 'last_mot_events'):
-            events = self.acc.last_mot_events  # only supported by https://github.com/longcw/py-motmetrics
+        if rtn_events and iou_distance.size > 0 and hasattr(
+                self.acc, 'last_mot_events'):
+            # only supported by https://github.com/longcw/py-motmetrics
+            events = self.acc.last_mot_events
         else:
             events = None
         return events
 
     def eval_file(self, filename):
-        print("File ", filename)
         self.reset_accumulator()
 
         result_frame_dict = read_results(filename, self.data_type, is_gt=False)
-        #result_frame_dict = {k-min(result_frame_dict.keys())+1: v for k, v in result_frame_dict.items()}
-        #print(result_frame_dict.keys(), max(result_frame_dict.keys()))
-        #print(sorted(list(set(self.gt_frame_dict.keys()))))
-        #print(sorted(set(result_frame_dict.keys())))
-        #quit()
-        #frames = sorted(list(set(self.gt_frame_dict.keys()) | set(result_frame_dict.keys())))
+
         frames = sorted(list(set(result_frame_dict.keys())))
+        # frames = sorted(list(range(frames[0], frames[-1])))
+
+        print('Frames are consecutive', self.is_consecutive(frames), filename)
         for frame_id in frames:
             trk_objs = result_frame_dict.get(frame_id, [])
             trk_tlwhs, trk_ids = unzip_objs(trk_objs)[:2]
+            # frame_id, bb coordinates, person id
             self.eval_frame(frame_id, trk_tlwhs, trk_ids, rtn_events=False)
 
         return self.acc
 
     @staticmethod
-    def get_summary(accs, names, metrics=('mota', 'num_switches', 'idp', 'idr', 'idf1', 'precision', 'recall')):
+    def is_consecutive(input_list):
+        return input_list[-1]-input_list[0] == len(input_list)-1
+
+    @staticmethod
+    def get_summary(
+        accs,
+        names,
+        metrics=(
+            'mota',
+            'num_switches',
+            'idp',
+            'idr',
+            'idf1',
+            'precision',
+            'recall')):
         names = copy.deepcopy(names)
         if metrics is None:
             metrics = mm.metrics.motchallenge_metrics
@@ -135,7 +174,16 @@ def write_results(filename, results_dict: Dict, data_type: str):
                     continue
                 x1, y1, w, h = tlwh
                 x2, y2 = x1 + w, y1 + h
-                line = save_format.format(frame=frame_id, id=track_id, x1=x1, y1=y1, x2=x2, y2=y2, w=w, h=h, score=1.0)
+                line = save_format.format(
+                    frame=frame_id,
+                    id=track_id,
+                    x1=x1,
+                    y1=y1,
+                    x2=x2,
+                    y2=y2,
+                    w=w,
+                    h=h,
+                    score=1.0)
                 f.write(line)
     print('Save results to {}'.format(filename))
 
@@ -168,10 +216,15 @@ labels={'ped', ...			% 1
 
 
 def read_mot_results(filename, is_gt, is_ignore):
+    '''
+    returns: frame dict with list of bbs in given frame
+    if is_gt = True: only valid_labels are taken into account
+    if is_ignore = True: only invalid_labels are taken into account
+    '''
     valid_labels = {1}
     ignore_labels = {2, 7, 8, 12}
     results_dict = dict()
-    print(os.path.isfile(filename), filename)
+
     if os.path.isfile(filename):
         with open(filename, 'r') as f:
             for line in f.readlines():
@@ -185,18 +238,17 @@ def read_mot_results(filename, is_gt, is_ignore):
                     continue
                 results_dict.setdefault(fid, list())
 
-                box_size = float(linelist[4]) * float(linelist[5])
-
+                # only get valid gt bbs
                 if is_gt:
-                    #print('gt')
                     if 'MOT16-' in filename or 'MOT17-' in filename:
                         label = int(float(linelist[7]))
                         mark = int(float(linelist[6]))
                         if mark == 0 or label not in valid_labels:
                             continue
                     score = 1
+
+                # only get invalid gt bbs
                 elif is_ignore:
-                    #print('ing')
                     if 'MOT16-' in filename or 'MOT17-' in filename:
                         label = int(float(linelist[7]))
                         vis_ratio = float(linelist[8])
@@ -206,13 +258,13 @@ def read_mot_results(filename, is_gt, is_ignore):
                         continue
                     score = 1
                 else:
-                    #print('eklse')
                     score = float(linelist[6])
 
-                #if box_size > 7000:
-                #if box_size <= 7000 or box_size >= 15000:
-                #if box_size < 15000:
-                    #continue
+                # box_size = float(linelist[4]) * float(linelist[5])
+                # if box_size > 7000:
+                # if box_size <= 7000 or box_size >= 15000:
+                # if box_size < 15000:
+                    # continue
 
                 tlwh = tuple(map(float, linelist[2:6]))
                 target_id = int(linelist[1])
