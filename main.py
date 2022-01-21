@@ -3,16 +3,15 @@ import argparse
 import torch
 import logging
 import warnings
-import time
 from src.manager import Manager
-from src.reid_manager import ManagerReID
-from src.Det4ReID_manager import ManagerDet4ReID
+import torchvision
+
 
 '''import sys
 import traceback
 
 class TracePrints(object):
-  def __init__(self):    
+  def __init__(self):
     self.stdout = sys.stdout
   def write(self, s):
     self.stdout.write("Writing %r\n" % s)
@@ -22,7 +21,7 @@ sys.stdout = TracePrints()'''
 
 logger = logging.getLogger('AllReIDTracker')
 logger.setLevel(logging.INFO)
-#formatter = logging.Formatter('%(asctime)s - %(message)s')
+# formatter = logging.Formatter('%(asctime)s - %(message)s')
 formatter = logging.Formatter('%(message)s')
 
 ch = logging.StreamHandler()
@@ -33,91 +32,93 @@ logger.addHandler(ch)
 
 warnings.filterwarnings("ignore")
 
+logger.info(torchvision.__version__)
+logger.info(torch.__version__)
+
+while logger.handlers:
+    logger.handlers.pop()
+
 
 def init_args():
     parser = argparse.ArgumentParser(description='AllReID tracker')
     parser.add_argument('--config_path', type=str,
                         default='config/config_tracker.yaml',
-                        #default='config/config_reid.yaml',
-                        #default='config/config_Det4ReID.yaml',
-                        #default='config/config_proxy.yaml',
                         help='Path to config file')
 
     return parser.parse_args()
 
 
 def main(args):
-    import torchvision
-    logger.info(torchvision.__version__)
-    import torch
-    logger.info(torch.__version__)
-    #quit()
+
     with open(args.config_path, 'r') as f:
         config = yaml.load(f, Loader=yaml.FullLoader)
     import random
-    #random.seed(1)
+    # random.seed(1)
 
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     logger.info('Switching to device {}'.format(device))
-    logger.info(config) 
+    logger.info(config)
     if 'tracker' in args.config_path:
         if config['tracker']['mode'] == 'hyper_search':
             num_iter = 30
         else:
             num_iter = 1
-        
-        # from median dist
-        act = [0.7, 0.725, 0.75, 0.75, 0.67, 0.665, 0.675, 0.725, 0.71, 0.75]
-        inact = [0.75, 0.76, 0.54, 0.54, 0.73, 0.72, 0.74, 0.76, 0.75, 0.54]
 
-        # from each sample dist
+        # from median dist
+        act = [0.7, 0.725, 0.67, 0.665, 0.675, 0.725, 0.71, 0.75, 0.75, 0.75,]
+        inact = [0.75, 0.76, 0.73, 0.72, 0.74, 0.76, 0.75, 0.54, 0.54, 0.54, ]
+
+        '''# from each sample dist
         act = [0.78, 0.8, 0.76, 0.79, 0.8, 0.77, 0.79, 0.78, 0.78, 0.76]
-        inact = [0.625, 0.785, 0.695, 0.75, 0.785, 0.74, 0.77, 0.745, 0.755, 0.695]
-        
-        det_files = [ "qdtrack.txt", "CenterTrack.txt", "CenterTrackPub.txt", "tracktor_prepr_det.txt", "CSTrack.txt", "FairMOT.txt", "JDE.txt", "TraDeS.txt", "TransTrack.txt", "center_track.txt"]
-        validation_set = [0, 0, 0, 1, 0, 0, 0, 0, 0, 1]
-        for det_file, a, ina, val in zip(det_files, act, inact, validation_set):
+        inact = [0.625, 0.785, 0.695, 0.75, 0.785, 0.74, 0.77, 0.745, 0.755, 0.695]'''
+
+        det_files = [
+            "qdtrack.txt",
+            "CenterTrack.txt",
+            "CSTrack.txt",
+            "FairMOT.txt",
+            "JDE.txt",
+            "TraDeS.txt",
+            "TransTrack.txt",
+            "CenterTrackPub.txt",
+            "center_track.txt",
+            "tracktor_prepr_det.txt"]
+
+        val_set = [0, 0, 0, 0, 0, 0, 0, 0, 1, 1]
+        for det_file, a, ina, val in zip(det_files, act, inact, val_set):
+            if det_file != "FairMOT.txt":
+                continue
+            '''a = 1
+            ina = 1
+            print(a, ina)'''
+
             config['dataset']['det_file'] = det_file
             config['dataset']['validation_set'] = val
-            config['tracker']['act_reid_thresh'] = 1.0 #a
-            config['tracker']['inact_reid_thresh'] = 1.0 #ina
+            config['tracker']['act_reid_thresh'] = a
+            config['tracker']['inact_reid_thresh'] = ina
             for i in range(num_iter):
-                '''for act in [0.85]: #[0.45, 0.55, 0.65, 0.75, 0.85]:
-                    for inact in [0.35, 0.45, 0.54, 0.65, 0.75]:
-                        config['tracker']['act_reid_thresh'] = act
-                        config['tracker']['inact_reid_thresh'] = inact'''
 
                 if config['tracker']['mode'] == 'hyper_search':
                     # act_reid_thresh, inact_reid_thresh, avg_inact: num, proxy
-                    
-                    config['tracker']['act_reid_thresh'] = random.uniform(0.3, 1.0) #0.088, 0.108
-                    config['tracker']['inact_reid_thresh'] = random.uniform(0.3, config['tracker']['act_reid_thresh']) #0.064, 0.084
-                    #config['tracker']['avg_inact']['num'] = random.randint(0, 100)
-                    #config['tracker']['avg_inact']['proxy'] = random.choice(['mode', 'mean', 'median']) #'mode', 'mean', 'median'
-                    #config['tracker']['avg_act']['num'] = random.randint(0, 100)
-                    #config['tracker']['avg_act']['proxy'] = random.choice(['mode', 'mean', 'median']) #'mean', 'median'
-                
-                logger.info('Iteration {}'.format(i+1))
+
+                    config['tracker']['act_reid_thresh'] = random.uniform(
+                        0.3, 1.0)
+                    config['tracker']['inact_reid_thresh'] = random.uniform(
+                        0.3, config['tracker']['act_reid_thresh'])
+                    # config['tracker']['avg_inact']['num'] = random.randint(0, 100)
+                    # config['tracker']['avg_inact']['proxy'] = random.choice(['mode', 'mean', 'median'])
+                    # config['tracker']['avg_act']['num'] = random.randint(0, 100)
+                    # config['tracker']['avg_act']['proxy'] = random.choice(['mode', 'mean', 'median'])
+
+                logger.info('Iteration {}'.format(i + 1))
                 logger.info(config)
-                manager = Manager(device, time.time(), config['dataset'],
-                                config['reid_net'], config['tracker'], train=True)
-                #manager.train()
+                print(config)
+                manager = Manager(device, config['dataset'],
+                                  config['reid_net'], config['tracker'])
+                # manager.train()
                 manager._evaluate(mode='test')
-                quit()
-                        
-    elif 'proxy.yaml' in args.config_path.split('_'):
-        manager = ProxyManager(device, time.time(), config['dataset'],
-                          config['reid_net'], config['tracker'], train=True)
-        manager.train()
-    elif 'Det4ReID.yaml' in args.config_path.split('_'):
-        manager = ManagerDet4ReID(device, time.time(), config['dataset'],
-                          config['reid_net'], config['tracker'], train=True)
-        manager.train()
-    else:
-        manager = ManagerReID(device, time.time(), config['dataset'],
-                      config['reid_net'], config['tracker'])
-        manager.train()
+        
 
 if __name__ == '__main__':
-    args = init_args() 
+    args = init_args()
     main(args)

@@ -263,6 +263,7 @@ class Sequence():
     def _get_images(self, path, dets_frame, dets_uncl_frame, padding='zero'):
         # get and image
         img = self.to_tensor(Image.open(path).convert("RGB"))
+        frame_size = (img.shape[1], img.shape[2])
         img_for_det = copy.deepcopy(img)
         res, dets, tracktor_ids, ids, vis = list(), list(), list(), list(), list()
 
@@ -306,7 +307,7 @@ class Sequence():
         res = res.to(self.device)
 
         return res, dets, tracktor_ids, ids, vis, random_patches, img_for_det.to(
-            self.device)
+            self.device), frame_size
 
     def __iter__(self):
         self.frames = self.dets['frame'].unique()
@@ -322,7 +323,7 @@ class Sequence():
 
             assert len(dets_frame['frame_path'].unique()) == 1
 
-            img, dets_f, tracktor_ids, ids, vis, random_patches, img_for_det = self._get_images(
+            img, dets_f, tracktor_ids, ids, vis, random_patches, img_for_det, frame_size = self._get_images(
                 dets_frame['frame_path'].unique()[0], dets_frame, dets_uncl_frame)
 
             if self.gt is not None:
@@ -341,6 +342,7 @@ class Sequence():
 
             self.i += 1
             return img, gt_f, dets_frame['frame_path'].unique(
-            )[0], dets_f, tracktor_ids, ids, vis, random_patches, img_for_det
+            )[0], dets_f, tracktor_ids, ids, vis, random_patches, img_for_det,\
+                frame_size
         else:
             raise StopIteration

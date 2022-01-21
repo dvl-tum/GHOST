@@ -1,3 +1,9 @@
+from collections import defaultdict
+import copy
+from re import L
+from matplotlib.pyplot import imsave
+
+from pandas.core.indexing import IndexingMixin
 import torch
 import sklearn.metrics
 #from tracking_wo_bnw.src.tracktor.utils import interpolate
@@ -9,6 +15,8 @@ import json
 from math import floor
 from src.tracking_utils import bisoftmax, get_proxy, add_ioa  # , get_reid_performance
 from src.base_tracker import BaseTracker
+import torchvision.transforms as T
+import torch.nn.functional as F
 
 
 logger = logging.getLogger('AllReIDTracker.Tracker')
@@ -23,7 +31,6 @@ class Tracker(BaseTracker):
             output='plain',
             weight='No',
             data='tracktor_preprocessed_files.txt'):
-
         super(
             Tracker,
             self).__init__(
@@ -50,11 +57,16 @@ class Tracker(BaseTracker):
 
         # iterate over frames
         for i, (frame, _, path, boxes, _, gt_ids, vis,
-                random_patches, _) in enumerate(seq):
+                random_patches, whole_im, frame_size) in enumerate(seq):
+
             # batch norm experiments II
             self.normalization_experiments(random_patches, frame, i)
 
-            frame_id = int(path.split(os.sep)[-1][:-4])
+            self.frame_id = int(path.split(os.sep)[-1][:-4])
+            print(i+1, self.frame_id, len(self.tracks), len(self.inactive_tracks))
+
+            if self.debug:
+                self.event_dict[self.seq][self.frame_id] = list()
             tracks = list()
 
             # forward pass
@@ -63,6 +75,12 @@ class Tracker(BaseTracker):
                     feats = self.encoder(frame)
                 else:
                     _, feats = self.encoder(frame, output_option=self.output)
+
+            # add features of whole blurred image
+            if self.tracker_cfg['use_blur']:
+                blurred_feats = self.get_blurred_feats(whole_im, boxes)
+                feats = torch.cat([feats, blurred_feats], dim=1)
+                # feats = feats + blurred_feats
 
             # just feeding for bn stats update
             if first:
@@ -73,9 +91,12 @@ class Tracker(BaseTracker):
                 if (b[3] - b[1]) / (b[2] - b[0]
                                     ) < self.tracker_cfg['h_w_thresh']:
                     track = {
+                        'pos': b,
+                        'last_pos': list(),
+                        'last_v': None,
                         'bbox': b,
                         'feats': f,
-                        'im_index': frame_id,
+                        'im_index': self.frame_id,
                         'id': gt_id,
                         'vis': v}
                     tracks.append(track)
@@ -86,9 +107,20 @@ class Tracker(BaseTracker):
                         self.distance_[
                             self.seq]['visibility_count'][v] += 1
 
+                    if self.save_embeddings_by_id:
+                        _f = f.cpu().numpy().tolist()
+                        self.embeddings_by_id[seq.name][gt_id].append([i, _f])
+
+            # apply motion compensation to stored track positions
+            if self.motion_model_cfg['motion_compensation']:
+                self.motion_compensation(whole_im, i)
+
             # add intersection over area to each bb
             self.curr_interaction, self.curr_occlusion = add_ioa(
-                tracks, self.seq, self.interaction, self.occlusion)
+                tracks, self.seq, self.interaction, self.occlusion, frame_size)
+
+            if self.store_visualization:
+                self.visualize(tracks, path, seq.name, i+1)
 
             # association over frames
             self._track(tracks, i, frame=frame)
@@ -111,6 +143,9 @@ class Tracker(BaseTracker):
         # write results
         self.write_results(self.output_dir, seq.name)
 
+        # reset thresholds if every / tbd
+        self.reset_threshs()
+
         # store dist to json file
         if self.store_dist:
             logger.info(
@@ -121,13 +156,49 @@ class Tracker(BaseTracker):
             with open(self.experiment + 'distances.json', 'w') as jf:
                 json.dump(self.distance_, jf)
 
-        self.reset_threshs()
+        # print errors and store error events
+        if self.debug:
+            if '13' in seq.name:
+                logger.info(self.errors)
+            with open(self.experiment + 'event_dict.json', 'w') as jf:
+                json.dump(self.event_dict, jf)
+
+        # save embeddings by id for further investigation
+        if self.save_embeddings_by_id:
+            with open(self.experiment + 'embeddings_by_id.json', 'w') as jf:
+                json.dump(self.embeddings_by_id, jf)
+
+    def get_blurred_feats(self, whole_im, boxes):
+        blurrer = T.GaussianBlur(kernel_size=(29, 29), sigma=5)
+        self.encoder.eval()
+        ims = list()
+        for box in boxes:
+            blurred = copy.deepcopy(whole_im)
+            blurred = blurrer(blurred)
+            blurred[:, int(box[1]):int(box[3]), int(box[0]):int(box[2])] = \
+                whole_im[:, int(box[1]):int(box[3]), int(box[0]):int(box[2])]
+            blurred = F.interpolate(blurred.unsqueeze(dim=0), scale_factor=(1/8, 1/8))
+            ims.append(blurred)
+
+        ims = torch.stack(ims).squeeze()
+        if len(ims.shape) < 4:
+            ims = ims.unsqueeze(0)
+        with torch.no_grad():
+            if self.net_type == 'resnet50_analysis':
+                blurred_feats = self.encoder(ims)
+            else:
+                _, blurred_feats = self.encoder(ims, output_option=self.output)
+
+        self.encoder.train()
+
+        return blurred_feats
 
     def _track(self, tracks, i, frame=None):
         # just add all bbs to self.tracks / intitialize in the first frame
         if i == 0:
             for tr in tracks:
                 self.tracks[self.id].append(tr)
+                self.tracks[self.id][-1]['last_pos'].append(self.tracks[self.id][-1]['pos']) 
                 self.id += 1
 
         # association over frames for frame > 0
@@ -205,16 +276,29 @@ class Tracker(BaseTracker):
                         (np.max(dist, axis=1) + np.min(dist, axis=1)) / 2)
         num_inactive = len([k for k, v in curr_it.items()])
 
+        # update thresholds
+        self.update_thresholds(dist, num_inactive, num_inactive)
+
         # solve assignment problem
         dist = np.vstack(dist_all).T
+
+        if self.nan_first:
+            dist[:, :num_active] = np.where(dist[:, :num_active] <=
+                self.act_reid_thresh, dist[:, :num_active], np.nan)
+            dist[:, num_active:] = np.where(dist[:, num_active:] <=
+                self.inact_reid_thresh, dist[:, num_active:], np.nan)
+
+        if self.motion_model_cfg['apply_motion_model']:
+            self.motion()
+            iou = self.get_motion_dist(tracks)
+            dist = self.combine_motion_appearance(iou, dist, tracks)
+
         row, col = solve_dense(dist)
 
         # store distances
         if self.store_dist:
             self.add_dist_to_storage(
                 gt_n, gt_t, num_active, num_inactive, dist)
-        # update thresholds
-        self.update_thresholds(dist, num_inactive, num_inactive)
 
         return dist, row, col, ids
 
@@ -289,7 +373,14 @@ class Tracker(BaseTracker):
                 self.add_dist_to_storage(
                     gt_n, gt_t, num_active, num_inactive, dist)
 
+            # update thresholds
             self.update_thresholds(dist, num_active, num_inactive)
+
+            if self.nan_first:
+                dist[:, :num_active] = np.where(dist[:, :num_active] <=
+                    self.act_reid_thresh, dist[:, :num_active], np.nan)
+                dist[:, num_active:] = np.where(dist[:, num_active:] <=
+                    self.act_reid_thresh, dist[:, num_active:], np.nan)
 
             # row represent current frame
             # col represents last frame + inactiva tracks
@@ -336,9 +427,51 @@ class Tracker(BaseTracker):
                 self.inactive_tracks[k][i]['inact_count'] += 1
 
         # tracks that have not been assigned by hungarian
+        if self.debug:
+            gt_available = [t[-1]['id'] for t in self.tracks.values()]
+            gt_available_k = [k for k in self.tracks.keys()]
+            gt_available_b = [t[-1]['id'] for t in self.inactive_tracks.values()]
+            gt_available_bk = [k for k in self.inactive_tracks.keys()]
+
         for i in range(len(tracks)):
             if i not in assigned:
+                if self.debug:
+                    ioa = self.round1(tracks[i]['ioa'])
+                    vis = self.round1(tracks[i]['vis'])
+                    _det = [self.frame_id, vis, ioa, tracks[i]['id']]
+
+                    if tracks[i]['id'] in gt_available:
+                        self.errors['unassigned_act_ioa_' + ioa] += 1
+                        self.errors['unassigned_act_vis_' + vis] += 1
+
+                        ind = gt_available.index(tracks[i]['id'])
+                        tr_id = gt_available_k[ind]
+                        ioa_gt = self.tracks[tr_id][-1]['ioa']
+                        vis_gt = self.tracks[tr_id][-1]['vis']
+                        frame_gt = self.tracks[tr_id][-1]['im_index']
+                        id_gt = self.tracks[tr_id][-1]['id']
+                        _gt = [frame_gt, vis_gt, ioa_gt, id_gt]
+
+                        event = ['Unassigned', 'Act'] + _gt + _det
+                        self.event_dict[self.seq][self.frame_id].append(event)
+
+                    if tracks[i]['id'] in gt_available_b:
+                        self.errors['unassigned_inact_ioa_' + ioa] += 1
+                        self.errors['unassigned_inact_vis_' + vis] += 1
+
+                        ind = gt_available_b.index(tracks[i]['id'])
+                        tr_id = gt_available_bk[ind]
+                        ioa_gt = self.inactive_tracks[tr_id][-1]['ioa']
+                        vis_gt = self.inactive_tracks[tr_id][-1]['vis']
+                        frame_gt = self.inactive_tracks[tr_id][-1]['im_index']
+                        id_gt = self.inactive_tracks[tr_id][-1]['id']
+                        _gt = [frame_gt, vis_gt, ioa_gt, id_gt]
+
+                        event = ['Unassigned', 'Inact'] + _gt + _det
+                        self.event_dict[self.seq][self.frame_id].append(event)
+
                 self.tracks[self.id].append(tracks[i])
+                self.tracks[self.id][-1]['last_pos'].append(self.tracks[self.id][-1]['pos'])
                 self.id += 1
 
     def assign_act_inact_same_time(
@@ -351,16 +484,62 @@ class Tracker(BaseTracker):
             ids):
         # assigned contains all new detections that have been assigned
         assigned = list()
+        act_thresh = 1000 if self.nan_first else self.act_reid_thresh
+        inact_thresh = 1000 if self.nan_first else self.inact_reid_thresh
+
         for r, c in zip(row, col):
+            # get reid threshold scale
+            scale = max(0.4, (1-tracks[r]['ioa'])**(1/10)) if \
+                self.scale_thresh_ioa else 1
+
+            # get detection information if debug
+            if self.debug:
+                ioa = self.round1(tracks[r]['ioa'])
+                vis = self.round1(tracks[r]['vis'])
+                _det = [self.frame_id, vis, ioa, tracks[r]['id']]
+
             # assign tracks to active tracks if reid distance < thresh
-            if ids[c] in self.tracks.keys() and dist[r,
-                                                     c] < self.act_reid_thresh:
+            if ids[c] in self.tracks.keys() and \
+               (dist[r, c] < act_thresh * scale or self.nan_first):
+
+                # generate error event if debug
+                if self.tracks[ids[c]][-1]['id'] != tracks[r]['id'] \
+                  and self.debug:
+                    self.errors['wrong_assigned_act_ioa_' + ioa] += 1
+                    self.errors['wrong_assigned_act_vis_' + vis] += 1
+
+                    ioa_gt = self.tracks[ids[c]][-1]['ioa']
+                    vis_gt = self.tracks[ids[c]][-1]['vis']
+                    frame_gt = self.tracks[ids[c]][-1]['im_index']
+                    id_gt = self.tracks[ids[c]][-1]['id']
+                    _gt = [frame_gt, vis_gt, ioa_gt, id_gt]
+
+                    event = ['WrongAssignment', 'Act'] + _gt + _det
+                    self.event_dict[self.seq][self.frame_id].append(event)
+
                 self.tracks[ids[c]].append(tracks[r])
                 active_tracks.append(ids[c])
                 assigned.append(r)
 
             # assign tracks to inactive tracks if reid distance < thresh
-            elif ids[c] in self.inactive_tracks.keys() and dist[r, c] < self.inact_reid_thresh:
+            elif ids[c] in self.inactive_tracks.keys() and \
+               (dist[r, c] < inact_thresh * scale or self.nan_first):
+
+                # generate error event if debug
+                if self.inactive_tracks[ids[c]][-1]['id'] != tracks[r]['id'] \
+                  and self.debug:
+                    self.errors['wrong_assigned_inact_ioa_' + ioa] += 1
+                    self.errors['wrong_assigned_inact_vis_' + vis] += 1
+
+                    ioa_gt = self.inactive_tracks[ids[c]][-1]['ioa']
+                    vis_gt = self.inactive_tracks[ids[c]][-1]['vis']
+                    frame_gt = self.inactive_tracks[ids[c]][-1]['im_index']
+                    id_gt = self.inactive_tracks[ids[c]][-1]['id']
+                    _gt = [frame_gt, vis_gt, ioa_gt, id_gt]
+
+                    event = ['WrongAssignment', 'Inct'] + _gt + _det
+                    self.event_dict[self.seq][self.frame_id].append(event)
+
                 # move inactive track to active
                 self.tracks[ids[c]] = self.inactive_tracks[ids[c]]
                 del self.inactive_tracks[ids[c]]
@@ -390,11 +569,11 @@ class Tracker(BaseTracker):
 
                 row_inact, col_inact = solve_dense(dist[1])
                 assigned_2 = self.assign_act_inact_same_time(
-                    row=row_inact, 
-                    col=col_inact, 
-                    dist=dist[1], 
-                    tracks=[t for i, t in enumerate(tracks) if i in unassigned], 
-                    active_tracks=active_tracks, 
+                    row=row_inact,
+                    col=col_inact,
+                    dist=dist[1],
+                    tracks=[t for i, t in enumerate(tracks) if i in unassigned],
+                    active_tracks=active_tracks,
                     ids=ids[dist[0].shape[1]:])
                 assigned_2 = set(
                     [u for i, u in enumerate(unassigned) if i in assigned_2])

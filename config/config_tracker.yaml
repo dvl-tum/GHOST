@@ -1,35 +1,24 @@
 dataset:
   mot_dir: "/storage/slurm/seidensc/datasets/MOT/MOT17" # mot17_test_FRCNN
   det_dir: "/storage/slurm/seidensc/datasets/MOT/MOT17Labels"
-  det_file: "qdtrack.txt" # "CenterTrack.txt" #"CenterTrackPub.txt" #"tracktor_prepr_det.txt" #"CSTrack.txt" #"FairMOT.txt" #"JDE.txt" #"TraDeS.txt" #"TransTrack.txt" #"center_track.txt" #"tmoh.txt" #
+  det_file: "qdtrack.txt" #"tracktor_prepr_det.txt" #"center_track.txt" #"qdtrack.txt" # "CenterTrack.txt" #"CenterTrackPub.txt" #"CSTrack.txt" #"FairMOT.txt" #"JDE.txt" #"TraDeS.txt" #"TransTrack.txt"  #"tmoh.txt" #
   detector: "FRCNN"
   splits: "mot17_train_test" #"mot17_split_1_test" #
   validation_set: 0
   validation_set_gt: 1
   gt_assign_min_iou: 0.5
-  prepro_again: 0
+  prepro_again: 1
+  save_oracle: 1
   gt_training_min_vis: 0
   drop_unassigned: 0
-  save_oracle: 0
   sz_crop: [384, 128] #[256, 128]
 
 reid_net:
   mode: 'hyper_search'
-  gnn: 0
-  save_folder_nets: 'nets'
   output: 'plain'
   trained_on:
     name: 'Market'
     num_classes: 2820 #751
-  dl_params: 
-    num_classes_iter: 7
-    num_elements_class: 3
-    batch_sampler: "no"
-  train_params:
-    temperature: 80
-    epochs: 70
-    lr: 0.2
-    weight_decay: 0.2 
   encoder_params:
     pretrained_path: 'ReID/market_models/0.8518408551068883resnet50_Market.pth'
     # 'ReID/0.9380530973451328resnet50_MOT17.pth', 'ReID/0.9285714285714286resnet50_MOT17.pth' , 'ReID/0.8859649122807017resnet50_MOT17.pth'
@@ -61,57 +50,17 @@ reid_net:
     bn_inception:
       embed: 0
       sz_embedding: 512
-  graph_params:
-    sim_type: "correlation"
-    thresh: 0
-    set_negative: "hard"
-  gnn_params:
-    pretrained_path: "weights/0.9233103714051737gnn_resnet50_Market.pth"
-    use_edge_encoder: 0
-    use_edge_model: 0
-    use_node_encoder: 0
-    red_before: 1
-    red: 1
-    cat: 0
-    every: 0
-    proxies: 0
-    gnn:
-      use_attention: 1
-      num_layers: 2 #1 
-      aggregator: "add"
-      num_heads: 8 #
-      attention: "dot" #"dot_pygeo"
-      mlp: 1
-      dropout_mlp: 0.1
-      norm1: 1
-      norm2: 1
-      res1: 1
-      res2: 1
-      dropout_1: 0.1
-      dropout_2: 0.1
-      mult_attr: 0
-    edge:
-      fc_dims: [2048]
-      dropout_p: 0.4
-      use_batchnorm: 0
-    node_encoder:
-      fc_dims: [2048]
-      dropout_p: 0.4
-      use_batchnorm: 0
-    edge_encoder:
-      fc_dims: [2048]
-      dropout_p: 0.4
-      use_batchnorm: 0
-    classifier:
-      neck: 1
-      num_classes: 2820 #751
-      dropout_p: 0.4
-      use_batchnorm: 0
 
 tracker:
+  visualize: 0
+  store_dist: 0
+  save_embeddings_by_id: 1
+  debug: 0
   use_bism: 0
-  gnn_and_bb: 0
   pad_imgs: 0
+  nan_first: 0
+  scale_thresh_ioa: 0
+  use_blur: 0
   assign_separately: 0
   mode: "eval" #"hyper_search" #"eval" 
   random_patches_several_frames: 0
@@ -123,24 +72,8 @@ tracker:
   first_batch: 0
   first_batch_reset: 0
   eval_bb: 1
-  use_sr_gan: 0
-  gallery_att: 0
-  norm_dist: 0
   get_reid_performance: 0
   oracle: 0
-  oracle_iou: 0
-  iou_thresh: 0.3
-  oracle_size: 0
-  size_thresh: 1400
-  oracle_frame_dist: 0
-  frame_dist_thresh: 10
-  oracle_size_diff: 0
-  size_diff_thresh: 50
-  oracle_position: 0
-  position_thresh: 15
-  oracle_disappear: 0
-  oracle_appear: 0
-  interpolate: 0
   #ResNet 92....: 0.675, 0.3, 63 mean
   #Torchreid: 0.6814211405013855, 0.14258016074055002, 90, mode
   #ResNet: 0.40925543677573695, 0.31084457476623506, 27, median
@@ -153,20 +86,20 @@ tracker:
   inact_reid_thresh: 0.75 #0.75 #0.73 #0.74 #0.75 #0.72 #0.54 #0.375 
   inact_thresh: 100000
   output_dir: 'out' 
-  each_sample: 2 # 1=min, 2=avg, 3=max, 4=0.5*(min+max)
   avg_act:
     do: 0
     num: 0.95 #'uniform_2' #60 #10 #4 #20 #'all'
     proxy: 'min_ioa' #'mv_avg' #'min_ioa' #'frames_gnn' #'frames_gnn' #'frames_gnn' #'mode'
-    num_spat: 60 #'uniform_2' #60 #10 #4 #20 #'all'
-    proxy_spat: 'mean' #'frames_gnn' #'frames_gnn' #'frames_gnn' #'mode'
   avg_inact: 
     do: 1
-    num: 63 #'uniform_2' #'mean' #'uniform_4' #10 #4 #20 #'all'
-    proxy: 'median' #'frames_gnn' #'60' #'frames_gnn' #'frames_gnn' #'mode'
-    num_spat: 60 #'uniform_2' #60 #10 #4 #20 #'all'
-    proxy_spat: 'mean' #'frames_gnn' #'frames_gnn' #'frames_gnn' #'mode'
-  init_tracktor: 
-    do: 0
-  h_w_thresh: 8 #1000000
+    num: 2 #2 #'uniform_2' #'mean' #'uniform_4' #10 #4 #20 #'all'  # each_sample: 1=min, 2=avg, 3=max, 4=0.5*(min+max)
+    proxy: 'each_sample' #'each_sample' #'frames_gnn' #'60' #'frames_gnn' #'frames_gnn' #'mode'
+  h_w_thresh: 1000000
   length_thresh: 2
+  motion_config:
+    motion_compensation: 1
+    num_iter_mc: 100
+    warp_mode: 'Euclidean'
+    termination_eps_mc: 0.00001
+    apply_motion_model: 1
+    center_only: 0

@@ -175,6 +175,8 @@ class Manager():
                 logger.info(
                     '{}: \t {} \t {}'.format(
                         k, sum(v) / len(v), len(v)))
+                print('{}: \t {} \t {}'.format(
+                        k, sum(v) / len(v), len(v)))
 
     def eval_fair_mot(self, names):
         # EVALUATION FROM FAIRMOT oder so
