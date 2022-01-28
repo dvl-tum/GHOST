@@ -13,33 +13,51 @@ def add_ioa(tracks, seq, interaction, occlusion, frame_size):
 
     inter, area, _, inter_bbs = _box_inter_area(bbs, bbs)
     ioa = inter / np.atleast_2d(area).T
-    ioa = ioa - np.eye(ioa.shape[0])
+    # ioa = ioa - np.eye(ioa.shape[0])
+    np.fill_diagonal(ioa, 0)
 
     # not taking foot position into account --> ioa_nofoot
     curr_interaction = copy.deepcopy(ioa)
+    curr_interaction = remove_intersection(curr_interaction, inter_bbs, foot_pos, bbs, area)
+
+    # get number of interactors
+    num_inter = copy.deepcopy(curr_interaction)
+    num_inter = np.where(num_inter > 0, 1, 0)
+    num_inter = np.sum(num_inter, axis=1)
+
     # remove dummy bbs as not important for interaction
     curr_interaction = curr_interaction[:-4, :-4]
-    ioa_nf = np.sum(curr_interaction, axis=1).tolist()
+    ioa_nf = np.sum(curr_interaction, axis=1)
+    ioa_nf = np.round(ioa_nf*100)/100
+    ioa_nf = ioa_nf.tolist()
     interaction[seq] += ioa_nf
-
-    for i, t in zip(ioa_nf, tracks):
-        t['ioa_nf'] = i
 
     # taking foot position into account
     bot = np.atleast_2d(foot_pos).T < np.atleast_2d(foot_pos)
     ioa[~bot] = 0
-    ioa = remove_intersection(ioa, inter_bbs, foot_pos, bbs)
+    ioa = remove_intersection(ioa, inter_bbs, foot_pos, bbs, area)
 
     # remove rows of dummy bounding boxes
     ioa = ioa[:-4, :]
+
+    # get number of occluders
+    num_occ = copy.deepcopy(ioa)
+    num_occ = np.where(num_occ > 0, 1, 0)
+    num_occ = np.sum(num_occ, axis=1)
+
     curr_occlusion = ioa
-    ioa = np.sum(ioa, axis=1).tolist()
+    ioa = np.sum(ioa, axis=1)
+    ioa = np.round(ioa*100)/100
+    ioa = ioa.tolist()
     occlusion[seq] += ioa
-    for i, t in zip(ioa, tracks):
-        if i > 1:
-            print(ioa)
-            quit()
+    
+    for i, s, ni, ns, t in zip(ioa, num_occ, ioa_nf, num_inter, tracks):
+        assert i <= 1, "ioa cannot be larger than 1 {}".format(ioa)
+        assert ni <= 1, "interaction cannot be larger than 1 {}".format(ioa_nf)
         t['ioa'] = min([1, i])
+        t['num_occ'] = s
+        t['ioa_nf'] = ni
+        t['num_inter'] = ns
 
     return curr_interaction, curr_occlusion
 
@@ -67,7 +85,7 @@ def add_dummy_bb(bbs, frame_size):
     return bbs, foot_position
 
 
-def remove_intersection(ioa, inter_bbs, bottom_coord, bbs):
+def remove_intersection(ioa, inter_bbs, bottom_coord, bbs, areas):
     # sorted indices of foot position, biggest first (foreground first)
     sorted_bot = np.argsort(bottom_coord.numpy())
     sorted_bot = np.flip(sorted_bot)
@@ -80,6 +98,7 @@ def remove_intersection(ioa, inter_bbs, bottom_coord, bbs):
         # levels up to now are in front of current level
         idx = sorted_bot[:i]
         for j, (ioa_j, inter_bbs_j) in enumerate(zip(ioa, inter_bbs)):
+            
             if ioa_j[index] == 0:
                 continue
 
@@ -87,7 +106,9 @@ def remove_intersection(ioa, inter_bbs, bottom_coord, bbs):
             inter, area, _, _ = _box_inter_area(
                 torch.from_numpy(inter_bbs_j[idx_j, :]),
                 torch.from_numpy(np.atleast_2d(inter_bbs_j[index, :])))
-            ioa_inter = inter / np.atleast_2d(area).T
+
+            # changed area to areas[j]
+            ioa_inter = inter / np.atleast_2d(areas[j]).T
             ioa[j, index] = np.clip(
                 ioa_j[index] - np.sum(np.squeeze(ioa_inter)),
                 a_min=0,
@@ -147,51 +168,52 @@ def get_proxy(curr_it, mode='inact', tracker_cfg=None, mv_avg=None):
     avg = tracker_cfg['avg_' + mode]['num'] 
     proxy = tracker_cfg['avg_' + mode]['proxy']
 
-    if proxy != 'mv_avg':
-        avg = int(avg)
-    else:
-        avg = float(avg)
+    if avg != 'all':
+        if proxy != 'mv_avg':
+            avg = int(avg)
+        else:
+            avg = float(avg)
 
     for i, it in curr_it.items():
         # take last bb only
         if proxy == 'last':
-            f = it[-1]['feats']
+            f = it.past_feats[-1]
         
         # take the first only
         elif avg == 'first':
-            f = it[0]['feats']
+            f = it.past_feats[0]
 
         # moving average of features        
         elif proxy == 'mv_avg':
             if i not in mv_avg.keys():
-                f = it[-1]['feats']
+                f = it.past_feats[-1]
             else:
-                f = mv_avg[i] * avg + it[-1]['feats'] * (1-avg) 
+                f = mv_avg[i] * avg + it.past_feats[-1] * (1-avg) 
             mv_avg[i] = f
         
         # take last bb with min intersection over area
         elif proxy == 'min_ioa':
             ioa = [t['ioa'] for t in it]
             ioa.reverse()
-            f = [t['feats'] for t in it][-(ioa.index(min(ioa))+1)]
+            f = it.past_feats[-(ioa.index(min(ioa))+1)]
 
         # take all if all or number of features < avg
-        elif avg == 'all' or len(it) < avg:
+        elif avg == 'all' or len(it.past_feats) < avg:
             if proxy == 'mean':
-                f = torch.mean(torch.stack([t['feats'] for t in it]), dim=0)
+                f = torch.mean(torch.stack(it.past_feats), dim=0)
             elif proxy == 'median':
-                f = torch.median(torch.stack([t['feats'] for t in it]), dim=0)[0]
+                f = torch.median(torch.stack(it.past_feats), dim=0)[0]
             elif proxy == 'mode':
-                f = torch.mode(torch.stack([t['feats'] for t in it]), dim=0)[0]
+                f = torch.mode(torch.stack(it.past_feats), dim=0)[0]
 
         # get proxy of last avg number of frames
         else:
             if proxy == 'mean':
-                f = torch.mean(torch.stack([t['feats'] for t in it[-avg:]]), dim=0)
+                f = torch.mean(torch.stack(it.past_feats[-avg:]), dim=0)
             elif proxy == 'median':
-                f = torch.median(torch.stack([t['feats'] for t in it[-avg:]]), dim=0)[0]
+                f = torch.median(torch.stack(it.past_feats[-avg:]), dim=0)[0]
             elif proxy == 'mode':
-                f = torch.mode(torch.stack([t['feats'] for t in it[-avg:]]), dim=0)[0]
+                f = torch.mode(torch.stack(it.past_feats[-avg:]), dim=0)[0]
         
         feats.append(f)
     
@@ -208,7 +230,7 @@ def get_proxy(curr_it, mode='inact', tracker_cfg=None, mv_avg=None):
 
 
 def get_reid_performance(topk=8, first_match_break=True, tracks=None):
-    feats = torch.cat([t['feats'].cpu().unsqueeze(0) for k, v in tracks.items() for t in v if t['id'] != -1], 0)
+    feats = torch.cat([t.past_feats.cpu().unsqueeze(0) for k, v in tracks.items() for t in v if t['id'] != -1], 0)
     lab = np.array([t['id'] for k, v in tracks.items() for t in v if t['id'] != -1])
     dist = sklearn.metrics.pairwise_distances(feats.numpy(), metric='cosine')
     m, n = dist.shape
@@ -251,11 +273,20 @@ def get_reid_performance(topk=8, first_match_break=True, tracks=None):
 
 def get_center(pos):
     # adapted from tracktor
-    x1 = pos[0, 0]
-    y1 = pos[0, 1]
-    x2 = pos[0, 2]
-    y2 = pos[0, 3]
-    return torch.Tensor([(x2 + x1) / 2, (y2 + y1) / 2]).cuda()
+    if pos.shape[0] <= 1:
+        x1 = pos[0, 0]
+        y1 = pos[0, 1]
+        x2 = pos[0, 2]
+        y2 = pos[0, 3]
+    else:
+        x1 = pos[:, 0]
+        y1 = pos[:, 1]
+        x2 = pos[:, 2]
+        y2 = pos[:, 3]
+    if type(pos) == torch.Tensor:
+        return torch.Tensor([(x2 + x1) / 2, (y2 + y1) / 2]).cuda()
+    else:
+        return np.array([(x2 + x1) / 2, (y2 + y1) / 2])
 
 
 def get_width(pos):
@@ -284,7 +315,7 @@ def warp_pos(pos, warp_matrix):
     p2 = torch.Tensor([pos[0, 2], pos[0, 3], 1]).view(3, 1)
     p1_n = torch.mm(warp_matrix, p1).view(1, 2)
     p2_n = torch.mm(warp_matrix, p2).view(1, 2)
-    return torch.cat((p1_n, p2_n), 1).view(1, -1).cuda()
+    return torch.cat((p1_n, p2_n), 1).view(1, -1).numpy()
 
 
 def bbox_overlaps(boxes, query_boxes):
@@ -317,6 +348,92 @@ def bbox_overlaps(boxes, query_boxes):
     return out_fn(overlaps)
 
 
+def is_moving(seq):
+    if seq.split('-')[1] in ['13', '11', '10', '05', '14', '12', '07', '06']:
+        print('Seqence is moving {}'.format(seq))
+        return True
+    elif seq.split('-')[1] in ['09', '04', '02', '08', '03', '01']:
+        print('Seqence is not moving {}'.format(seq))
+        return False
+    else:
+        assert False, 'Seqence not valid {}'.format(seq)
+
 class Track():
-    def __init__():
-        pass
+    def __init__(self, track_id, bbox, feats, im_index, gt_id, vis, ioa, ioa_nf, area_out, num_occ, num_inter):
+        self.track_id = track_id
+        self.pos = bbox
+        self.bbox = list()
+        self.bbox.append(bbox)
+
+        # init variables for motion model
+        self.last_pos = list()
+        self.last_pos.append(self.pos)
+        self.last_v = 0
+
+        # initialize ioa variables
+        self.ioa = ioa
+        self.past_ioa = list()
+        self.past_ioa.append(ioa)
+        self.interaction = ioa_nf
+        self.past_interaction = list()
+        self.past_interaction.append(ioa_nf)
+        self.area_out = area_out
+        self.past_areas_out = list()
+        self.past_areas_out.append(area_out)
+        self.num_occ = num_occ
+        self.past_num_occ = list()
+        self.past_num_occ.append(num_occ)
+        self.num_inter = num_inter
+        self.past_num_inter = list()
+        self.past_num_inter.append(num_inter)
+
+        # embedding feature list of detections
+        self.past_feats = list()
+        self.feats = feats
+        self.past_feats.append(feats)
+
+        # image index list of detections
+        self.past_im_indices = list()
+        self.past_im_indices.append(im_index)
+        self.im_index = im_index
+
+        # corresponding gt ids of detections
+        self.gt_id = gt_id
+        self.past_gt_ids = list()
+        self.past_gt_ids.append(gt_id)
+
+        # corresponding gt visibilities of detections
+        self.gt_vis = vis
+        self.past_gt_vis = list()
+        self.past_gt_vis.append(vis)
+
+        # initialize inactive count
+        self.inactive_count = 0
+
+    def add_detection(self, bbox, feats, im_index, gt_id, vis, ioa, ioa_nf, area_out, num_occ, num_inter):
+        # update all lists / states
+        self.pos = bbox
+        self.last_pos.append(bbox)
+        self.bbox.append(bbox)
+
+        self.ioa = ioa
+        self.past_ioa.append(ioa)
+        self.interaction = ioa_nf
+        self.past_interaction.append(ioa_nf)
+        self.area_out = area_out
+        self.past_areas_out.append(area_out)
+        self.num_occ = num_occ
+        self.past_num_occ.append(num_occ)
+        self.num_inter = num_inter
+        self.past_num_inter.append(num_inter)
+
+        self.feats = feats
+        self.past_feats.append(feats)
+
+        self.past_im_indices.append(im_index)
+        self.im_index = im_index
+
+        self.gt_id = gt_id
+        self.past_gt_ids.append(gt_id)
+        self.gt_vis = vis
+        self.past_gt_vis.append(vis)

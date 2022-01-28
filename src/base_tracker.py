@@ -1,6 +1,8 @@
 
 from collections import defaultdict
 
+from numpy.lib.function_base import diff
+
 import torch
 #from tracking_wo_bnw.src.tracktor.utils import interpolate
 import os
@@ -13,8 +15,10 @@ import matplotlib
 import matplotlib.pyplot as plt
 import matplotlib.colors as mcolors
 import random
-from src.tracking_utils import get_center, get_height, get_width, make_pos, warp_pos, bbox_overlaps
+from src.tracking_utils import get_center, get_height, get_width, make_pos, warp_pos, bbox_overlaps, is_moving
 import cv2
+import sklearn
+import copy
 
 logger = logging.getLogger('AllReIDTracker.BaseTracker')
 
@@ -48,7 +52,7 @@ class BaseTracker():
             'Affine': cv2.MOTION_AFFINE,
             'Euclidean': cv2.MOTION_EUCLIDEAN,
             'Homography': cv2.MOTION_HOMOGRAPHY
-            }
+        }
 
         self.data = data
 
@@ -77,11 +81,13 @@ class BaseTracker():
         if self.save_embeddings_by_id:
             self.embeddings_by_id = dict()
 
+        self.round1_float = lambda x: round(10 * x) / 10
+
     def make_results(self):
         results = defaultdict(dict)
         for i, ts in self.tracks.items():
-            for t in ts:
-                results[i][t['im_index']] = t['bbox']
+            for im_index, bbox in zip(ts.past_im_indices, ts.bbox):
+                results[i][im_index] = bbox
         return results
 
     def _remove_short_tracks(self, all_tracks):
@@ -147,17 +153,27 @@ class BaseTracker():
 
         if self.tracker_cfg['scale_thresh_ioa']:
             self.experiment += 'IOAscale:1'
-        
+
         if self.motion_model_cfg['motion_compensation']:
-            self.experiment += 'MC:1'
-        
+            self.experiment += 'MCOM:1' # Only Moving
+
         if self.motion_model_cfg['apply_motion_model']:
-            self.experiment += 'MM:1'
+            self.experiment += 'MM:1' 
+            self.experiment += str(self.motion_model_cfg['ioa_threshold'])
+            self.experiment += str(self.motion_model_cfg['area_out_threshold'])
+            self.experiment += str(self.motion_model_cfg['num_occ_thresh'])
+            self.experiment += str(self.motion_model_cfg['num_inter_thresh'])
+            self.experiment += str(self.motion_model_cfg['inter_threshold'])
+        
+        if self.tracker_cfg['active_proximity']:
+            self.experiment += 'ActProx:1'
 
         self.experiment = '_'.join([self.data[:-4],
                                     weight,
                                     'evalBB:' + str(self.tracker_cfg['eval_bb']),
                                     self.experiment])
+        
+        self.experiment += 'InactPat:' + str(self.tracker_cfg['inact_thresh'])
         logger.info(self.experiment)
 
     def normalization_experiments(self, random_patches, frame, i):
@@ -265,6 +281,12 @@ class BaseTracker():
         self.distance_[self.seq]['active_inactive'] = list()
         self.distance_[self.seq]['same_class_mat'] = list()
         self.distance_[self.seq]['dist'] = list()
+        self.distance_[self.seq]['size'] = list()
+        self.distance_[self.seq]['iou_dist'] = list()
+        self.distance_[self.seq]['inactive_count'] = list()
+        self.distance_[self.seq]['iou_dist_diff'] = {
+            'same': defaultdict(list),
+            'diff': defaultdict(list)}
 
         self.distance_[
             self.seq]['visibility_count'] = {
@@ -305,6 +327,8 @@ class BaseTracker():
 
         if self.save_embeddings_by_id:
             self.embeddings_by_id[seq.name] = defaultdict(list)
+        
+        self.is_moving = is_moving(seq.name)
 
     def reset_threshs(self):
         self.act_reid_thresh = 'every' if self.thresh_every else self.act_reid_thresh
@@ -312,7 +336,7 @@ class BaseTracker():
         self.act_reid_thresh = 'tbd' if self.thresh_tbd else self.act_reid_thresh
         self.inact_reid_thresh = 'tbd' if self.thresh_tbd else self.inact_reid_thresh
 
-    def add_dist_to_storage(self, gt_n, gt_t, num_active, num_inactive, dist):
+    def add_dist_to_storage(self, gt_n, gt_t, num_active, num_inactive, dist, height):
         gt_n = np.atleast_2d(np.array(gt_n))
         gt_t = np.atleast_2d(np.array(gt_t))
 
@@ -339,12 +363,14 @@ class BaseTracker():
         self.distance_[
             self.seq]['occlusion_mat'].append(
             self.curr_occlusion.tolist())
+        self.distance_[self.seq]['size'].append(height)
         self.distance_[self.seq]['active_inactive'].append(act.tolist())
         self.distance_[self.seq]['same_class_mat'].append(same_class.tolist())
         self.distance_[self.seq]['dist'].append(dist.tolist())
 
     def update_thresholds(self, dist, num_active, num_inactive):
         # update active threshold
+        # self.act_reid_thresh == 'tbd' only in frame 1
         if (self.act_reid_thresh == 'tbd' or self.thresh_every) and num_active > 0:
             act = np.atleast_2d(
                 np.array(
@@ -381,45 +407,49 @@ class BaseTracker():
                 self.inact_reid_thresh = np.mean(
                     dist[~act]) - 1 * np.std(dist[~act])
 
-    def visualize(self, tracks, path, seq, frame):
+    def visualize(self, detections, tr_ids, path, seq, frame):
         if frame == 1:
             os.makedirs(
                 osp.join('visualizations', self.experiment, seq),
                 exist_ok=True)
         img = matplotlib.image.imread(path)
         figure, ax = plt.subplots(1)
-        figure.set_size_inches(img.shape[1]/100, img.shape[0]/100)
-        for t in tracks:
-            if t['id'] not in self.id_to_col.keys():
-                self.id_to_col[t['id']] = self.color_list[self.col]
+        figure.set_size_inches(img.shape[1] / 100, img.shape[0] / 100)
+        for tr_id, d in zip(tr_ids, detections):
+            if tr_id not in self.id_to_col.keys():
+                self.id_to_col[tr_id] = self.color_list[self.col]
                 self.col += 1
 
             # add rectangle
             rect = matplotlib.patches.Rectangle(
-                (t['bbox'][0], t['bbox'][1]),
-                t['bbox'][2]-t['bbox'][0],
-                t['bbox'][3]-t['bbox'][1],
-                edgecolor=self.id_to_col[t['id']],
+                (d['bbox'][0], d['bbox'][1]),
+                d['bbox'][2] - d['bbox'][0],
+                d['bbox'][3] - d['bbox'][1],
+                edgecolor=self.id_to_col[tr_id],
                 facecolor="none",
                 linewidth=2)
             ax.add_patch(rect)
 
             # add text with id, ioa and visibility
             text = ', '.join(
-                [str(t['id']), self.round2(t['ioa']), self.round2(t['vis'])])
+                [str(d['gt_id']), self.round2(d['ioa']), self.round2(d['vis'])])
             plt.text(
-                t['bbox'][0]-15,
-                t['bbox'][1]+(t['bbox'][3]-t['bbox'][1])/2,
+                d['bbox'][0] - 15,
+                d['bbox'][1] + (d['bbox'][3] - d['bbox'][1]) / 2,
                 text,
                 va='center',
                 rotation='vertical',
-                c=self.id_to_col[t['id']],
+                c=self.id_to_col[tr_id],
                 fontsize=8)
 
         ax.imshow(img)
         plt.axis('off')
         plt.savefig(
-            osp.join('visualizations', self.experiment, seq, f"{frame:06d}.jpg"),
+            osp.join(
+                'visualizations',
+                self.experiment,
+                seq,
+                f"{frame:06d}.jpg"),
             bbox_inches='tight',
             pad_inches=0,
             dpi=100)
@@ -432,12 +462,12 @@ class BaseTracker():
         random.shuffle(color_list)
         self.id_to_col = dict()
         self.col = 0
-        self.round2 = lambda x : str(round(100*x)/100)
+        self.round2 = lambda x: str(round(100 * x) / 100)
 
     def init_debug(self):
         self.errors = defaultdict(int)
         self.event_dict = defaultdict(dict)
-        self.round1 = lambda x : str(round(10*x)/10)
+        self.round1 = lambda x: str(round(10 * x) / 10)
 
     @staticmethod
     def plot_single_image(imgs, name):
@@ -446,90 +476,180 @@ class BaseTracker():
         for i, img in enumerate(imgs):
             img = img.permute(1, 2, 0)
             figure, ax = plt.subplots(1)
-            figure.set_size_inches(img.shape[1]/100, img.shape[0]/100)
+            figure.set_size_inches(img.shape[1] / 100, img.shape[0] / 100)
             ax.imshow(np.asarray(img))
             plt.savefig(str(i) + + name + '.png', dpi=100)
             plt.close()
 
     def motion_compensation(self, whole_image, im_index):
         # adapted from tracktor
-        if im_index > 0:
-            im1 = np.transpose(self.last_image.cpu().numpy(), (1, 2, 0))
-            im2 = np.transpose(whole_image.cpu().numpy(), (1, 2, 0))
+        if self.is_moving and im_index > 0:
+            # im1 = reference frame, im2 = frame to convert
+            # changed this from tracktor --> current img = reference
+            im1 = np.transpose(whole_image.cpu().numpy(), (1, 2, 0))
+            im2 = np.transpose(self.last_image.cpu().numpy(), (1, 2, 0))
             im1_gray = cv2.cvtColor(im1, cv2.COLOR_RGB2GRAY)
             im2_gray = cv2.cvtColor(im2, cv2.COLOR_RGB2GRAY)
             warp_matrix = np.eye(2, 3, dtype=np.float32)
-            criteria = (cv2.TERM_CRITERIA_EPS | cv2.TERM_CRITERIA_COUNT, self.motion_model_cfg['num_iter_mc'],  self.motion_model_cfg['termination_eps_mc'])
-            _, warp_matrix = cv2.findTransformECC(im1_gray, im2_gray, warp_matrix, self.warp_mode_dct[self.motion_model_cfg['warp_mode']], criteria, None, 15)
+            criteria = (
+                cv2.TERM_CRITERIA_EPS | cv2.TERM_CRITERIA_COUNT,
+                self.motion_model_cfg['num_iter_mc'],
+                self.motion_model_cfg['termination_eps_mc'])
+            _, warp_matrix = cv2.findTransformECC(
+                im1_gray, im2_gray, warp_matrix, self.warp_mode_dct[
+                    self.motion_model_cfg['warp_mode']], criteria, None, 15)
             warp_matrix = torch.from_numpy(warp_matrix)
 
             for tracks in [self.tracks, self.inactive_tracks]:
-                for tid, t in tracks.items():
-                    for d in t:
-                        if type(d['pos']) == torch.Tensor:
-                            d['pos'] = d['pos'].cpu().numpy()
-                        d['pos'] = warp_pos(np.atleast_2d(d['pos']), warp_matrix)
+                for k, track in tracks.items():
+                    for i, pos in enumerate(track.last_pos):
+                        if isinstance(pos, torch.Tensor):
+                            pos = pos.cpu().numpy()
+                        pos = np.squeeze(warp_pos(np.atleast_2d(pos), warp_matrix))
+                        track.last_pos[i] = pos
                         # t.pos = clip_boxes(Variable(pos), blob['im_info'][0][:2]).data
-        
+
         self.last_image = whole_image
 
     def motion_step(self, track):
         # adapted from tracktor
         """Updates the given track's position by one step based on track.last_v"""
         if self.motion_model_cfg['center_only']:
-            center_new = get_center(track[-1]['pos']) + track[-1]['last_v']
-            track[-1]['pos'] = make_pos(
+            center_new = get_center(track.pos) + track.last_v
+            track.pos = make_pos(
                 *center_new,
-                get_width(track[-1]['pos']),
-                get_height(track[-1]['pos']))
+                get_width(track.pos),
+                get_height(track.pos))
         else:
-            track[-1]['pos'] = track[-1]['pos'] + track[-1]['last_v']
-            print('whhat', type(track[-1]['pos']))
+            track.pos = track.pos + track.last_v
 
     def motion(self):
         # adapted from tracktor
         """Applies a simple linear motion model that considers the last n_steps steps."""
-        for tid, t in self.tracks.items():
-            print([tr['last_pos'] for tr in t])
-            last_pos = np.asarray([tr['last_pos'] for tr in t])
-            print(last_pos.shape, 'Hellp')
-            if len(last_pos) > 1:
-                # avg velocity between each pair of consecutive positions in t.last_pos
+        for track in self.tracks.values():
+            if len(track.last_pos) > 1:
+                last_pos = np.asarray(track.last_pos)
+                # avg velocity between each pair of consecutive positions in
+                # t.last_pos
                 if self.motion_model_cfg['center_only']:
-                    vs = [get_center(p2) - get_center(p1) for p1, p2 in zip(last_pos, last_pos[1:])]
+                    vs = [get_center(p2) - get_center(p1)
+                          for p1, p2 in zip(last_pos, last_pos[1:])]
                 else:
                     vs = [p2 - p1 for p1, p2 in zip(last_pos, last_pos[1:])]
+                track.last_v = np.stack(vs).mean(axis=0)
+                self.motion_step(track)
 
-                t[-1]['last_v'] = torch.stack(vs).mean(dim=0)
-                self.motion_step(t)
-            else:
-                t[-1]['last_v'] = 0
-            t[-1]['last_pos'].append(t[-1]['pos'].cpu().numpy())
-            print('appending:', t[-1]['pos'].cpu().numpy())
+        for track in self.inactive_tracks.values():
+            if len(track.last_pos) > 1:
+                self.motion_step(track)
 
-        for t in self.inactive_tracks:
-            if t[-1]['last_v'] is not None:
-                self.motion_step(t)
-
-    def get_motion_dist(self, tracks):
-        act_pos = [t[-1]['pos'] for tid, t in self.tracks.items()]
-        inact_pos = [t[-1]['pos'] for tid, t in self.inactive_tracks.items()]
-        pos = torch.cat(act_pos + inact_pos, 0)
-        det_pos = torch.from_numpy(np.asarray([t['pos'] for t in tracks])).cuda()
+    def get_motion_dist(self, detections, curr_it):
+        act_pos = [track.pos for track in self.tracks.values()]
+        inact_pos = [track.pos for track in curr_it.values()]
+        pos = torch.from_numpy(np.asarray(act_pos + inact_pos))
+        det_pos = torch.from_numpy(np.asarray(
+            [t['bbox'] for t in detections]))
         iou = bbox_overlaps(det_pos, pos)
         iou = 1 - iou
         return iou
 
-    def combine_motion_appearance(self, iou, dist, tracks):
-        ioa = torch.tensor([t['ioa'] for t in tracks])
-        ioa = ioa.repeat(dist.shape[1], 1).T
-        ioa_mask = ioa > 0.8
-        dist_emb = dist
-        dist_emb[ioa_mask] = 0
-        dist_iou = iou
-        dist_iou[~ioa_mask] = 0
-        dist = dist_emb + dist_iou.cpu().numpy()
+    def combine_motion_appearance(self, iou, dist, detections, num_active, num_inactive, inactive_counts, gt_n=None, gt_t=None):
+        # occlusion
+        ioa = torch.tensor([d['ioa'] for d in detections])
+        ioa = ioa.repeat(dist.shape[1], 1).T.numpy()
+        num_occ = torch.tensor([d['num_occ'] for d in detections])
+        num_occ = num_occ.repeat(dist.shape[1], 1).T.numpy()
+        # out of frame
+        area_out = torch.tensor([d['area_out'] for d in detections])
+        area_out = area_out.repeat(dist.shape[1], 1).T.numpy()
+        # interaction
+        inter = torch.tensor([d['ioa_nf'] for d in detections])
+        inter = inter.repeat(dist.shape[1], 1).T.numpy()
+        num_inter = torch.tensor([d['num_inter'] for d in detections])
+        num_inter = num_inter.repeat(dist.shape[1], 1).T.numpy()
+
+        # init distances
+        dist_emb = copy.deepcopy(dist)
+        dist_iou = iou.cpu().numpy()
+
+        if self.store_dist:
+            all_counts = [0] * num_active + inactive_counts
+            self.distance_[self.seq]['iou_dist'].append(dist_iou.tolist())
+            self.distance_[self.seq]['inactive_count'].append(all_counts)
+            gt_n = np.atleast_2d(np.array(gt_n))
+            gt_t = np.atleast_2d(np.array(gt_t))
+            same_class = gt_t == gt_n.T
+            same = dist_iou[:, :num_active][same_class[:, :num_active]].tolist()
+            diff = dist_iou[:, :num_active][~same_class[:, :num_active]].tolist()
+            self.distance_[self.seq]['iou_dist_diff']['same'][0].extend(same)
+            self.distance_[self.seq]['iou_dist_diff']['diff'][0].extend(diff)
+            for i, ic in enumerate(inactive_counts):
+                same = dist_iou[:, num_active+i][same_class[:, num_active+i]].tolist()
+                diff = dist_iou[:, num_active+i][~same_class[:, num_active+i]].tolist()
+                self.distance_[self.seq]['iou_dist_diff']['same'][ic].extend(same)
+                self.distance_[self.seq]['iou_dist_diff']['diff'][ic].extend(diff)
+
+        # mask iou distance and set to 1 if tracks infactive for more than 30 frames
+        # if num_inactive > 0:
+        #     inactive_counts = np.array(inactive_counts) > 20
+        #     inactive_counts = np.arange(dist_iou.shape[1])[num_active:][inactive_counts]
+        #     dist_iou[:, inactive_counts] = 1
+
+        # weighted of threshold
+        if self.motion_model_cfg['ioa_threshold'] == 'sum':
+            dist = dist_emb + dist_iou
+        elif self.motion_model_cfg['ioa_threshold'] == 'weightedSameRange':
+            dist_emb = (dist_emb-dist_emb.min())/(dist_emb.max()-dist_emb.min())
+            dist_iou = (dist_iou-dist_iou.min())/(dist_iou.max()-dist_iou.min())
+            dist = (1-ioa) * dist_emb + ioa * dist_iou
+        elif self.motion_model_cfg['ioa_threshold'] == 'weighted':
+            # dist[:, :num_active] = (1-ioa[:, :num_active]) * dist_emb[:, :num_active] + ioa[:, :num_active] * dist_iou[:, :num_active]
+            dist = (1-ioa) * dist_emb + ioa * dist_iou
+
+        elif self.motion_model_cfg['ioa_threshold'] == 'weighted_inter':
+            dist = (1-inter) * dist_emb + inter * dist_iou
+            # dist = np.clip(1-inter/2, a_min=0, a_max=None) * dist_emb + np.clip(inter/2, a_min=None, a_max=1) * dist_iou
+        else:
+            # get masks
+            ioa_mask = ioa > self.motion_model_cfg['ioa_threshold']
+            area_out_mask = area_out > self.motion_model_cfg['area_out_threshold']
+            num_occ_mask = num_occ >= self.motion_model_cfg['num_occ_thresh']
+            inter_mask = inter > self.motion_model_cfg['inter_threshold']
+            num_inter_mask = num_inter >= self.motion_model_cfg['num_inter_thresh']
+
+            dist_emb[ioa_mask] = 0
+            dist_iou[~ioa_mask] = 0
+
+            # dist_emb[(area_out_mask | ioa_mask | num_occ_mask | inter_mask)] = 0
+            # dist_iou[(~area_out_mask & ~ioa_mask & ~num_occ_mask & ~inter_mask)] = 0
+
+            # dist_emb[(ioa_mask & num_occ_mask) | area_out_mask] = 0
+            # dist_iou[(~ioa_mask | ~num_occ_mask) & ~area_out_mask] = 0
+
+            # dist_emb[(inter_mask & num_inter_mask) | area_out_mask] = 0
+            # dist_iou[(~inter_mask | ~num_inter_mask) & ~area_out_mask] = 0
+
+            # dist[:, :num_active] = dist_emb[:, :num_active] + dist_iou[:, :num_active]
+            dist = dist_emb + dist_iou
+            # dist = dist_iou
+
         return dist
 
+    def active_proximity(self, dist, num_active, detections):
+        active_pos = np.asarray([track.pos for track in self.tracks.values()])
+        det_pos = np.asarray([t['bbox'] for t in detections])
+
+        center_active = get_center(active_pos)
+        center_active = np.atleast_2d(center_active.T)
+        center_det = get_center(det_pos)
+        center_det = np.atleast_2d(center_det.T)
+
+        center_dist = sklearn.metrics.pairwise_distances(
+                    center_det, center_active, metric='euclidean')
         
+        center_dist = center_dist < 100
+
+        #dist[:, :num_active] = np.where(center_dist > 20, np.nan,  dist[:, :num_active])
+
+        return center_dist
 

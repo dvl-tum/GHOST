@@ -10,8 +10,8 @@ import logging
 import motmetrics as mm
 from collections import OrderedDict
 from pathlib import Path
-#from torchreid import models
-#import torchreid
+from torchreid import models
+import torchreid
 from src.eval_fairmot import Evaluator
 from src.eval_mpn_track import get_results, get_summary
 from src.eval_track_eval import evaluate_track_eval

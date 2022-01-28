@@ -54,7 +54,7 @@ reid_net:
 tracker:
   visualize: 0
   store_dist: 0
-  save_embeddings_by_id: 1
+  save_embeddings_by_id: 0
   debug: 0
   use_bism: 0
   pad_imgs: 0
@@ -71,7 +71,7 @@ tracker:
   running_mean_seq_reset: 0
   first_batch: 0
   first_batch_reset: 0
-  eval_bb: 1
+  eval_bb: 0
   get_reid_performance: 0
   oracle: 0
   #ResNet 92....: 0.675, 0.3, 63 mean
@@ -83,8 +83,8 @@ tracker:
   #ResNet + GNN (not batchwise rank): 0.5651008171629721, 0.5035112091729865, 59, median
   #Market model: 0.75/0.7 0.54/0.375, median 63 (non eval / eval)
   act_reid_thresh: 0.7 #0.71 #0.67 #0.675 #0.7 #0.665 #0.75 #0.7 
-  inact_reid_thresh: 0.75 #0.75 #0.73 #0.74 #0.75 #0.72 #0.54 #0.375 
-  inact_thresh: 100000
+  inact_reid_thresh: 0.75 #0.75 #0.73 #0.74 #0.75 #0.72 #0.54 #0.375  # 'act_reid_thresh': 0.9642701307721346, 'inact_reid_thresh': 0.7423529287840127
+  inact_thresh: 1000000
   output_dir: 'out' 
   avg_act:
     do: 0
@@ -96,10 +96,17 @@ tracker:
     proxy: 'each_sample' #'each_sample' #'frames_gnn' #'60' #'frames_gnn' #'frames_gnn' #'mode'
   h_w_thresh: 1000000
   length_thresh: 2
+  distance: 'cosine'
   motion_config:
-    motion_compensation: 1
+    motion_compensation: 0
     num_iter_mc: 100
     warp_mode: 'Euclidean'
     termination_eps_mc: 0.00001
     apply_motion_model: 1
     center_only: 0
+    ioa_threshold: 'weightedSameRange' #0.7
+    area_out_threshold: 1.0
+    num_occ_thresh: 100000
+    inter_threshold: 1.0
+    num_inter_thresh: 100000
+  active_proximity: 0

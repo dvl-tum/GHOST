@@ -223,6 +223,11 @@ class Sequence():
         bot_pad = abs(int(row_unclipped['bb_bot']) - img.shape[1]
                       ) if int(row_unclipped['bb_bot']) > img.shape[1] else 0
 
+        h = (row_unclipped['bb_bot'] - row_unclipped['bb_top'])
+        w = (row_unclipped['bb_right'] - row_unclipped['bb_left'])
+        area_out = (left_pad + right_pad) * h + (top_pad + bot_pad) * w
+        area_out = area_out / (h * w)
+
         # zero padding
         if padding == 'zero':
             m = torch.nn.ZeroPad2d((left_pad, right_pad, top_pad, bot_pad))
@@ -258,14 +263,15 @@ class Sequence():
                  bot_pad),
                 padding).squeeze()
 
-        return im
+        return im, area_out
 
     def _get_images(self, path, dets_frame, dets_uncl_frame, padding='zero'):
         # get and image
         img = self.to_tensor(Image.open(path).convert("RGB"))
         frame_size = (img.shape[1], img.shape[2])
         img_for_det = copy.deepcopy(img)
-        res, dets, tracktor_ids, ids, vis = list(), list(), list(), list(), list()
+        res, dets, tracktor_ids, ids, vis, areas_out = \
+            list(), list(), list(), list(), list(), list()
 
         # generate random patches if BatchNorm stats are updated with those
         if self.random_patches:
@@ -282,7 +288,7 @@ class Sequence():
 
             # pad if part of bb outside of image
             if self.zero_pad:
-                im = self.pad_bbs(padding, img, im, row_unclipped)
+                im, area_out = self.pad_bbs(padding, img, im, row_unclipped)
 
             # transform bb
             im = self.to_pil(im)
@@ -302,12 +308,13 @@ class Sequence():
             tracktor_ids.append(row['tracktor_id'])
             ids.append(row['id'])
             vis.append(row['vis'])
+            areas_out.append(area_out)
 
         res = torch.stack(res, 0)
         res = res.to(self.device)
 
         return res, dets, tracktor_ids, ids, vis, random_patches, img_for_det.to(
-            self.device), frame_size
+            self.device), frame_size, areas_out
 
     def __iter__(self):
         self.frames = self.dets['frame'].unique()
@@ -323,7 +330,7 @@ class Sequence():
 
             assert len(dets_frame['frame_path'].unique()) == 1
 
-            img, dets_f, tracktor_ids, ids, vis, random_patches, img_for_det, frame_size = self._get_images(
+            img, dets_f, tracktor_ids, ids, vis, random_patches, img_for_det, frame_size, areas_out = self._get_images(
                 dets_frame['frame_path'].unique()[0], dets_frame, dets_uncl_frame)
 
             if self.gt is not None:
@@ -343,6 +350,6 @@ class Sequence():
             self.i += 1
             return img, gt_f, dets_frame['frame_path'].unique(
             )[0], dets_f, tracktor_ids, ids, vis, random_patches, img_for_det,\
-                frame_size
+                frame_size, areas_out
         else:
             raise StopIteration

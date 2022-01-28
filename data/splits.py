@@ -34,7 +34,7 @@ _SPLITS['mot17_split_along']['val'] = {'seq': [f'MOT17-{seq_num:02}' for seq_num
 
 #_SPLITS['debug_train']['train'] = {'seq': ['MOT17-02'], 'dir': 'train'}
 #_SPLITS['debug_train']['val'] = {'seq': ['MOT17-04'], 'dir': 'train'}
-_SPLITS['debug_train']['test'] = {'seq': ['MOT17-02'], 'dir': 'train'}
+_SPLITS['debug_train']['test'] = {'seq': ['MOT17-04'], 'dir': 'train'}
 #_SPLITS['debug_test']['test'] = {'seq': ['MOT17-13'], 'dir': 'train'}
 
 # Remove IDs later
