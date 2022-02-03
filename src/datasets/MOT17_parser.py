@@ -110,8 +110,7 @@ class MOTLoader():
                 self.dets['bb_top'] +
                 self.dets['bb_height']).values  # - 1
 
-            if len(self.dets['id'].unique()) > 1:
-                self.dets['tracktor_id'] = self.dets['id']
+            self.dets['tracktor_id'] = self.dets['id']
 
             # add frame path
             def add_frame_path(i): return osp.join(

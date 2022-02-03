@@ -81,7 +81,7 @@ class TrackingDataset(MOTDataset):
                 else:
                     gt = None
                     corresponding_gt = None
-
+            
             if self.dataset_cfg['save_oracle']:
                 self._save_oracle(seq, dets)
 
