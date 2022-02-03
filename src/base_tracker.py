@@ -82,6 +82,8 @@ class BaseTracker():
             self.embeddings_by_id = dict()
 
         self.round1_float = lambda x: round(10 * x) / 10
+        self.hill_temp = lambda x: x/(x+5)
+        self.hill_vis = lambda x: x/(x+0.3)
 
     def make_results(self):
         results = defaultdict(dict)
@@ -458,7 +460,7 @@ class BaseTracker():
     def init_vis(self):
         colors = mcolors.CSS4_COLORS
         color_list = list(colors.keys())
-        self.color_list = color_list + color_list
+        self.color_list = 10 * color_list
         random.shuffle(color_list)
         self.id_to_col = dict()
         self.col = 0
@@ -499,6 +501,7 @@ class BaseTracker():
                 im1_gray, im2_gray, warp_matrix, self.warp_mode_dct[
                     self.motion_model_cfg['warp_mode']], criteria, None, 15)
             warp_matrix = torch.from_numpy(warp_matrix)
+            # print(warp_matrix)
 
             for tracks in [self.tracks, self.inactive_tracks]:
                 for k, track in tracks.items():
@@ -536,7 +539,10 @@ class BaseTracker():
                           for p1, p2 in zip(last_pos, last_pos[1:])]
                 else:
                     vs = [p2 - p1 for p1, p2 in zip(last_pos, last_pos[1:])]
+                    vs_c = [get_center(p2) - get_center(p1)
+                                 for p1, p2 in zip(last_pos, last_pos[1:])]
                 track.last_v = np.stack(vs).mean(axis=0)
+                track.last_vc = np.stack(vs_c).mean(axis=0)
                 self.motion_step(track)
 
         for track in self.inactive_tracks.values():
@@ -553,7 +559,7 @@ class BaseTracker():
         iou = 1 - iou
         return iou
 
-    def combine_motion_appearance(self, iou, dist, detections, num_active, num_inactive, inactive_counts, gt_n=None, gt_t=None):
+    def combine_motion_appearance(self, iou, dist, detections, num_active, num_inactive, inactive_counts, velocity_center, positions, gt_n=None, gt_t=None):
         # occlusion
         ioa = torch.tensor([d['ioa'] for d in detections])
         ioa = ioa.repeat(dist.shape[1], 1).T.numpy()
@@ -598,14 +604,126 @@ class BaseTracker():
         # weighted of threshold
         if self.motion_model_cfg['ioa_threshold'] == 'sum':
             dist = dist_emb + dist_iou
+        elif self.motion_model_cfg['ioa_threshold'] == 'sumFairMOTNan':
+            dist = dist_emb + dist_iou
+            dist[:, :num_active] = np.where(
+                dist[:, :num_active] == 1,
+                np.nan,
+                dist[:, :num_active])
+        elif self.motion_model_cfg['ioa_threshold'] == 'SeperateAssignment':
+            dist = [dist_emb, dist_iou]
         elif self.motion_model_cfg['ioa_threshold'] == 'weightedSameRange':
             dist_emb = (dist_emb-dist_emb.min())/(dist_emb.max()-dist_emb.min())
             dist_iou = (dist_iou-dist_iou.min())/(dist_iou.max()-dist_iou.min())
             dist = (1-ioa) * dist_emb + ioa * dist_iou
+        elif self.motion_model_cfg['ioa_threshold'] == 'Velocity':
+            # dt = time until not intersection anymore
+            # positions = [tlx, tly, brx, bry]
+            positions = np.vstack(positions)
+            velocity_center = np.vstack(velocity_center) + np.finfo(float).eps
+            # vx < 0
+            a = (positions[:, 0] - positions[:, 2]) / velocity_center[:, 0]
+            # vx > 0
+            b = (positions[:, 2] - positions[:, 0]) / velocity_center[:, 0]
+            # vy < 0
+            c = (positions[:, 1] - positions[:, 3]) / velocity_center[:, 1]
+            # vy > 0
+            d = (positions[:, 3] - positions[:, 1]) / velocity_center[:, 1]
+            
+            mask_x = np.where(velocity_center[:, 0] < 0, 0, 1)
+            mask_y = np.where(velocity_center[:, 1] < 0, 0, 1)
+            dtx = np.vstack([a, b]).T
+            dtx = dtx[np.arange(dtx.shape[0]), mask_x]
+            dty = np.vstack([c, d]).T
+            dty = dty[np.arange(dty.shape[0]), mask_y]
+            dts = np.vstack([dtx, dty]).T
+            dts = np.max(dts, axis=1)
+            w = np.array([0] * num_active + inactive_counts)
+            w = np.clip(w/(0.2*dts), a_min=0, a_max=1)
+            w = np.repeat(
+                np.expand_dims(w, axis=1), dist_emb.shape[0], axis=1).T
+
+            dist = w * dist_emb + (1-w) * dist_iou
+            # dist += (1-ioa) * dist_emb + ioa * dist_iou
+
+        elif self.motion_model_cfg['ioa_threshold'] == 'VelocityAndOcclusion':
+            # dt = time until not intersection anymore
+            # positions = [tlx, tly, brx, bry]
+            positions = np.vstack(positions)
+            velocity_center = np.vstack(velocity_center) + np.finfo(float).eps
+            # vx < 0
+            a = (positions[:, 0] - positions[:, 2]) / velocity_center[:, 0]
+            # vx > 0
+            b = (positions[:, 2] - positions[:, 0]) / velocity_center[:, 0]
+            # vy < 0
+            c = (positions[:, 1] - positions[:, 3]) / velocity_center[:, 1]
+            # vy > 0
+            d = (positions[:, 3] - positions[:, 1]) / velocity_center[:, 1]
+            
+            mask_x = np.where(velocity_center[:, 0] < 0, 0, 1)
+            mask_y = np.where(velocity_center[:, 1] < 0, 0, 1)
+            dtx = np.vstack([a, b]).T
+            dtx = dtx[np.arange(dtx.shape[0]), mask_x]
+            dty = np.vstack([c, d]).T
+            dty = dty[np.arange(dty.shape[0]), mask_y]
+            dts = np.vstack([dtx, dty]).T
+            dts = np.max(dts, axis=1)
+            w = np.array([0] * num_active + inactive_counts)
+            w = np.clip(w/(0.2*dts), a_min=0, a_max=1)
+            w = np.repeat(
+                np.expand_dims(w, axis=1), dist_emb.shape[0], axis=1).T
+
+            # dist = w * dist_emb + (1-w) * dist_iou
+            # dist += (1-ioa) * dist_emb + ioa * dist_iou
+
+            w += np.finfo(float).eps
+            ioa += np.finfo(float).eps
+
+            # combine probabilities
+            w_1 = np.clip((w * (1-ioa)) / (w * (1-ioa) + (1-w) * ioa), a_min=0, a_max=1)
+            w_2 = np.clip(((1-w) * ioa) / (w * (1-ioa) + (1-w) * ioa), a_min=0, a_max=1)
+
+            # combine distances
+            dist = w_1 * dist_emb + w_2 * dist_iou
+
+        elif self.motion_model_cfg['ioa_threshold'] == 'Temporal':
+            # the larger the inactive count the more wieght to reid
+            w = np.clip(
+                np.array([0] * num_active + inactive_counts)/30, 
+                a_min=0,
+                a_max=1)
+            w = np.repeat(
+                np.expand_dims(w, axis=1), dist_emb.shape[0], axis=1).T
+
+            dist = w * dist_emb + (1-w) * dist_iou
+            
+        elif self.motion_model_cfg['ioa_threshold'] == 'TemporalAndOcclusion':
+            # the larger the inactive count the more wieght to reid
+            w = np.clip(
+                np.array([0] * num_active + inactive_counts)/30,
+                a_min=0,
+                a_max=1)
+            w = np.repeat(
+                np.expand_dims(w, axis=1), dist_emb.shape[0], axis=1).T
+
+            dist = w * dist_emb + (1-w) * dist_iou
+            dist += (1-ioa) * dist_emb + ioa * dist_iou
+            
+            # when want to use probability
+            # ensure that w_1 and w_2 don't get nan
+            # w += np.finfo(float).eps
+            # ioa += np.finfo(float).eps
+
+            # combine probabilities
+            # w_1 = np.clip((w * (1-ioa)) / (w * (1-ioa) + (1-w) * ioa), a_min=0, a_max=1)
+            # w_2 = np.clip(((1-w) * ioa) / (w * (1-ioa) + (1-w) * ioa), a_min=0, a_max=1)
+
+            # combine distances
+            # dist = w_1 * dist_emb + w_2 * dist_iou
+
         elif self.motion_model_cfg['ioa_threshold'] == 'weighted':
             # dist[:, :num_active] = (1-ioa[:, :num_active]) * dist_emb[:, :num_active] + ioa[:, :num_active] * dist_iou[:, :num_active]
             dist = (1-ioa) * dist_emb + ioa * dist_iou
-
         elif self.motion_model_cfg['ioa_threshold'] == 'weighted_inter':
             dist = (1-inter) * dist_emb + inter * dist_iou
             # dist = np.clip(1-inter/2, a_min=0, a_max=None) * dist_emb + np.clip(inter/2, a_min=None, a_max=1) * dist_iou
@@ -633,7 +751,7 @@ class BaseTracker():
             dist = dist_emb + dist_iou
             # dist = dist_iou
 
-        return dist
+        return dist, ioa
 
     def active_proximity(self, dist, num_active, detections):
         active_pos = np.asarray([track.pos for track in self.tracks.values()])
