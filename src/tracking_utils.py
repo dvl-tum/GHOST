@@ -273,11 +273,11 @@ def get_reid_performance(topk=8, first_match_break=True, tracks=None):
 
 def get_center(pos):
     # adapted from tracktor
-    if pos.shape[0] <= 1:
-        x1 = pos[0, 0]
-        y1 = pos[0, 1]
-        x2 = pos[0, 2]
-        y2 = pos[0, 3]
+    if len(pos.shape) <= 1:
+        x1 = pos[0]
+        y1 = pos[1]
+        x2 = pos[2]
+        y2 = pos[3]
     else:
         x1 = pos[:, 0]
         y1 = pos[:, 1]
@@ -368,7 +368,8 @@ class Track():
         # init variables for motion model
         self.last_pos = list()
         self.last_pos.append(self.pos)
-        self.last_v = 0
+        self.last_v = np.array([0, 0, 0, 0])
+        self.last_vc = np.array([0, 0])
 
         # initialize ioa variables
         self.ioa = ioa

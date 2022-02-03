@@ -41,6 +41,7 @@ class Tracker(BaseTracker):
             output,
             weight,
             data)
+        self.short_experiment = defaultdict(list)
 
     def track(self, seq, first=False):
         '''
@@ -170,6 +171,9 @@ class Tracker(BaseTracker):
         if self.save_embeddings_by_id:
             with open(self.experiment + 'embeddings_by_id.json', 'w') as jf:
                 json.dump(self.embeddings_by_id, jf)
+        
+        for k, v in self.short_experiment.items():
+            print(k, np.array(v).mean(), np.array(v).std(), np.array(v).mean()-0.5*np.array(v).std())
 
     def get_blurred_feats(self, whole_im, boxes):
         blurrer = T.GaussianBlur(kernel_size=(29, 29), sigma=5)
@@ -226,7 +230,7 @@ class Tracker(BaseTracker):
                     sep=self.tracker_cfg['assign_separately'])
         return tr_ids
 
-    def get_hungarian_each_sample(self, detections, sep=False):
+    def get_hungarian_each_sample(self, detections, sep=False, sep_confidence=False):
         # get new detections
         x = torch.stack([t['feats'] for t in detections])
         gt_n = [v['gt_id'] for v in detections]
@@ -293,7 +297,21 @@ class Tracker(BaseTracker):
             self.motion()
             iou = self.get_motion_dist(detections, curr_it)
             inactive_counts = [it.inactive_count for it in curr_it.values()]
-            dist = self.combine_motion_appearance(iou, dist, detections, num_active, num_inactive, inactive_counts, gt_n, gt_t)
+            velocity_center = [t.last_vc for t in self.tracks.values()] + [
+                t.last_vc for t in curr_it.values()]
+            positions = [t.pos for t in self.tracks.values()] + [
+                t.pos for t in curr_it.values()]
+            dist, ioa = self.combine_motion_appearance(
+                iou,
+                dist,
+                detections,
+                num_active,
+                num_inactive,
+                inactive_counts,
+                velocity_center,
+                positions,
+                gt_n,
+                gt_t)
 
         if self.nan_first:
             dist[:, :num_active] = np.where(dist[:, :num_active] <=
@@ -302,14 +320,16 @@ class Tracker(BaseTracker):
                 self.inact_reid_thresh, dist[:, num_active:], np.nan)
 
         if self.tracker_cfg['active_proximity']:
-            self.proximity = self.active_proximity(dist, num_active, detections)
+            self.proximity = self.active_proximity(
+                dist, num_active, detections)
 
-        # store distances
-        if self.store_dist:
-            self.add_dist_to_storage(
-                gt_n, gt_t, num_active, num_inactive, dist, height)
-
-        if not sep:
+        if self.motion_model_cfg['ioa_threshold'] == 'SeperateAssignment' and\
+            self.motion_model_cfg['apply_motion_model']:
+            '''if num_inactive == 5:
+                print(gt_n)
+                print(gt_t)'''
+            row, col, dist = self.solve_sep_confidence(1-ioa, dist, num_inactive, inactive_counts, gt_t=gt_t, gt_n=gt_n)
+        elif not sep:
             row, col = solve_dense(dist)
         else:
             dist_act = dist[:, :num_active]
@@ -319,8 +339,80 @@ class Tracker(BaseTracker):
             else:
                 dist_inact = None
             dist = [dist_act, dist_inact]
+        
+        # store distances
+        if self.store_dist:
+            self.add_dist_to_storage(
+                gt_n, gt_t, num_active, num_inactive, dist, height)
 
         return dist, row, col, ids
+
+    def solve_sep_confidence(self, conf, dist, num_inactive, inactive_counts, sep_inact=False, gt_t=None, gt_n=None):
+        dist_emb = dist[0]
+        dist_iou = dist[1]
+
+        conf_thresh = self.motion_model_cfg['conf_threshold']
+        if sep_inact:
+            dist_inact = copy.deepcopy(dist_emb)
+            inactive_mask = np.ones(dist_emb.shape, dtype=np.bool8)
+            if num_inactive > 1:
+                inactive_counts = np.repeat(np.expand_dims(np.array(
+                    inactive_counts), axis=1), dist_emb.shape[0], axis=1).T
+                inactive_counts[inactive_counts <= 30] = 1
+                inactive_counts[inactive_counts > 30] = 0
+                inactive_counts = inactive_counts.astype(dtype=np.bool8)
+                inactive_mask[:, -num_inactive:] = inactive_counts
+
+            dist_emb[(conf < conf_thresh) & ~inactive_mask] = np.nan
+            dist_iou[(conf >= conf_thresh) & ~inactive_mask] = np.nan
+            dist_inact[:, :-num_inactive] = np.nan
+            dist_inact[inactive_mask] = np.nan
+        else:
+            dist_emb[conf < conf_thresh] = np.nan
+            dist_iou[conf >= conf_thresh] = np.nan
+
+        # solve confident boxes first
+        row, col = solve_dense(dist_emb)
+
+        # solve less confident afterwards
+        _dist = copy.deepcopy(dist_iou)
+
+        # remove already assigned colomns for possible assignments
+        if col.shape[0] > 0:
+            _dist[:, col] = np.nan
+
+        gt_n = np.atleast_2d(np.array(gt_n))
+        gt_t = np.atleast_2d(np.array(gt_t))
+        same_class = gt_t == gt_n.T
+
+        self.short_experiment['emb_same'].extend(
+            dist_emb[(~np.isnan(dist_emb)) & (same_class)].tolist())
+        self.short_experiment['emb_diff'].extend(
+            dist_emb[(~np.isnan(dist_emb)) & (~same_class)].tolist())
+        self.short_experiment['iou_same'].extend(
+            dist_iou[(~np.isnan(dist_iou)) & (same_class)].tolist())
+        self.short_experiment['iou_diff'].extend(
+            dist_iou[(~np.isnan(dist_iou)) & (~same_class)].tolist())
+
+        row_2, col_2 = solve_dense(_dist)
+        row = row.tolist() + row_2.tolist()
+        col = col.tolist() + col_2.tolist()
+
+        if sep_inact:
+            if col_2.shape[0] > 0:
+                dist_inact[:, col] = np.nan
+            row_3, col_3 = solve_dense(_dist)
+            row = row + row_3.tolist()
+            col = col + col_3.tolist()
+            dist_iou = np.where(np.isnan(dist_iou), dist_inact, dist_iou)
+
+        _dist = np.where(np.isnan(dist_emb), dist_iou, dist_emb)
+        #_dist[(conf >= conf_thresh) & (_dist > 0.88)] = 1
+        #_dist[(conf >= conf_thresh) & ~(_dist > 0.88)] = 0
+        #_dist[(conf < conf_thresh) & (_dist > 0.93)] = 1
+        #_dist[(conf < conf_thresh) & ~(_dist > 0.93)] = 0
+
+        return row, col, _dist
 
     def get_hungarian_with_proxy(self, detections, sep=False):
         # instantiate
@@ -553,8 +645,18 @@ class Tracker(BaseTracker):
                 tr_ids[r] = ids[c]
 
             # assign tracks to inactive tracks if reid distance < thresh
-            elif ids[c] in self.inactive_tracks.keys() and \
-               (dist[r, c] < inact_thresh * scale or self.nan_first):
+            elif ids[c] in self.inactive_tracks.keys():
+                '''inact_ct = self.inactive_tracks[ids[c]].inactive_count
+                ioa = detections[r]['ioa']
+                print(inact_ct, self.hill_temp(inact_ct),
+                        ioa,
+                        self.hill_vis(ioa),
+                        self.hill_vis(ioa) * self.hill_temp(inact_ct) > 0.6,
+                        (dist[r, c] <= inact_thresh * scale))
+                if self.hill_vis(ioa) * self.hill_temp(inact_ct) > 0.6:
+                    continue'''
+                if (dist[r, c] <= inact_thresh * scale and not self.nan_first):
+                    continue
 
                 # generate error event if debug
                 if self.inactive_tracks[ids[c]].gt_id != detections[r]['gt_id'] \

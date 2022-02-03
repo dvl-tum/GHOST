@@ -98,13 +98,14 @@ tracker:
   length_thresh: 2
   distance: 'cosine'
   motion_config:
-    motion_compensation: 0
+    motion_compensation: 1
     num_iter_mc: 100
     warp_mode: 'Euclidean'
     termination_eps_mc: 0.00001
     apply_motion_model: 1
     center_only: 0
-    ioa_threshold: 'weightedSameRange' #0.7
+    ioa_threshold: 'sum' #'VelocityAndOcclusion' #'SeperateAssignment' #0.7
+    conf_threshold: 0.6
     area_out_threshold: 1.0
     num_occ_thresh: 100000
     inter_threshold: 1.0
