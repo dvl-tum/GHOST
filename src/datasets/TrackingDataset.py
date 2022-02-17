@@ -270,8 +270,8 @@ class Sequence():
         img = self.to_tensor(Image.open(path).convert("RGB"))
         frame_size = (img.shape[1], img.shape[2])
         img_for_det = copy.deepcopy(img)
-        res, dets, tracktor_ids, ids, vis, areas_out = \
-            list(), list(), list(), list(), list(), list()
+        res, dets, tracktor_ids, ids, vis, areas_out, conf = \
+            list(), list(), list(), list(), list(), list(), list()
 
         # generate random patches if BatchNorm stats are updated with those
         if self.random_patches:
@@ -308,13 +308,14 @@ class Sequence():
             tracktor_ids.append(row['tracktor_id'])
             ids.append(row['id'])
             vis.append(row['vis'])
+            conf.append(row['conf'])
             areas_out.append(area_out)
 
         res = torch.stack(res, 0)
         res = res.to(self.device)
 
         return res, dets, tracktor_ids, ids, vis, random_patches, img_for_det.to(
-            self.device), frame_size, areas_out
+            self.device), frame_size, areas_out, conf
 
     def __iter__(self):
         self.frames = self.dets['frame'].unique()
@@ -330,7 +331,7 @@ class Sequence():
 
             assert len(dets_frame['frame_path'].unique()) == 1
 
-            img, dets_f, tracktor_ids, ids, vis, random_patches, img_for_det, frame_size, areas_out = self._get_images(
+            img, dets_f, tracktor_ids, ids, vis, random_patches, img_for_det, frame_size, areas_out, conf = self._get_images(
                 dets_frame['frame_path'].unique()[0], dets_frame, dets_uncl_frame)
 
             if self.gt is not None:
@@ -350,6 +351,6 @@ class Sequence():
             self.i += 1
             return img, gt_f, dets_frame['frame_path'].unique(
             )[0], dets_f, tracktor_ids, ids, vis, random_patches, img_for_det,\
-                frame_size, areas_out
+                frame_size, areas_out, conf
         else:
             raise StopIteration

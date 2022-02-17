@@ -4,9 +4,10 @@ import numpy as np
 import sklearn
 from sklearn.metrics import average_precision_score
 import copy
+import torch.nn as nn
 
 
-def add_ioa(tracks, seq, interaction, occlusion, frame_size):
+def add_ioa(tracks, seq, interaction=None, occlusion=None, frame_size=None):
     bbs = torch.from_numpy(np.vstack([tr['bbox'] for tr in tracks]))
     # add dummy bbs for outside of frame bounding boxes
     bbs, foot_pos = add_dummy_bb(bbs, frame_size)
@@ -30,7 +31,8 @@ def add_ioa(tracks, seq, interaction, occlusion, frame_size):
     ioa_nf = np.sum(curr_interaction, axis=1)
     ioa_nf = np.round(ioa_nf*100)/100
     ioa_nf = ioa_nf.tolist()
-    interaction[seq] += ioa_nf
+    if interaction is not None:
+        interaction[seq] += ioa_nf
 
     # taking foot position into account
     bot = np.atleast_2d(foot_pos).T < np.atleast_2d(foot_pos)
@@ -49,7 +51,8 @@ def add_ioa(tracks, seq, interaction, occlusion, frame_size):
     ioa = np.sum(ioa, axis=1)
     ioa = np.round(ioa*100)/100
     ioa = ioa.tolist()
-    occlusion[seq] += ioa
+    if occlusion is not None:
+        occlusion[seq] += ioa
     
     for i, s, ni, ns, t in zip(ioa, num_occ, ioa_nf, num_inter, tracks):
         assert i <= 1, "ioa cannot be larger than 1 {}".format(ioa)
@@ -156,7 +159,7 @@ def _box_inter_area(boxes1, boxes2):
 
 
 def bisoftmax(x, y):
-    feats = torch.mm(x, y.t())
+    feats = torch.mm(x, y.t())/0.1
     d2t_scores = feats.softmax(dim=1)
     t2d_scores = feats.softmax(dim=0)
     scores = (d2t_scores + t2d_scores) / 2
@@ -358,8 +361,16 @@ def is_moving(seq):
     else:
         assert False, 'Seqence not valid {}'.format(seq)
 
+def frame_rate(seq):
+    if seq.split('-')[1] in ['11', '10', '12', '07',  '09', '04', '02', '08', '03', '01']:
+        return 30
+    elif seq.split('-')[1] in ['05', '06']:
+        return 14
+    else:
+        return 25
+
 class Track():
-    def __init__(self, track_id, bbox, feats, im_index, gt_id, vis, ioa, ioa_nf, area_out, num_occ, num_inter):
+    def __init__(self, track_id, bbox, feats, im_index, gt_id, vis, ioa, ioa_nf, area_out, num_occ, num_inter, conf, frame):
         self.track_id = track_id
         self.pos = bbox
         self.bbox = list()
@@ -410,8 +421,15 @@ class Track():
 
         # initialize inactive count
         self.inactive_count = 0
+        self.past_frames = list()
+        self.past_frames.append(frame)
 
-    def add_detection(self, bbox, feats, im_index, gt_id, vis, ioa, ioa_nf, area_out, num_occ, num_inter):
+        # conf of current det
+        self.conf = conf
+
+        self.past_vs = list()
+
+    def add_detection(self, bbox, feats, im_index, gt_id, vis, ioa, ioa_nf, area_out, num_occ, num_inter, conf, frame):
         # update all lists / states
         self.pos = bbox
         self.last_pos.append(bbox)
@@ -438,3 +456,22 @@ class Track():
         self.past_gt_ids.append(gt_id)
         self.gt_vis = vis
         self.past_gt_vis.append(vis)
+
+        self.conf = conf
+        self.past_frames.append(frame)
+
+    def update_v(self, v):
+        self.past_vs.append(v)
+        self.last_v = v
+
+
+class WeightPredictor(nn.Module):
+    def __init__(self, input_dim, output_dim) -> None:
+        super(WeightPredictor).__init__()
+        self.predictor = nn.Sequential([
+                nn.Linear(3, 15),
+                nn.ReLU(),
+                nn.Linear(15, 3),
+                nn.Softmax()])
+    def forward(self, x):
+        return self.predictor(x)

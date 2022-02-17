@@ -4,6 +4,7 @@ import os.path as osp
 
 import os
 from data.splits import _SPLITS
+from src.datasets.TrainDatasetWeightPred import TrainDatasetWeightPred
 from .tracker import Tracker
 from src.datasets.TrackingDataset import TrackingDataset
 import logging
@@ -15,6 +16,7 @@ import torchreid
 from src.eval_fairmot import Evaluator
 from src.eval_mpn_track import get_results, get_summary
 from src.eval_track_eval import evaluate_track_eval
+import torch
 
 
 frames = {'JDE': [299, 524, 418, 262, 326, 449, 368],
@@ -51,6 +53,11 @@ class Manager():
         self.loaders = self._get_loaders(dataset_cfg)
         self._get_models()
 
+    def _train(self):
+        for imgs, dets, labels in self.loaders['train']:
+            print(imgs, dets, labels)
+            quit()
+
     def _evaluate(self, mode='val', first=False):
         names = list()
         corresponding_gt = OrderedDict()
@@ -76,7 +83,8 @@ class Manager():
 
         # manually set experiment if already generated bbs
         # self.tracker.experiment = osp.join(
-        #     'OtherTrackersOrig',
+        #     # 'OtherTrackersOrig',
+        #     'OtherTrackersOrigMOT20',
         #     self.dataset_cfg['det_file'][:-4])
         logger.info(self.tracker.experiment)
 
@@ -140,6 +148,23 @@ class Manager():
                     self.dir,
                     dev=self.device)
                 loaders[mode] = dataset
+            '''elif mode == 'train':
+                dataset = TrainDatasetWeightPred(
+                    dataset_cfg['splits'],
+                    seqs,
+                    dataset_cfg,
+                    self.dir,
+                    dev=self.device
+                )
+                dl = torch.utils.data.DataLoader(
+                    dataset,
+                    batch_size=1,
+                    shuffle=True,
+                    sampler=None,
+                    collate_fn=None,
+                    num_workers=1)
+
+                loaders[mode] = dl'''
 
         return loaders
 

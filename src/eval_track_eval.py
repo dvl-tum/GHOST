@@ -3,11 +3,34 @@ import argparse
 import os.path as osp
 
 
-seq_length = {
-    'MOT17-02-FRCNN': None, 'MOT17-04-FRCNN': None,
-    'MOT17-05-FRCNN': None, 'MOT17-09-FRCNN': None,
-    'MOT17-10-FRCNN': None, 'MOT17-11-FRCNN': None,
-    'MOT17-13-FRCNN': None}
+
+def get_dict(mot_dir, detectors):
+    if "MOT17" in mot_dir and detectors != 'all':
+        seq_length = {
+            'MOT17-02-FRCNN': None, 'MOT17-04-FRCNN': None,
+            'MOT17-05-FRCNN': None, 'MOT17-09-FRCNN': None,
+            'MOT17-10-FRCNN': None, 'MOT17-11-FRCNN': None,
+            'MOT17-13-FRCNN': None}
+    elif "MOT17" in mot_dir and detectors == 'all':
+        seq_length = {
+            'MOT17-02-FRCNN': None, 'MOT17-04-FRCNN': None,
+            'MOT17-05-FRCNN': None, 'MOT17-09-FRCNN': None,
+            'MOT17-10-FRCNN': None, 'MOT17-11-FRCNN': None,
+            'MOT17-13-FRCNN': None, 
+            'MOT17-02-DPM': None, 'MOT17-04-DPM': None,
+            'MOT17-05-DPM': None, 'MOT17-09-DPM': None,
+            'MOT17-10-DPM': None, 'MOT17-11-DPM': None,
+            'MOT17-13-DPM': None, 
+            'MOT17-02-SDP': None, 'MOT17-04-SDP': None,
+            'MOT17-05-SDP': None, 'MOT17-09-SDP': None,
+            'MOT17-10-SDP': None, 'MOT17-11-SDP': None,
+            'MOT17-13-SDP': None}
+    else:
+        seq_length = {
+            'MOT20-01': None, 'MOT20-02': None,
+            'MOT20-03': None, 'MOT20-05': None}
+
+    return seq_length
 
 
 def setup_trackeval():
@@ -89,7 +112,7 @@ def evaluate_track_eval(dir, tracker, dataset_cfg):
     dataset_config['OUTPUT_FOLDER'] = 'track_eval_output'
     dataset_config['PRINT_CONFIG'] = False
     eval_config['PRINT_CONFIG'] = False
-    dataset_config['SEQ_INFO'] = seq_length
+    dataset_config['SEQ_INFO'] = get_dict(dataset_cfg['mot_dir'], dataset_cfg['detector'])
     dataset_config['SKIP_SPLIT_FOL'] = True
     dataset_config['TRACKER_SUB_FOLDER'] = ''
     eval_config['DISPLAY_LESS_PROGRESS'] = False
@@ -99,6 +122,7 @@ def evaluate_track_eval(dir, tracker, dataset_cfg):
     # Run code
     evaluator = trackeval.Evaluator(eval_config)
     dataset_list = [trackeval.datasets.MotChallenge2DBox(dataset_config)]
+
     metrics_list = []
     for metric in [
             trackeval.metrics.HOTA,

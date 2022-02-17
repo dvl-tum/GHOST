@@ -14,9 +14,10 @@ logger = logging.getLogger('AllReIDTracker.Parser')
 
 
 class MOTLoader():
-    def __init__(self, sequence, dataset_cfg, dir):
+    def __init__(self, sequence, dataset_cfg, dir, mode='eval'):
         self.dataset_cfg = dataset_cfg
         self.sequence = sequence
+        self.mode = mode
 
         self.mot_dir = osp.join(dataset_cfg['mot_dir'], dir)
         self.det_dir = osp.join(dataset_cfg['det_dir'], dir)
@@ -308,8 +309,11 @@ class MOTLoader():
         elif split == '50-50-2':
             self.dets = self.dets[~self.dets['id'].isin(test_data_ids)]
 
-        if self.dataset_cfg['validation_set']:
+        if self.dataset_cfg['validation_set'] and self.mode != 'train':
             self.dets = self.dets[self.dets['frame'] >
+                                  self.dets['frame'].values.max() * 0.5]
+        elif self.dataset_cfg['validation_set'] and self.mode == 'train':
+            self.dets = self.dets[self.dets['frame'] <=
                                   self.dets['frame'].values.max() * 0.5]
 
         if self.dataset_cfg['drop_unassigned']:
