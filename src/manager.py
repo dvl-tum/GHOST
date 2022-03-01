@@ -5,6 +5,7 @@ import os.path as osp
 import os
 from data.splits import _SPLITS
 from src.datasets.TrainDatasetWeightPred import TrainDatasetWeightPred
+from src.tracking_utils import TripletLoss, WeightPredictor, collate, get_precision
 from .tracker import Tracker
 from src.datasets.TrackingDataset import TrackingDataset
 import logging
@@ -17,6 +18,9 @@ from src.eval_fairmot import Evaluator
 from src.eval_mpn_track import get_results, get_summary
 from src.eval_track_eval import evaluate_track_eval
 import torch
+import torch.nn as nn
+import torch.optim as optim
+from torch.utils.tensorboard import SummaryWriter
 
 
 frames = {'JDE': [299, 524, 418, 262, 326, 449, 368],
@@ -36,46 +40,195 @@ logger = logging.getLogger('AllReIDTracker.Manager')
 
 
 class Manager():
-    def __init__(self, device, dataset_cfg, reid_net_cfg, tracker_cfg):
+    def __init__(self, device, dataset_cfg, reid_net_cfg, tracker_cfg, cfg):
         self.device = device
-        logger.info(reid_net_cfg)
-        logger.info(dataset_cfg)
-        logger.info(tracker_cfg)
         self.reid_net_cfg = reid_net_cfg
         self.dataset_cfg = dataset_cfg
         self.tracker_cfg = tracker_cfg
-
-        logger.info(reid_net_cfg)
-        logger.info(dataset_cfg)
-        logger.info(tracker_cfg)
+        self.cfg = cfg
 
         # load ReID net
         self.loaders = self._get_loaders(dataset_cfg)
         self._get_models()
 
-    def _train(self):
-        for imgs, dets, labels in self.loaders['train']:
-            print(imgs, dets, labels)
-            quit()
+    def _train(self, train_cfg):
+        if train_cfg['loss'] == 'triplet':
+            criterion = TripletLoss(train_cfg['margin'])
+        elif train_cfg['loss'] == 'l2':
+            criterion  = nn.MSELoss()
+        elif train_cfg['loss'] == 'l2_weighted':
+            criterion  = nn.MSELoss(reduce=False)
+        if train_cfg['optimizer'] == 'sgd':
+            optimizer = optim.SGD(
+                self.weight_pred.parameters(),
+                lr=train_cfg['lr']/10,
+                weight_decay=train_cfg['wd'],
+                momentum=0.9)
+        else:
+            optimizer = optim.Adam(
+                self.weight_pred.parameters(),
+                lr=train_cfg['lr'],
+                weight_decay=train_cfg['wd'])
 
-    def _evaluate(self, mode='val', first=False):
+        scheduler = optim.lr_scheduler.MultiStepLR(optimizer, milestones=[10, 30], gamma=0.1)
+
+        params = str(train_cfg['margin']) + \
+            str(train_cfg['lr']) + \
+            str(train_cfg['scale_loss']) + \
+            str(train_cfg['loss']) + \
+            str(train_cfg['input_dim']) + \
+            str(train_cfg['wd']) + \
+            str(train_cfg['optimizer'])
+
+        self.writer = SummaryWriter('runs/train_weight_pred_triplet' + params)
+        # evaluate before training
+        self.weight_pred.eval()
+        mota, idf1 = 0, 0
+        # mota, idf1 = self._evaluate('val', log=False)
+        best_idf1 = idf1
+        logger.info('Before Training MOTA: {}, IDF1: {}, best IDF1 {}'.format(
+                mota, idf1, best_idf1))
+
+        if train_cfg['load'] != 'no':
+            chckpt = torch.load(train_cfg['load'])
+            start_epoch = chckpt['epoch']
+            state_dict = chckpt['model_state_dict']
+            optim_dict = chckpt['optimizer_state_dict']
+            last_loss = chckpt['loss']
+            self.weight_pred.load_state_dict(state_dict)
+            optimizer.load_state_dict(optim_dict)
+            logger.info('Load model from {}, last loss {}, epoch {}'.format(
+                train_cfg['load'],
+                last_loss,
+                start_epoch
+            ))
+        else:
+            start_epoch = 0
+
+        for e in range(start_epoch, train_cfg['num_epochs']):
+            logger.info('Starting epoch {}/{}...'.format(e, train_cfg['num_epochs']))
+            # train epoch 
+            self.weight_pred.train()
+            loss_list = list()
+
+            for data in self.loaders['train']:
+                w1s, w2s, w3s, scs, ioas, embs = data
+                optimizer.zero_grad()
+                loss = 0
+                precs = 0
+                for w1, w2, w3, sc, ioa, emb in zip(w1s, w2s, w3s, scs, ioas, embs):
+                    # zero grad optimizer
+                    
+                    # get weights
+                    w1 = torch.flatten(w1)
+                    w2 = torch.flatten(w2)
+                    w3 = torch.flatten(w3)
+                    if train_cfg['input_dim'] == 3:
+                        inp = torch.stack([w1, w2, w3]).to(self.device).T
+                        weights = self.weight_pred(inp)
+                        weights_emb = weights.reshape(emb.shape)
+                        weights_ioa = (1 - weights).reshape(emb.shape)
+
+                        # make dist with weights
+                        dist = emb.to(self.device) * weights_emb + \
+                            ioa.to(self.device) * weights_ioa
+                    else:
+                        ioa = torch.flatten(ioa)
+                        emb = torch.flatten(emb)
+                        inp = torch.stack([w1, w2, w3, emb, ioa]).to(
+                            self.device).T
+                        dist = self.weight_pred(inp).reshape(sc.shape)
+
+                    # compute loss and backprop
+                    if train_cfg['loss'] == 'triplet':
+                        loss, prec = criterion(dist, sc.to(self.device))
+                    elif train_cfg['loss'] == 'l2':
+                        target = ~sc
+                        loss = criterion(torch.flatten(dist), torch.flatten(
+                            target.to(self.device)).float())
+                        prec = get_precision(dist.reshape(sc.shape), sc.to(
+                            self.device))
+                    elif train_cfg['loss'] == 'l2_weighted':
+                        # compute l2 loss
+                        target = ~sc
+                        loss = criterion(torch.flatten(dist), torch.flatten(
+                            target.to(self.device)).float())
+
+                        # multiply loss with weight
+                        weight = torch.ones(loss.shape)
+                        weight[torch.flatten(sc)] *= train_cfg['weight']
+                        weight = weight.to(self.device)
+                        loss = (loss * weight).mean()
+
+                        # get precision
+                        prec = get_precision(dist.reshape(sc.shape), sc.to(
+                            self.device))
+
+                    loss += loss
+                    precs += prec
+                loss = loss/len(embs)
+                precs = precs/len(embs)
+                loss = loss * train_cfg['scale_loss']
+                loss.backward()
+                optimizer.step()
+
+                self.writer.add_scalar('Loss/train', loss.item(), e)
+                self.writer.add_scalar('Loss/precision', precs.item(), e)
+                loss_list.append([loss.item(), precs.item()])
+
+            avg_loss = sum([l[0] for l in loss_list])/len(loss_list)
+            avg_prec = sum([l[1] for l in loss_list])/len(loss_list)
+            logger.info('Average loss: {}, average precision: {}'.format(
+                avg_loss, avg_prec))
+
+            scheduler.step()
+
+            # evaluate epoch
+            logger.info('Evaluating...')
+            self.weight_pred.eval()
+            mota, idf1 = self._evaluate('val', log=False)
+
+            self.writer.add_scalar('MOTA/val', mota, e)
+            self.writer.add_scalar('IDF1/val', idf1, e)
+
+            logger.info('MOTA: {}, IDF1: {}, best IDF1 {}'.format(
+                mota, idf1, best_idf1))
+
+            if idf1 > best_idf1:
+                torch.save({
+                    'epoch': train_cfg['num_epochs'],
+                    'model_state_dict': self.weight_pred.state_dict(),
+                    'optimizer_state_dict': optimizer.state_dict(),
+                    'loss': loss}, 'weight_pred/' + params + 'checkpoint.tar')
+                best_idf1 = idf1
+            
+            if e in [10, 30]:
+                state = torch.load('weight_pred/' + params + 'checkpoint.tar')
+                self.weight_pred.load_state_dict(state['model_state_dict'])
+
+        self.writer.close()
+
+        os.makedirs('weight_pred', exist_ok=True)
+
+    def _evaluate(self, mode='val', first=False, log=True):
+        print(log)
         names = list()
         corresponding_gt = OrderedDict()
 
         # get tracking files
+        print(self.loaders)
         for seq in self.loaders[mode]:
-
             # first = feed sequence data through backbon and update statistics
             # before tracking
             if first:
                 self.reset_for_first(seq)
 
             # get gt bbs corresponding to detections for oracle evaluations
-            if self.dataset_cfg['splits'] != 'mot17_test':
+            if self.dataset_cfg['splits'] != 'mot17_test' and self.dataset_cfg['splits'] != 'mot20_test':
                 self.get_corresponding_gt(seq, corresponding_gt)
 
             self.tracker.encoder = self.encoder
-            self.tracker.track(seq[0])
+            self.tracker.track(seq[0], log=log)
             names.append(seq[0].name)
 
         # print interaction and occlusion stats
@@ -83,23 +236,34 @@ class Manager():
 
         # manually set experiment if already generated bbs
         # self.tracker.experiment = osp.join(
-        #     # 'OtherTrackersOrig',
-        #     'OtherTrackersOrigMOT20',
+        #     'OtherTrackersOrig',
+        #     # 'OtherTrackersOrigMOT20',
         #     self.dataset_cfg['det_file'][:-4])
-        logger.info(self.tracker.experiment)
+        if log:
+            logger.info(self.tracker.experiment)
 
         # EVALUATION FAIRMOT
         self.eval_fair_mot(names)
 
         # EVALUATION FROM MPNTRACK
-        self.eval_mpn_track(names, corresponding_gt)
+        # self.eval_mpn_track(names, corresponding_gt)
 
         # EVALUATION TRACKEVAL
-        self.eval_track_eval()
+        output_res, _ = self.eval_track_eval(log)
+        mota = output_res['MotChallenge2DBox'][self.tracker.experiment][
+            'COMBINED_SEQ']['pedestrian']['CLEAR']['MOTA']
+        idf1 = output_res['MotChallenge2DBox'][self.tracker.experiment][
+            'COMBINED_SEQ']['pedestrian']['Identity']['IDF1']
 
-        return None, None
+        return mota, idf1
 
     def _get_models(self):
+        if self.tracker_cfg['motion_config']['ioa_threshold'] == 'learned':
+            self.weight_pred = WeightPredictor(self.cfg['train']['input_dim'], 1).to(self.device)
+            self.weight_pred.eval()
+        else:
+            self.weight_pred = None
+
         self._get_encoder()
         weight = self.reid_net_cfg['encoder_params']['pretrained_path'].split(
             '/')[-1][:8] if self.reid_net_cfg['encoder_params']['net_type'][
@@ -109,7 +273,10 @@ class Manager():
                                net_type=self.net_type,
                                output=self.reid_net_cfg['output'],
                                weight=weight,
-                               data=self.dataset_cfg['det_file'])
+                               data=self.dataset_cfg['det_file'],
+                               weight_pred=self.weight_pred,
+                               device=self.device,
+                               train_cfg=self.cfg['train'])
 
     def _get_encoder(self):
         self.net_type = self.reid_net_cfg['encoder_params']['net_type']
@@ -148,23 +315,21 @@ class Manager():
                     self.dir,
                     dev=self.device)
                 loaders[mode] = dataset
-            '''elif mode == 'train':
+            elif mode == 'train':
                 dataset = TrainDatasetWeightPred(
-                    dataset_cfg['splits'],
-                    seqs,
-                    dataset_cfg,
-                    self.dir,
-                    dev=self.device
+                    path=self.cfg['train']['path']
                 )
                 dl = torch.utils.data.DataLoader(
                     dataset,
-                    batch_size=1,
+                    batch_size=self.cfg['train']['bs'],
                     shuffle=True,
                     sampler=None,
-                    collate_fn=None,
-                    num_workers=1)
+                    collate_fn=collate,
+                    num_workers=0)
 
-                loaders[mode] = dl'''
+                loaders[mode] = dl
+
+
 
         return loaders
 
@@ -258,9 +423,12 @@ class Manager():
                 dataset_cfg=self.dataset_cfg)
             get_summary(accs, names, "Normal")
 
-    def eval_track_eval(self):
-        evaluate_track_eval(
+    def eval_track_eval(self, log=True):
+        output_res, output_msg = evaluate_track_eval(
             dir=self.dir,
             tracker=self.tracker,
-            dataset_cfg=self.dataset_cfg
+            dataset_cfg=self.dataset_cfg,
+            log=log
         )
+
+        return output_res, output_msg

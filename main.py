@@ -35,9 +35,6 @@ warnings.filterwarnings("ignore")
 logger.info(torchvision.__version__)
 logger.info(torch.__version__)
 
-while logger.handlers:
-    logger.handlers.pop()
-
 
 def init_args():
     parser = argparse.ArgumentParser(description='AllReID tracker')
@@ -84,16 +81,49 @@ def main(args):
                 # act = [8.60, 8.61, 8.65,  8.43, 8.37, 8.70, 8.59, 8.77, 9.55, 11.2]
                 # act = [8.60, 8.61, 8.65,  8.43, 8.37, 8.70, 8.59, 8.77, 9.55, 11.2]
         elif args.config_path == 'config/config_tracker_basicreid.yaml':
-            act = [0.7, 0.725, 0.67, 0.665, 0.675, 0.725, 0.71, 0.77, 0.77, 0.76]
-            inact = [0.7, 0.725, 0.67, 0.665, 0.675, 0.725, 0.71, 0.77, 0.77, 0.76]
+            if config['tracker']['inact_thresh'] == 30:
+                # mean of all
+                # act = [0.86, 0.83, 0.85, 0.85, 0.83, 0.83, 0.83, 0.82, 0.84, 0.93]
+                # inact = [0.86, 0.83, 0.85, 0.85, 0.83, 0.83, 0.83, 0.82, 0.84, 0.93]
+                # mean of active
+                act = [1.02, 1.0, 1.03, 1.0, 1.0, 1.0, 1.0, 0.99, 1.0, 1.01]
+                inact = [1.02, 1.0, 1.03, 1.0, 1.0, 1.0, 1.0, 0.99, 1.0, 1.01]
+            else:
+                # mean of all
+                # act = [0.97, 0.91, 0.85, 0.85, 0.83, 0.83, 0.83, 0.82, 0.84, 0.93]
+                # inact = [0.97, 0.91, 0.85, 0.85, 0.83, 0.83, 0.83, 0.82, 0.84, 0.93]
+                # mean of active 
+                act = [1.06, 1.05, 1.06, 1.04, 1.04, 1.04, 1.04, 1.04, 1.05, 1.01]
+                inact = [1.06, 1.05, 1.06, 1.04, 1.04, 1.04, 1.04, 1.04, 1.05, 1.01]
         else:
-            # from median dist
-            act = [0.7, 0.725, 0.67, 0.665, 0.675, 0.725, 0.71, 0.77, 0.77, 0.76]#0.75, 0.75, 0.75]
-            inact = [0.75, 0.76, 0.73, 0.72, 0.74, 0.76, 0.75, 0.75, 0.73, 0.625]#0.54, 0.54, 0.54]
+            if config['tracker']['inact_thresh'] == 30:
+                # from median dist init threshs
+                # act = [0.74, 0.73, 0.73, 0.72, 0.75, 0.72, 0.71, 0.74, 0.72, 0.75]
+                # inact = [0.71, 0.69, 0.71, 0.69, 0.73, 0.67, 0.65, 0.70, 0.64, 0.55]
 
-            # from each sample dist
-            # act = [0.78, 0.8, 0.76, 0.79, 0.8, 0.77, 0.79, 0.78, 0.78, 0.76]
-            # inact = [0.625, 0.785, 0.695, 0.75, 0.785, 0.74, 0.77, 0.745, 0.755, 0.695]
+                # from median dist
+                # act = [0.73, 0.73, 0.73, 0.70, 0.75, 0.72, 0.70, 0.75, 0.73, 0.74]
+                # inact = [0.71, 0.70, 0.72, 0.69, 0.72, 0.68, 0.64, 0.73, 0.67, 0.55]
+
+                # from each sample dist
+                # act = [0.78, 0.78, 0.77, 0.76, 0.79, 0.76, 0.76, 0.79, 0.79, 0.79]
+                # inact = [0.78, 0.77, 0.78, 0.75, 0.79, 0.77, 0.73, 0.79, 0.77, 0.65]
+
+                # best params:
+                act = [0.7, 0.725, 0.67, 0.76, 0.675, 0.72, 0.71, 0.75, 0.73, 0.75]
+                inact = [0.75, 0.76, 0.73, 0.75, 0.74, 0.68, 0.65, 0.73, 0.67, 0.65]
+
+            else:
+                # from median dist
+                act = [0.7, 0.725, 0.67, 0.665, 0.675, 0.725, 0.71, 0.77, 0.77, 0.76]#0.75, 0.75, 0.75]
+                inact = [0.75, 0.76, 0.73, 0.72, 0.74, 0.76, 0.75, 0.75, 0.73, 0.625]#0.54, 0.54, 0.54]
+
+                # act = [0.76, 0.73, 0.75, 0.74, 0.73, 0.73, 0.73]
+                # inact = [0.72, 0.66, 0.74, 0.7, 0.69, 0.73, 0.66]
+
+                # from each sample dist
+                # act = [0.78, 0.8, 0.76, 0.79, 0.8, 0.77, 0.79, 0.78, 0.78, 0.76]
+                # inact = [0.625, 0.785, 0.695, 0.75, 0.785, 0.74, 0.77, 0.745, 0.755, 0.695]
 
         det_files = [
             "qdtrack.txt",
@@ -107,11 +137,120 @@ def main(args):
             "center_track.txt",
             "tracktor_prepr_det.txt"]
 
+        train = False
+        # num_iter = 30
+        mot_20 = False
+        tmoh = False
+        qd_dets = False
+        fairmot_dets = False
+        get_test_set_results = False
+        byte = False
+        reid_ablation = False
+
+        use_train_set = config['dataset']['half_train_set_gt']
+
+        if mot_20:
+            with open('config/config_tracker20.yaml', 'r') as f:
+                config = yaml.load(f, Loader=yaml.FullLoader)
+
+        if train:
+            config['tracker']['motion_config']['ioa_threshold'] = 'learned'
+
         val_set = [0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1]
         for det_file, a, ina, val in zip(det_files, act, inact, val_set):
-            '''if det_file != "FairMOT.txt":
-                continue'''
 
+            if det_file != 'FairMOT.txt':
+                continue
+
+            # config['dataset']['validation_set_gt'] = 0
+            # val = 0
+            # config['dataset']['splits'] = 'mot17_test'
+
+            if use_train_set:
+                det_file = det_file[:-4] + 'Train' + det_file[-4:]
+
+            # parameter mean
+            a = 0.9 #'every'
+            ina = 0.9 #'every'
+
+            if train:
+                if det_file != "tracktor_prepr_det.txt":
+                    continue
+
+            if get_test_set_results:
+                val = 0
+                config['dataset']['validation_set_gt'] = 0
+                config['dataset']['splits'] = 'mot17_test' #'mot17_train_test'
+                if not mot_20:
+                    config['dataset']['detector'] = 'all'
+                if mot_20:
+                    config['dataset']['splits'] = 'mot20_test' #'mot20_train_test'
+                if det_file != "tracktor_prepr_det.txt":
+                    continue
+
+            if tmoh:
+                # TMOH
+                det_file = "tmoh.txt"
+                a = 0.76
+                ina = 0.67
+                val = 0
+                config['dataset']['validation_set_gt'] = 0
+                config['dataset']['detector'] = 'all'
+
+            if qd_dets:
+                # QDTrack plain dets
+                det_file = 'qdtrack_dets.txt'
+                a = 0.65
+                ina = 0.65
+                val = 0
+
+            if fairmot_dets:
+                # FairmOT plain Dets
+                det_file = 'FairMOT_detes_Same_As_Fairmot.txt' #'FairMOT_dets_NMS0.7.txt' #'FairMOT_dets.txt'
+                a = 0.75
+                ina = 0.6
+                # config['dataset']['splits'] = 'debug_train'
+                # config['tracker']['avg_inact']['num'] = 63
+                # config['tracker']['avg_inact']['proxy'] = 'median'
+                # onfig['tracker']['store_dist'] = 1
+                # config['tracker']['motion_config']['apply_motion_model'] = 0
+                val = 0
+
+            if byte and not mot_20:
+                # det_file = "byte_val.txt"
+                a = 0.75 #0.75
+                ina = 0.7 #0.54
+                det_file = 'all_train_byte.txt'
+                #det_file = 'bytetrack_text.txt' 
+                config['dataset']['validation_set_gt'] = 0
+                val = 0
+                #config['dataset']['splits'] = 'mot17_test'
+
+            if mot_20 and not byte:
+                det_file = "tracktor_prepr_det.txt" #'TMOH.txt'
+                a = 0.7 # 0.76 #0.75 # 0.75
+                ina = 0.7 # 0.75 #0.54 # 0.54
+                #val = 1
+                #config['dataset']['validation_set_gt'] = 1
+
+                config['dataset']['validation_set_gt'] = 0
+                val = 0
+                config['dataset']['splits'] = 'mot20_test'
+            
+            if byte and mot_20:
+                det_file = "byte_track_20.txt"
+                a = 0.65 #0.75
+                ina = 0.7 #0.54
+                config['dataset']['validation_set_gt'] = 0
+                val = 0
+                config['dataset']['splits'] = 'mot20_test'
+            
+            if reid_ablation:
+                det_file = "center_track.txt"
+                a = 0.7 #0.56 # 0.75 #0.59
+                ina = 0.55 #0.62 #0.75 #0.61
+                val = 1
+            
             config['dataset']['det_file'] = det_file
             config['dataset']['validation_set'] = val
             config['tracker']['act_reid_thresh'] = a
@@ -130,14 +269,21 @@ def main(args):
                     # config['tracker']['avg_act']['num'] = random.randint(0, 100)
                     # config['tracker']['avg_act']['proxy'] = random.choice(['mode', 'mean', 'median'])
 
+                '''config['train']['lr'] = random.choice([0.1, 0.01, 0.001, 0.0001, 0.00001])
+                config['train']['wd'] = random.choice([0.001, 0.0001, 0.00001, 0.000001, 0.0000001])
+                config['train']['margin'] = random.choice([0.2, 0.3, 0.4, 0.5])
+                config['train']['loss'] = random.choice(['l2', 'triplet', 'l2_weighted'])
+                config['train']['loss_scale'] = random.choice([1, 5, 10, 15])'''
+
                 logger.info('Iteration {}'.format(i + 1))
                 logger.info(config)
-                print(config)
                 manager = Manager(device, config['dataset'],
-                                  config['reid_net'], config['tracker'])
-                # manager.train()
-                manager._evaluate(mode='test')
-        
+                                  config['reid_net'], config['tracker'], 
+                                  config)
+                if train:
+                    manager._train(config['train'])
+                manager._evaluate(mode='test', log=True)
+            quit()
 
 if __name__ == '__main__':
     args = init_args()

@@ -6,6 +6,7 @@ dataset:
   splits: "mot17_train_test" #"mot17_split_1_test" #
   validation_set: 0
   validation_set_gt: 1
+  half_train_set_gt: 0
   gt_assign_min_iou: 0.5
   prepro_again: 1
   save_oracle: 1
@@ -52,8 +53,9 @@ reid_net:
       sz_embedding: 512
 
 tracker:
+  kalman: 0
   visualize: 0
-  store_dist: 0
+  store_dist: 1
   save_embeddings_by_id: 0
   debug: 0
   use_bism: 0
@@ -92,22 +94,40 @@ tracker:
     proxy: 'min_ioa' #'mv_avg' #'min_ioa' #'frames_gnn' #'frames_gnn' #'frames_gnn' #'mode'
   avg_inact: 
     do: 1
-    num: 2 #2 #'uniform_2' #'mean' #'uniform_4' #10 #4 #20 #'all'  # each_sample: 1=min, 2=avg, 3=max, 4=0.5*(min+max)
-    proxy: 'each_sample' #'each_sample' #'frames_gnn' #'60' #'frames_gnn' #'frames_gnn' #'mode'
+    num: 2 #'uniform_2' #'mean' #'uniform_4' #10 #4 #20 #'all'  # each_sample: 1=min, 2=avg, 3=max, 4=0.5*(min+max)
+    proxy: 'each_sample' #'frames_gnn' #'60' #'frames_gnn' #'frames_gnn' #'mode'
   h_w_thresh: 1000000
   length_thresh: 2
   distance: 'cosine'
   motion_config:
-    motion_compensation: 1
+    motion_compensation: 0
     num_iter_mc: 100
     warp_mode: 'Euclidean'
     termination_eps_mc: 0.00001
     apply_motion_model: 1
     center_only: 0
-    ioa_threshold: 'sum' #'VelocityAndOcclusion' #'SeperateAssignment' #0.7
+    lambda_mot: 1/3
+    lambda_temp: 1/3
+    lambda_occ: 1/3
+    ioa_threshold: 'penalty' #'MotionTemporalAndOcclusion_40_2_0.0' #'VelocityAndOcclusion' #'SeperateAssignment' #0.7
     conf_threshold: 0.6
     area_out_threshold: 1.0
     num_occ_thresh: 100000
     inter_threshold: 1.0
     num_inter_thresh: 100000
   active_proximity: 0
+  save_dataset: 0
+
+train:
+  num_epochs: 120
+  lr: 0.1
+  bs: 512
+  margin: 0.5
+  scale_loss: 100
+  path: 'weight_pred/dataset_weight_pred.json'
+  loss: 'l2'
+  input_dim: 5
+  weight: 10
+  wd: 0
+  optimizer: 'sgd'
+  load: 'weight_pred/weight_pred/0.50.1100l250sgdcheckpoint.tar' #'weight_pred/0.50.1100l2_weighted50sgdcheckpoint.tar' #'weight_pred/0.50.001100l250sgdcheckpoint.tar'

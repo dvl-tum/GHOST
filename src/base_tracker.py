@@ -22,6 +22,8 @@ from src.tracking_utils import get_center, get_height, get_width,\
 import cv2
 import sklearn
 import copy
+from src.kalman import KalmanFilter
+
 
 logger = logging.getLogger('AllReIDTracker.BaseTracker')
 
@@ -34,8 +36,21 @@ class BaseTracker():
             net_type='resnet50',
             output='plain',
             weight='No',
-            data='tracktor_preprocessed_files.txt'):
+            data='tracktor_preprocessed_files.txt',
+            weight_pred=None,
+            device='cpu',
+            train_cfg=None):
 
+        self.kalman = tracker_cfg['kalman']
+        if self.kalman:
+            self.shared_kalman = KalmanFilter()
+            self.kalman_filter = KalmanFilter()
+        else:
+            self.kalman_filter = None
+
+        self.log = True
+        self.train_cfg = train_cfg
+        self.device = device
         self.round1_float = lambda x: round(10 * x) / 10
         self.hill = lambda x, y: x/(x+y)
         self.hill_vis = lambda x, y: x/(x+y)
@@ -96,15 +111,14 @@ class BaseTracker():
 
         self.vel_dict = defaultdict(list)
 
-        self.experiment += "wholeRange"
-
         if self.motion_model_cfg['ioa_threshold'] == 'learned':
-            self.weight_pred = WeightPredictor(3, 3)
+            self.weight_pred = weight_pred
 
-        self.make_weight_pred_dataset = True
+        self.make_weight_pred_dataset = self.tracker_cfg['save_dataset']
         if self.make_weight_pred_dataset:
             self.weight_pred_dataset = dict()
 
+        self.emc_dict = defaultdict(list)
 
     def dist(self, x, y):
         if self.tracker_cfg['distance'] == 'cosine':
@@ -138,10 +152,11 @@ class BaseTracker():
         for k, v in all_tracks.items():
             if len(v) > self.tracker_cfg['length_thresh']:
                 tracks_new[k] = v
-        logger.info(
-            "Removed {} short tracks".format(
-                len(all_tracks) -
-                len(tracks_new)))
+        if self.log:
+            logger.info(
+                "Removed {} short tracks".format(
+                    len(all_tracks) -
+                    len(tracks_new)))
         return tracks_new
 
     def write_results(self, output_dir, seq_name):
@@ -201,13 +216,20 @@ class BaseTracker():
             self.experiment += 'MCOM:1' # Only Moving
 
         if self.motion_model_cfg['apply_motion_model']:
-            self.experiment += 'MM:1' 
-            self.experiment += str(self.motion_model_cfg['ioa_threshold'])
+            self.experiment += 'MM:1'
+            if self.tracker_cfg['kalman']:
+                self.experiment += 'Kalman'
+            else:
+                self.experiment += str(self.motion_model_cfg['ioa_threshold'])
+
+                if str(self.motion_model_cfg['ioa_threshold']) == 'learned':
+                    train = '_'.join([str(v) for v in self.train_cfg.values()])
+                    self.experiment += train
+                else:
+                    self.experiment += str(self.round1_float(self.strfrac2float(self.motion_model_cfg['lambda_mot'])))
+                    self.experiment += str(self.round1_float(self.strfrac2float(self.motion_model_cfg['lambda_temp'])))
+                    self.experiment += str(self.round1_float(self.strfrac2float(self.motion_model_cfg['lambda_occ'])))
             
-            self.experiment += str(self.round1_float(self.strfrac2float(self.motion_model_cfg['lambda_mot'])))
-            self.experiment += str(self.round1_float(self.strfrac2float(self.motion_model_cfg['lambda_temp'])))
-            self.experiment += str(self.round1_float(self.strfrac2float(self.motion_model_cfg['lambda_occ'])))
-        
         if self.tracker_cfg['active_proximity']:
             self.experiment += 'ActProx:1'
 
@@ -217,7 +239,8 @@ class BaseTracker():
                                     self.experiment])
         
         self.experiment += 'InactPat:' + str(self.tracker_cfg['inact_thresh'])
-        logger.info(self.experiment)
+        if self.log:
+            logger.info(self.experiment)
 
     def normalization_experiments(self, random_patches, frame, i):
         '''
@@ -235,8 +258,9 @@ class BaseTracker():
         if self.tracker_cfg['random_patches'] or self.tracker_cfg['random_patches_first']:
             if i == 0:
                 which_frame = 'each frame' if self.tracker_cfg['random_patches'] else 'first frame'
-                logger.info(
-                    "Using random patches of {}...".format(which_frame))
+                if self.log:
+                    logger.info(
+                        "Using random patches of {}...".format(which_frame))
 
             if not self.tracker_cfg['random_patches_first'] or i == 0:
                 self.encoder.train()
@@ -250,20 +274,22 @@ class BaseTracker():
                 self.encoder.eval()
 
         elif self.tracker_cfg['running_mean_seq'] or self.tracker_cfg['running_mean_seq_reset']:
-            if i == 0:
+            if i == 0 and self.log:
                 logger.info("Using moving average of seq...")
 
             self.encoder.train()
             if self.tracker_cfg['running_mean_seq_reset'] and i == 0:
-                logger.info(
-                    "Resetting BatchNorm statistics and use first batch as initial mean/std...")
+                if self.log:
+                    logger.info(
+                        "Resetting BatchNorm statistics and use first batch as initial mean/std...")
                 for m in self.encoder.modules():
                     if isinstance(m, nn.BatchNorm2d):
                         m.reset_running_stats()
                         m.momentum = 1
                         m.first_batch_mean = True
             elif self.tracker_cfg['running_mean_seq_reset'] and i == 1:
-                logger.info("Setting mometum to 0.1 again...")
+                if self.log:
+                    logger.info("Setting mometum to 0.1 again...")
                 for m in self.encoder.modules():
                     if isinstance(m, nn.BatchNorm2d):
                         m.momentum = 0.1
@@ -272,7 +298,8 @@ class BaseTracker():
             self.encoder.eval()
 
         elif i == 0 and (self.tracker_cfg['first_batch'] or self.tracker_cfg['first_batch_reset']):
-            logger.info("Runing first batch in train mode...")
+            if self.log:
+                logger.info("Runing first batch in train mode...")
 
             self.encoder.train()
             if self.tracker_cfg['first_batch_reset']:
@@ -280,7 +307,8 @@ class BaseTracker():
                     if isinstance(m, nn.BatchNorm2d):
                         m.reset_running_stats()
                         m.momentum = 1  # means no running mean, i.e., uses first batch wo initialization
-                logger.info("Resetting BatchNorm statistics...")
+                if self.log:
+                    logger.info("Resetting BatchNorm statistics...")
             with torch.no_grad():
                 _, _ = self.encoder(frame, output_option=self.output)
             self.encoder.eval()
@@ -290,16 +318,18 @@ class BaseTracker():
         Run the first k frames in train mode
         '''
         if first:
-            logger.info('Resetting BatchNorm statistics...')
+            if self.log:
+                logger.info('Resetting BatchNorm statistics...')
             for m in self.encoder.modules():
                 if isinstance(m, nn.BatchNorm2d):
                     m.reset_running_stats()
 
         if self.tracker_cfg['random_patches_several_frames'] or self.tracker_cfg['several_frames']:
             what_input = 'bounding boxes' if self.tracker_cfg['several_frames'] else 'random patches'
-            logger.info(
-                "Using {} of the first {} frames to initialize BatchNorm statistics...".format(
-                    k, what_input))
+            if self.log:
+                logger.info(
+                    "Using {} of the first {} frames to initialize BatchNorm statistics...".format(
+                        k, what_input))
             self.encoder.train()
             for i, (frame, _, _, _, _, _, _, random_patches,
                     _) in enumerate(seq):
@@ -357,6 +387,9 @@ class BaseTracker():
             seq_name = seq.name
         else:
             self.seq = seq_name
+
+        self.seq_name = seq.name
+
         self.thresh_every = True if self.act_reid_thresh == "every" else False
         self.thresh_tbd = True if self.act_reid_thresh == "tbd" else False
 
@@ -370,23 +403,24 @@ class BaseTracker():
         # set backbone into evaluation mode
         if self.tracker_cfg['eval_bb'] and not first:
             self.encoder.eval()
-        elif first:
+        elif first and self.log:
             logger.info('Feeding sequence data before tracking once')
-        
+
         # if random patches should be sampled
         if seq is not None:
             seq.random_patches = self.tracker_cfg['random_patches'] or self.tracker_cfg[
                 'random_patches_first'] or self.tracker_cfg['random_patches_several_frames']
         self.is_moving = is_moving(seq_name)
         self.frame_rate = frame_rate(seq_name)
-        print(self.frame_rate)
+        if self.log:
+            logger.info("Frame rate: {}".format(self.frame_rate))
 
         if self.save_embeddings_by_id:
             self.embeddings_by_id[seq.name] = defaultdict(list)
 
         if self.make_weight_pred_dataset:
             self.weight_pred_dataset[seq.name] = defaultdict(dict)
-        
+
     def reset_threshs(self):
         self.act_reid_thresh = 'every' if self.thresh_every else self.act_reid_thresh
         self.inact_reid_thresh = 'every' if self.thresh_every else self.inact_reid_thresh
@@ -489,7 +523,7 @@ class BaseTracker():
 
             # add text with id, ioa and visibility
             text = ', '.join(
-                [str(d['gt_id']), self.round2(d['ioa']), self.round2(d['vis'])])
+                [str(tr_id), str(d['gt_id']), self.round2(d['ioa']), self.round2(d['vis']), self.round2(d['conf'])])
             plt.text(
                 d['bbox'][0] - 15,
                 d['bbox'][1] + (d['bbox'][3] - d['bbox'][1]) / 2,
@@ -540,7 +574,8 @@ class BaseTracker():
 
     def motion_compensation(self, whole_image, im_index):
         # adapted from tracktor
-        if self.is_moving and im_index > 0:
+        self.warp_matrix_nomr = None
+        if im_index > 0:
             # im1 = reference frame, im2 = frame to convert
             # changed this from tracktor --> current img = reference
             im1 = np.transpose(whole_image.cpu().numpy(), (1, 2, 0))
@@ -556,16 +591,17 @@ class BaseTracker():
                 im1_gray, im2_gray, warp_matrix, self.warp_mode_dct[
                     self.motion_model_cfg['warp_mode']], criteria, None, 15)
             warp_matrix = torch.from_numpy(warp_matrix)
-            # print(warp_matrix)
-
-            for tracks in [self.tracks, self.inactive_tracks]:
-                for k, track in tracks.items():
-                    for i, pos in enumerate(track.last_pos):
-                        if isinstance(pos, torch.Tensor):
-                            pos = pos.cpu().numpy()
-                        pos = np.squeeze(warp_pos(np.atleast_2d(pos), warp_matrix))
-                        track.last_pos[i] = pos
-                        # t.pos = clip_boxes(Variable(pos), blob['im_info'][0][:2]).data
+            self.warp_matrix_nomr = np.linalg.norm(warp_matrix[:, -1])
+            self.emc_dict[self.seq_name].append(warp_matrix.tolist())
+            if self.is_moving and self.motion_model_cfg['motion_compensation']:
+                for tracks in [self.tracks, self.inactive_tracks]:
+                    for k, track in tracks.items():
+                        for i, pos in enumerate(track.last_pos):
+                            if isinstance(pos, torch.Tensor):
+                                pos = pos.cpu().numpy()
+                            pos = np.squeeze(warp_pos(np.atleast_2d(pos), warp_matrix))
+                            track.last_pos[i] = pos
+                            # t.pos = clip_boxes(Variable(pos), blob['im_info'][0][:2]).data
 
         self.last_image = whole_image
 
@@ -582,7 +618,7 @@ class BaseTracker():
         else:
             track.pos = track.pos + track.last_v
 
-    def motion(self, approximate=True):
+    def motion(self, approximate=True, only_vel=False):
         # adapted from tracktor
         """Applies a simple linear motion model that considers the last n_steps steps."""
         self.overall_velocity = list()
@@ -615,15 +651,17 @@ class BaseTracker():
                                     for p1, p2, t in zip(last_pos, last_pos[1:], dt)]
 
                         # print(np.stack(vs).mean(axis=0)-np.stack(vs_).mean(axis=0))
-                track.update_v(np.stack(vs).mean(axis=0))
-                track.last_vc = np.stack(vs_c).mean(axis=0)
+                if not only_vel:
+                    track.update_v(np.stack(vs).mean(axis=0))
+                    track.last_vc = np.stack(vs_c).mean(axis=0)
+                    self.motion_step(track)
                 self.overall_velocity.append(np.linalg.norm(
                     track.last_vc, ord=2))
-                self.motion_step(track)
 
-        for track in self.inactive_tracks.values():
-            if len(track.last_pos) > 1:
-                self.motion_step(track)
+        if not only_vel:
+            for track in self.inactive_tracks.values():
+                if len(track.last_pos) > 1:
+                    self.motion_step(track)
 
         # get mean velicoty by (vc/h)*frame_rate
         if len(self.overall_velocity):
@@ -644,24 +682,20 @@ class BaseTracker():
         iou = 1 - iou
         return iou
 
-    def combine_motion_appearance(self, iou, dist, detections, num_active, num_inactive, inactive_counts, gt_n=None, gt_t=None):
+    def combine_motion_appearance(self, iou, dist, detections, num_active, num_inactive, inactive_counts, gt_n=None, gt_t=None, curr_it=None):
         # occlusion
         ioa = torch.tensor([d['ioa'] for d in detections])
         ioa = ioa.repeat(dist.shape[1], 1).T.numpy()
-        # num_occ = torch.tensor([d['num_occ'] for d in detections])
-        # num_occ = num_occ.repeat(dist.shape[1], 1).T.numpy()
-        # out of frame
-        # area_out = torch.tensor([d['area_out'] for d in detections])
-        # area_out = area_out.repeat(dist.shape[1], 1).T.numpy()
-        # interaction
-        # inter = torch.tensor([d['ioa_nf'] for d in detections])
-        # inter = inter.repeat(dist.shape[1], 1).T.numpy()
-        # num_inter = torch.tensor([d['num_inter'] for d in detections])
-        # num_inter = num_inter.repeat(dist.shape[1], 1).T.numpy()
+
+        ioa_tr = torch.tensor([t.ioa for t in self.tracks.values()] + [t.ioa for t in curr_it.values()])
+        ioa_tr = ioa_tr.repeat(dist.shape[0], 1).numpy()
 
         # init distances
         dist_emb = copy.deepcopy(dist)
-        dist_iou = iou.cpu().numpy()
+        if type(iou) != np.ndarray:
+            dist_iou = iou.cpu().numpy()
+        else: 
+            dist_iou = iou
 
         if self.store_dist:
             all_counts = [0] * num_active + inactive_counts
@@ -680,16 +714,82 @@ class BaseTracker():
                 self.distance_[self.seq]['iou_dist_diff']['same'][ic].extend(same)
                 self.distance_[self.seq]['iou_dist_diff']['diff'][ic].extend(diff)
 
-        # mask iou distance and set to 1 if tracks infactive for more than 30 frames
-        # if num_inactive > 0:
-        #     inactive_counts = np.array(inactive_counts) > 20
-        #     inactive_counts = np.arange(dist_iou.shape[1])[num_active:][inactive_counts]
-        #     dist_iou[:, inactive_counts] = 1
-
         # weighted of threshold
-
         if self.motion_model_cfg['ioa_threshold'] == 'sum':
             dist = (dist_emb + dist_iou)*0.5
+
+        elif self.motion_model_cfg['ioa_threshold'] == 'penalty':
+            w_e = (ioa + ioa_tr)/2 + np.finfo(float).eps
+
+            w_1_m = np.array([0] * num_active + inactive_counts)/self.frame_rate
+            w_1_m = self.sig(w_1_m, k=-2, v_max=2, v_min=0)
+            w_1_m = np.repeat(
+                np.expand_dims(w_1_m, axis=1), dist_emb.shape[0], axis=1).T
+            if self.overall_velocity is not None:
+                w_2_m = self.sig(self.overall_velocity, k=-80, v_max=2, v_min=0)
+                w_2_m = w_2_m * np.ones(dist_emb.shape)
+            else:
+                w_2_m = np.zeros(dist_emb.shape)
+            w_m = (w_1_m + w_2_m)/2 + np.finfo(float).eps
+
+            dist = (1+w_e) * dist_emb + (1+w_m) * dist_iou
+
+        elif self.motion_model_cfg['ioa_threshold'] == 'real_dist':
+            l_1 = self.strfrac2float(self.motion_model_cfg['lambda_temp'])
+            l_2 = self.strfrac2float(self.motion_model_cfg['lambda_occ'])
+            l_3 = self.strfrac2float(self.motion_model_cfg['lambda_mot'])
+
+            w_1_m = np.array([0] * num_active + inactive_counts)/self.frame_rate
+            w_1_m = self.sig(w_1_m, k=-2, v_max=2, v_min=0)
+            w_1_m = np.repeat(
+                np.expand_dims(w_1_m, axis=1), dist_emb.shape[0], axis=1).T + np.finfo(float).eps
+
+            w_1_r = np.array([0] * num_active + inactive_counts)/self.frame_rate
+            w_1_r = self.sig(w_1_r, k=-4, v_max=2-0.3, v_min=0.3)
+            w_1_r = np.repeat(
+                np.expand_dims(w_1_r, axis=1), dist_emb.shape[0], axis=1).T + np.finfo(float).eps
+
+            w_2_m = self.sig(ioa, k=6,  v_max=1, v_min=0.9) + np.finfo(float).eps
+            w_2_r = self.sig(ioa, k=6,  v_max=1, v_min=-1) + np.finfo(float).eps
+
+            if self.overall_velocity is not None:
+                vel = self.overall_velocity #self.warp_matrix_nomr 
+                w_3_m = -self.sig(vel/self.frame_rate, k=-120, v_max=-1, v_min=0, shift=-0.1)
+                w_3_m = w_3_m * np.ones(dist_emb.shape) + np.finfo(float).eps
+                w_3_r = -self.sig(vel/self.frame_rate, k=-80, v_max=-1.0, v_min=-0.96, shift=-0.1)
+                w_3_r = w_3_r * np.ones(dist_emb.shape) + np.finfo(float).eps
+            else:
+                w_3_m = np.ones(dist_emb.shape)
+                w_3_r = np.ones(dist_emb.shape)
+
+            w_m = l_1 * w_1_m**(-2)/(w_1_m**(-2)+w_1_r**(-2)) + l_2 * w_2_m**(-2)/(w_2_m**(-2)+w_2_r**(-2)) + l_3 * w_3_m**(-2)/(w_3_m**(-2)+w_3_r**(-2))
+            w_r = l_1 * w_1_r**(-2)/(w_1_m**(-2)+w_1_r**(-2)) + l_2 * w_2_r**(-2)/(w_2_m**(-2)+w_2_r**(-2)) + l_3 * w_3_r**(-2)/(w_3_m**(-2)+w_3_r**(-2))
+
+            dist = w_m*dist_iou + w_r*dist_emb
+
+        elif self.motion_model_cfg['ioa_threshold'] == 'KKT':
+            # INACTIVE
+            w_1 = np.array([0] * num_active + inactive_counts) / self.frame_rate
+            # w_1 = self.hill(np.array([0] * num_active + inactive_counts), 40)
+            w_1 = np.repeat(
+                np.expand_dims(w_1, axis=1), dist_emb.shape[0], axis=1).T + 1.0
+
+            # OCCLUSION LEVEL
+            w_2 = ioa + 1.0
+
+            # motion: the larger the motion, the less reliable motion
+            # this means: the larger motion, the more weight to reid
+            if self.overall_velocity is not None:
+                # w_3 = self.hill(self.overall_velocity, 2) * np.ones(dist_emb.shape) + 1.0
+                w_3 = (self.overall_velocity/self.frame_rate) * np.ones(dist_emb.shape) + 1.0
+            else:
+                w_3 = np.zeros(dist_emb.shape) + 1.0
+            
+            denom = w_1**(-2) + w_2**(-2) + w_3**(-2)
+
+            dist = w_1**(-2)/denom * dist_iou + \
+                w_2**(-2)/denom * dist_emb + \
+                    w_3**(-2)/denom * dist_iou
 
         elif self.motion_model_cfg['ioa_threshold'] == 'motion':
             dist = dist_iou
@@ -792,12 +892,31 @@ class BaseTracker():
             inact = np.array([0] * num_active + inactive_counts)/self.frame_rate
             inact = np.repeat(
                 np.expand_dims(inact, axis=1), dist_emb.shape[0], axis=1).T
-            vel = np.ones(inact.shape) * self.overall_velocity
-            inp = np.vstack(ioa.flatten(), inact.flatten(), vel.flatten())
-            weights = self.weight_pred(inp).reshape(ioa.shape)
+            if self.overall_velocity is not None:
+                vel = np.ones(inact.shape) * self.overall_velocity
+            else:
+                vel = np.ones(inact.shape) * 0.5
+            ioa = torch.flatten(torch.from_numpy(ioa))
+            inact = torch.flatten(torch.from_numpy(inact))
+            vel = torch.flatten(torch.from_numpy(vel))
 
-            dist = weights * dist_emb + (1-weights) * dist_iou
-
+            if self.train_cfg['input_dim'] == 3:
+                inp = torch.stack([inact, ioa, vel]).to(self.device).T
+                with torch.no_grad():
+                    weights = self.weight_pred(inp)
+                weights_emb = weights.reshape(dist_emb.shape).cpu().numpy()
+                weights_ioa = (1 - weights).reshape(dist_emb.shape).cpu().numpy()
+                # make dist with weights
+                dist = dist_emb * weights_emb + \
+                    dist_iou * weights_ioa
+            else:
+                emb = torch.flatten(torch.from_numpy(dist_emb))
+                iou = torch.flatten(torch.from_numpy(dist_iou))
+                inp = torch.stack([inact, ioa, vel, emb, iou]).to(self.device).T
+                with torch.no_grad():
+                    dist = self.weight_pred(inp)
+                dist = dist.reshape(dist_emb.shape).cpu().numpy()
+            
         else:
             # get masks
             ioa_mask = ioa > self.motion_model_cfg['ioa_threshold']
@@ -821,6 +940,17 @@ class BaseTracker():
             # dist[:, :num_active] = dist_emb[:, :num_active] + dist_iou[:, :num_active]
             dist = dist_emb + dist_iou
             # dist = dist_iou
+
+        if self.make_weight_pred_dataset:
+            frame_info = {
+                'iou': dist_iou.tolist(),
+                'emb': dist_emb.tolist(),
+                'ioa': ioa.tolist(),
+                'vel': self.overall_velocity,
+                'act_counts': [0] * num_active + inactive_counts,
+                'gt_n': gt_n.tolist(),
+                'gt_t': gt_t.tolist()}
+            self.weight_pred_dataset[self.seq_name][self.frame_id] = frame_info
 
         return dist, ioa
 

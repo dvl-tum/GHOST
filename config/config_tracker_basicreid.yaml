@@ -6,6 +6,7 @@ dataset:
   splits: "mot17_train_test" #"mot17_split_1_test" #
   validation_set: 0
   validation_set_gt: 1
+  half_train_set_gt: 0
   gt_assign_min_iou: 0.5
   prepro_again: 1
   save_oracle: 1
@@ -35,6 +36,7 @@ reid_net:
       sz_embedding: 512
 
 tracker:
+  kalman: 0
   visualize: 0
   store_dist: 0
   save_embeddings_by_id: 0
@@ -67,7 +69,7 @@ tracker:
   #Market model: 0.75/0.7 0.54/0.375, median 63 (non eval / eval)
   act_reid_thresh: 200 #0.71 #0.67 #0.675 #0.7 #0.665 #0.75 #0.7 
   inact_reid_thresh: 200 #0.75 #0.73 #0.74 #0.75 #0.72 #0.54 #0.375  # 'act_reid_thresh': 0.9642701307721346, 'inact_reid_thresh': 0.7423529287840127
-  inact_thresh: 30
+  inact_thresh: 1000000
   output_dir: 'out' 
   avg_act:
     do: 0
@@ -87,9 +89,27 @@ tracker:
     termination_eps_mc: 0.00001
     apply_motion_model: 0
     center_only: 0
-    ioa_threshold: 'weighted' #0.7
+    lambda_mot: 1/3
+    lambda_temp: 1/3
+    lambda_occ: 1/3
+    ioa_threshold: 'motion' #'MotionTemporalAndOcclusion_40_2_0.0' 
     area_out_threshold: 1.0
     num_occ_thresh: 100000
     inter_threshold: 1.0
     num_inter_thresh: 100000
   active_proximity: 0
+  save_dataset: 0
+
+train:
+  num_epochs: 120
+  lr: 0.1
+  bs: 512
+  margin: 0.5
+  scale_loss: 100
+  path: 'weight_pred/dataset_weight_pred.json'
+  loss: 'l2'
+  input_dim: 5
+  weight: 10
+  wd: 0
+  optimizer: 'sgd'
+  load: 'weight_pred/weight_pred/0.50.1100l250sgdcheckpoint.tar' #'weight_pred/0.50.1100l2_weighted50sgdcheckpoint.tar' #'weight_pred/0.50.001100l250sgdcheckpoint.tar'

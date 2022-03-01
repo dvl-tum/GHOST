@@ -17,7 +17,7 @@ class MOTLoader():
     def __init__(self, sequence, dataset_cfg, dir, mode='eval'):
         self.dataset_cfg = dataset_cfg
         self.sequence = sequence
-        self.mode = mode
+        self.train_mode = self.dataset_cfg['half_train_set_gt'] or mode == 'train'
 
         self.mot_dir = osp.join(dataset_cfg['mot_dir'], dir)
         self.det_dir = osp.join(dataset_cfg['det_dir'], dir)
@@ -114,8 +114,10 @@ class MOTLoader():
             self.dets['tracktor_id'] = self.dets['id']
 
             # add frame path
-            def add_frame_path(i): return osp.join(
-                osp.join(img_dir, f"{i:06d}.jpg"))
+            def add_frame_path(i):
+                if type(i) == float:
+                    i = int(i)
+                return osp.join(osp.join(img_dir, f"{i:06d}.jpg"))
             self.dets['frame_path'] = self.dets['frame'].apply(add_frame_path)
 
     def get_seq_info(self, seq_file, gt_file, det_file):
@@ -309,10 +311,10 @@ class MOTLoader():
         elif split == '50-50-2':
             self.dets = self.dets[~self.dets['id'].isin(test_data_ids)]
 
-        if self.dataset_cfg['validation_set'] and self.mode != 'train':
+        if self.dataset_cfg['validation_set'] and not self.train_mode:
             self.dets = self.dets[self.dets['frame'] >
                                   self.dets['frame'].values.max() * 0.5]
-        elif self.dataset_cfg['validation_set'] and self.mode == 'train':
+        elif self.dataset_cfg['validation_set'] and self.train_mode:
             self.dets = self.dets[self.dets['frame'] <=
                                   self.dets['frame'].values.max() * 0.5]
 

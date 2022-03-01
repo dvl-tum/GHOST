@@ -5,62 +5,67 @@ import sklearn
 from sklearn.metrics import average_precision_score
 import copy
 import torch.nn as nn
+from torch.autograd import Variable
+from src.kalman import KalmanFilter
+from cython_bbox import bbox_overlaps as bbox_ious
 
 
 def add_ioa(tracks, seq, interaction=None, occlusion=None, frame_size=None):
-    bbs = torch.from_numpy(np.vstack([tr['bbox'] for tr in tracks]))
-    # add dummy bbs for outside of frame bounding boxes
-    bbs, foot_pos = add_dummy_bb(bbs, frame_size)
+    curr_interaction, curr_occlusion = 0, 0
+    if len(tracks) > 0:
+        bbs = torch.from_numpy(np.vstack([tr['bbox'] for tr in tracks]))
+        # add dummy bbs for outside of frame bounding boxes
+        bbs, foot_pos = add_dummy_bb(bbs, frame_size)
 
-    inter, area, _, inter_bbs = _box_inter_area(bbs, bbs)
-    ioa = inter / np.atleast_2d(area).T
-    # ioa = ioa - np.eye(ioa.shape[0])
-    np.fill_diagonal(ioa, 0)
+        inter, area, _, inter_bbs = _box_inter_area(bbs, bbs)
+        ioa = inter / np.atleast_2d(area).T
+        # ioa = ioa - np.eye(ioa.shape[0])
+        np.fill_diagonal(ioa, 0)
 
-    # not taking foot position into account --> ioa_nofoot
-    curr_interaction = copy.deepcopy(ioa)
-    curr_interaction = remove_intersection(curr_interaction, inter_bbs, foot_pos, bbs, area)
+        # not taking foot position into account --> ioa_nofoot
+        curr_interaction = copy.deepcopy(ioa)
+        curr_interaction = remove_intersection(curr_interaction, inter_bbs, foot_pos, bbs, area)
 
-    # get number of interactors
-    num_inter = copy.deepcopy(curr_interaction)
-    num_inter = np.where(num_inter > 0, 1, 0)
-    num_inter = np.sum(num_inter, axis=1)
+        # get number of interactors
+        num_inter = copy.deepcopy(curr_interaction)
+        num_inter = np.where(num_inter > 0, 1, 0)
+        num_inter = np.sum(num_inter, axis=1)
 
-    # remove dummy bbs as not important for interaction
-    curr_interaction = curr_interaction[:-4, :-4]
-    ioa_nf = np.sum(curr_interaction, axis=1)
-    ioa_nf = np.round(ioa_nf*100)/100
-    ioa_nf = ioa_nf.tolist()
-    if interaction is not None:
-        interaction[seq] += ioa_nf
+        # remove dummy bbs as not important for interaction
+        curr_interaction = curr_interaction[:-4, :-4]
+        ioa_nf = np.sum(curr_interaction, axis=1)
+        ioa_nf = np.round(ioa_nf*100)/100
+        ioa_nf = ioa_nf.tolist()
+        if interaction is not None:
+            interaction[seq] += ioa_nf
 
-    # taking foot position into account
-    bot = np.atleast_2d(foot_pos).T < np.atleast_2d(foot_pos)
-    ioa[~bot] = 0
-    ioa = remove_intersection(ioa, inter_bbs, foot_pos, bbs, area)
+        # taking foot position into account
+        bot = np.atleast_2d(foot_pos).T < np.atleast_2d(foot_pos)
+        ioa[~bot] = 0
+        ioa = remove_intersection(ioa, inter_bbs, foot_pos, bbs, area)
 
-    # remove rows of dummy bounding boxes
-    ioa = ioa[:-4, :]
+        # remove rows of dummy bounding boxes
+        ioa = ioa[:-4, :]
 
-    # get number of occluders
-    num_occ = copy.deepcopy(ioa)
-    num_occ = np.where(num_occ > 0, 1, 0)
-    num_occ = np.sum(num_occ, axis=1)
+        # get number of occluders
+        num_occ = copy.deepcopy(ioa)
+        num_occ = np.where(num_occ > 0, 1, 0)
+        num_occ = np.sum(num_occ, axis=1)
 
-    curr_occlusion = ioa
-    ioa = np.sum(ioa, axis=1)
-    ioa = np.round(ioa*100)/100
-    ioa = ioa.tolist()
-    if occlusion is not None:
-        occlusion[seq] += ioa
-    
-    for i, s, ni, ns, t in zip(ioa, num_occ, ioa_nf, num_inter, tracks):
-        assert i <= 1, "ioa cannot be larger than 1 {}".format(ioa)
-        assert ni <= 1, "interaction cannot be larger than 1 {}".format(ioa_nf)
-        t['ioa'] = min([1, i])
-        t['num_occ'] = s
-        t['ioa_nf'] = ni
-        t['num_inter'] = ns
+        curr_occlusion = ioa
+        ioa = np.sum(ioa, axis=1)
+        ioa = np.round(ioa*100)/100
+        ioa = ioa.tolist()
+        if occlusion is not None:
+            occlusion[seq] += ioa
+        
+        for i, s, ni, ns, t in zip(ioa, num_occ, ioa_nf, num_inter, tracks):
+            assert i <= 1, "ioa cannot be larger than 1 {}".format(ioa)
+            assert ni <= 1, "interaction cannot be larger than 1 {}".format(ioa_nf)
+            t['ioa'] = min([1, i])
+            t['num_occ'] = s
+            t['ioa_nf'] = ni
+            t['num_inter'] = ns
 
     return curr_interaction, curr_occlusion
 
@@ -351,12 +356,14 @@ def bbox_overlaps(boxes, query_boxes):
     return out_fn(overlaps)
 
 
-def is_moving(seq):
+def is_moving(seq, log=False):
     if seq.split('-')[1] in ['13', '11', '10', '05', '14', '12', '07', '06']:
-        print('Seqence is moving {}'.format(seq))
+        if log:
+            print('Seqence is moving {}'.format(seq))
         return True
     elif seq.split('-')[1] in ['09', '04', '02', '08', '03', '01']:
-        print('Seqence is not moving {}'.format(seq))
+        if log:
+            print('Seqence is not moving {}'.format(seq))
         return False
     else:
         assert False, 'Seqence not valid {}'.format(seq)
@@ -369,12 +376,42 @@ def frame_rate(seq):
     else:
         return 25
 
+
+def tlwh_to_xyah(tlwh):
+    """Convert bounding box to format `(center x, center y, aspect ratio,
+    height)`, where the aspect ratio is `width / height`.
+    """
+    ret = np.asarray(tlwh).copy()
+    ret[:2] += ret[2:] / 2
+    ret[2] /= ret[3]
+    return ret
+
+
+def tlrb_to_xyah(tlrb):
+    """Convert bounding box to format `(center x, center y, aspect ratio,
+    height)`, where the aspect ratio is `width / height`.
+    """
+    ret = np.asarray(tlrb).copy()
+    ret[2] = ret[2] - ret[0]
+    ret[3] = ret[3] - ret[1]
+    ret[:2] += ret[2:] / 2
+    ret[2] /= ret[3]
+    return ret
+
+
 class Track():
-    def __init__(self, track_id, bbox, feats, im_index, gt_id, vis, ioa, ioa_nf, area_out, num_occ, num_inter, conf, frame):
+    def __init__(self, track_id, bbox, feats, im_index, gt_id, vis, ioa, ioa_nf, area_out, num_occ, num_inter, conf, frame, area, kalman=False, kalman_filter=None):
+        self.kalman = kalman
+        self.xyah = tlrb_to_xyah(copy.deepcopy(bbox))
+        if self.kalman:
+            self.kalman_filter = kalman_filter
+            self.mean, self.covariance = self.kalman_filter.initiate(
+                measurement=tlrb_to_xyah(bbox))
         self.track_id = track_id
         self.pos = bbox
         self.bbox = list()
         self.bbox.append(bbox)
+        self.area = area
 
         # init variables for motion model
         self.last_pos = list()
@@ -428,14 +465,18 @@ class Track():
         self.conf = conf
 
         self.past_vs = list()
+    
+    def __len__(self):
+        return len(self.last_pos)
 
-    def add_detection(self, bbox, feats, im_index, gt_id, vis, ioa, ioa_nf, area_out, num_occ, num_inter, conf, frame):
+    def add_detection(self, bbox, feats, im_index, gt_id, vis, ioa, ioa_nf, area_out, num_occ, num_inter, conf, frame, area):
         # update all lists / states
         self.pos = bbox
         self.last_pos.append(bbox)
         self.bbox.append(bbox)
+        self.area = area
 
-        self.ioa = ioa
+        self.ioa = 0.1 * ioa + 0.9 * self.ioa
         self.past_ioa.append(ioa)
         self.interaction = ioa_nf
         self.past_interaction.append(ioa_nf)
@@ -459,19 +500,163 @@ class Track():
 
         self.conf = conf
         self.past_frames.append(frame)
+        
+        if self.kalman:
+            self.mean, self.covariance = self.kalman_filter.update(
+                self.mean, self.covariance, tlrb_to_xyah(bbox))
 
     def update_v(self, v):
         self.past_vs.append(v)
         self.last_v = v
 
+    @property
+    # @jit(nopython=True)
+    def tlwh(self):
+        """Get current position in bounding box format `(top left x, top left y,
+                width, height)`.
+        """
+        if self.mean is None:
+            return self.bbox.copy()
+        ret = self.mean[:4].copy()
+        ret[2] *= ret[3]
+        ret[:2] -= ret[2:] / 2
+
+        return ret
+
+    @property
+    # @jit(nopython=True)
+    def tlbr(self):
+        """Convert bounding box to format `(min x, min y, max x, max y)`, i.e.,
+        `(top left, bottom right)`.
+        """
+        ret = self.tlwh.copy()
+        ret[2:] += ret[:2]
+        return ret
+
 
 class WeightPredictor(nn.Module):
     def __init__(self, input_dim, output_dim) -> None:
-        super(WeightPredictor).__init__()
-        self.predictor = nn.Sequential([
-                nn.Linear(3, 15),
-                nn.ReLU(),
-                nn.Linear(15, 3),
-                nn.Softmax()])
+        super(WeightPredictor, self).__init__()
+        self.lin1 = nn.Linear(input_dim, 15)
+        self.relu = nn.ReLU()
+        self.lin2 = nn.Linear(15, output_dim)
+        self.sm = nn.Sigmoid()
+
     def forward(self, x):
-        return self.predictor(x)
+        x = x.float()
+        x = self.lin2(self.relu(self.lin1(x)))
+        x = self.sm(x)
+        return x
+
+
+class TripletLoss(nn.Module):
+    def __init__(self, margin=0.6):
+        super(TripletLoss, self).__init__()
+        self.margin = margin
+        self.ranking_loss = nn.MarginRankingLoss(margin=margin)
+
+    def forward(self, dist, targets):
+        mask = targets.type(torch.ByteTensor).cuda()
+
+        # for numerical stability
+        # For each anchor, find the hardest positive and negative
+        dist_ap, dist_an = [], []
+        for i in range(dist.shape[0]):
+            mask = targets[i]
+            if torch.nonzero(mask).shape[0] == 0:
+                continue
+            dist_ap.append(dist[i][mask].max().unsqueeze(dim=0)) #hp
+            dist_an.append(dist[i][mask == 0].min().unsqueeze(dim=0)) #hn
+        dist_ap = torch.cat(dist_ap)
+        dist_an = torch.cat(dist_an)
+
+        # Compute ranking hinge loss
+        y = dist_an.data.new()
+
+        y.resize_as_(dist_an.data)
+        y.fill_(1)
+        y = Variable(y)
+        loss = self.ranking_loss(dist_an, dist_ap, y)
+        prec = (dist_an.data > dist_ap.data).sum() * 1. / y.size(0)
+        return loss, prec
+
+
+def get_precision(dist, targets):
+    dist_ap, dist_an = [], []
+    for i in range(dist.shape[0]):
+        mask = targets[i]
+        if torch.nonzero(mask).shape[0] == 0:
+            continue
+        dist_ap.append(dist[i][mask].max().unsqueeze(dim=0)) #hp
+        dist_an.append(dist[i][mask == 0].min().unsqueeze(dim=0)) #hn
+    dist_ap = torch.cat(dist_ap)
+    dist_an = torch.cat(dist_an)
+    prec = (dist_an.data > dist_ap.data).sum() * 1. / dist_an.size(0)
+    return prec
+
+
+def collate(batch):
+    w1 = [item[0] for item in batch]
+    w2 = [item[1] for item in batch]
+    w3 = [item[2] for item in batch]
+    same_class = [item[3] for item in batch]
+    ioa = [item[4] for item in batch]
+    emb = [item[4] for item in batch]
+
+    return [w1, w2, w3, same_class, ioa, emb]
+
+
+def multi_predict(active, inactive, shared_kalman):
+    state = list()
+    act = [v for v in active.values()]
+    state.extend([1]*len(act))
+    inact = [v for v in inactive.values()]
+    state.extend([0]*len(inact))
+    stracks = act + inact
+    if len(stracks) > 0:        
+        multi_mean = np.asarray([st.mean.copy() for st in stracks])
+        multi_covariance = np.asarray([st.covariance for st in stracks])
+        for i, (st, act) in enumerate(zip(stracks, state)):
+            if act != 1:
+                multi_mean[i][7] = 0
+        multi_mean, multi_covariance = shared_kalman.multi_predict(multi_mean, multi_covariance)
+        for i, (mean, cov) in enumerate(zip(multi_mean, multi_covariance)):
+            stracks[i].mean = mean
+            stracks[i].covariance = cov
+
+    return stracks
+
+
+def get_iou_kalman(tracklets, detections):
+    """
+    Compute cost based on IoU
+    :type atracks: list[STrack]
+    :type btracks: list[STrack]
+    :rtype cost_matrix np.ndarray
+    """
+
+    atlbrs = [track.tlbr for track in tracklets]
+    btlbrs = [track['bbox'] for track in detections]
+    _ious = ious(atlbrs, btlbrs)
+    cost_matrix = 1 - _ious
+
+    return cost_matrix.T
+
+
+def ious(atlbrs, btlbrs):
+    """
+    Compute cost based on IoU
+    :type atlbrs: list[tlbr] | np.ndarray
+    :type atlbrs: list[tlbr] | np.ndarray
+    :rtype ious np.ndarray
+    """
+    ious = np.zeros((len(atlbrs), len(btlbrs)), dtype=np.float)
+    if ious.size == 0:
+        return ious
+
+    ious = bbox_ious(
+        np.ascontiguousarray(atlbrs, dtype=np.float),
+        np.ascontiguousarray(btlbrs, dtype=np.float)
+    )
+
+    return ious

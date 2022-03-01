@@ -44,14 +44,18 @@ def main(args):
         config = yaml.load(f, Loader=yaml.FullLoader)
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     logger.info('Switching to device {}'.format(device))
+    config['dataset']['det_file'] = "FairMOT.txt"
+    config['dataset']['validation_set'] = 0
+    config['tracker']['act_reid_thresh'] = 0.665
+    config['tracker']['inact_reid_thresh'] = 0.72
     print(config)
 
-    vis_thresh =  [[np.round(v-0.1, decimals=1), np.round(v, decimals=1)] for v in np.linspace(0.1, 1.0, num=10)]
+    vis_thresh = [[np.round(v-0.1, decimals=1), np.round(v, decimals=1)] for v in np.linspace(0.1, 1.0, num=10)]
     vis_thresh[-1][-1] = 1.1
     vis_thresh = [tuple(v) for v in vis_thresh]
     size_thresh = [(0, 128), (128, 256), (256, 4000)] #[(np.round(v, decimals=1), np.round(v+25, decimals=1)) for v in np.linspace(25, 775, num=31)]
     frame_dist_thresh = [(0, 1.01/14), (1.01/14, 4/14), (4/14, 7/14), (7/14, 10/14), (10/14, 1), (1, 2), (2, 20)] #[(v, v+1) for v in np.linspace(0, 40, num=41)]
-    size_diff_thresh =  [(0.0, 0.05), (0.05, 0.1), (0.1, 0.15), (0.15, 0.2), (0.2, 0.25), (0.25, 5.0)] #[(5.0, 2.0)] + [(np.round(v, decimals=1), np.round(v-0.1, decimals=1)) for v in np.linspace(2, -0.9, num=30)]
+    size_diff_thresh = [(0.0, 0.05), (0.05, 0.1), (0.1, 0.15), (0.15, 0.2), (0.2, 0.25), (0.25, 5.0)] #[(5.0, 2.0)] + [(np.round(v, decimals=1), np.round(v-0.1, decimals=1)) for v in np.linspace(2, -0.9, num=30)]
     gallery_vis_thresh = [[np.round(v-0.1, decimals=1), np.round(v, decimals=1)] for v in np.linspace(0.1, 1.0, num=10)]
     gallery_vis_thresh[-1][-1] = 1.1
     gallery_vis_thresh = [tuple(v) for v in gallery_vis_thresh]

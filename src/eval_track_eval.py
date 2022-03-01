@@ -29,7 +29,8 @@ def get_dict(mot_dir, detectors):
         seq_length = {
             'MOT20-01': None, 'MOT20-02': None,
             'MOT20-03': None, 'MOT20-05': None}
-
+    # seq_length = {
+    #         'MOT17-13-FRCNN': None}
     return seq_length
 
 
@@ -103,7 +104,7 @@ def setup_trackeval():
     return eval_config, dataset_config, metrics_config
 
 
-def evaluate_track_eval(dir, tracker, dataset_cfg):
+def evaluate_track_eval(dir, tracker, dataset_cfg, log=True):
     eval_config, dataset_config, metrics_config = setup_trackeval()
     gt_path = osp.join(dataset_cfg['mot_dir'], dir)
     dataset_config['GT_FOLDER'] = gt_path
@@ -121,6 +122,8 @@ def evaluate_track_eval(dir, tracker, dataset_cfg):
 
     # Run code
     evaluator = trackeval.Evaluator(eval_config)
+    if not log:
+        evaluator.config['PRINT_RESULTS'] = False
     dataset_list = [trackeval.datasets.MotChallenge2DBox(dataset_config)]
 
     metrics_list = []
@@ -133,4 +136,6 @@ def evaluate_track_eval(dir, tracker, dataset_cfg):
             metrics_list.append(metric(metrics_config))
     if len(metrics_list) == 0:
         raise Exception('No metrics selected for evaluation')
-    evaluator.evaluate(dataset_list, metrics_list)
+    output_res, output_msg = evaluator.evaluate(dataset_list, metrics_list)
+
+    return output_res, output_msg

@@ -14,7 +14,7 @@ import logging
 from lapsolver import solve_dense
 import json
 from math import floor
-from src.tracking_utils import bisoftmax, get_proxy, add_ioa, Track  # , get_reid_performance
+from src.tracking_utils import bisoftmax, get_proxy, add_ioa, Track, multi_predict, get_iou_kalman  # , get_reid_performance
 from src.base_tracker import BaseTracker
 import torchvision.transforms as T
 import torch.nn.functional as F
@@ -32,7 +32,10 @@ class Tracker(BaseTracker):
             net_type='resnet50',
             output='plain',
             weight='No',
-            data='tracktor_preprocessed_files.txt'):
+            data='tracktor_preprocessed_files.txt',
+            weight_pred=None,
+            device='cpu',
+            train_cfg=None):
         super(
             Tracker,
             self).__init__(
@@ -41,38 +44,24 @@ class Tracker(BaseTracker):
             net_type,
             output,
             weight,
-            data)
+            data,
+            weight_pred,
+            device,
+            train_cfg)
         self.short_experiment = defaultdict(list)
 
-        # self.experiment += 'NoApp'
-
-    def train(self, imgs, bboxes, ids, frame_indicator):
-        feats = self.get_features(imgs)
-        dist = self.dist(feats[frame_indicator], feats[~frame_indicator]])
-        self.motion()
-        iou = self.get_motion_dist(feats, curr_it)
-        inactive_counts = [it.inactive_count for it in curr_it.values()]
-        dist, ioa = self.combine_motion_appearance(
-            iou,
-            dist,
-            detections,
-            num_active,
-            num_inactive,
-            inactive_counts,
-            gt_n,
-            gt_t)
-
-
-    def track(self, seq, first=False):
+    def track(self, seq, first=False, log=True):
         '''
         first - feed all bounding boxes through net first for bn stats update
         seq -   sequence instance for iteratration and with meta information
                 like name or lentgth
         '''
-        print(self.experiment)
-        logger.info(
-            "Tracking sequence {} of lenght {}".format(
-                seq.name, seq.num_frames))
+        self.log = log
+        if self.log:
+            logger.info(self.experiment)
+            logger.info(
+                "Tracking sequence {} of lenght {}".format(
+                    seq.name, seq.num_frames))
         self.setup_seq(seq, first)
 
         # batch norm experiemnts I
@@ -86,7 +75,7 @@ class Tracker(BaseTracker):
             self.normalization_experiments(random_patches, frame, i)
 
             self.frame_id = int(path.split(os.sep)[-1][:-4])
-            # print(i+1, self.frame_id, len(self.tracks), len(self.inactive_tracks))
+            print(i+1, self.frame_id, len(self.tracks), len(self.inactive_tracks))
 
             if self.debug:
                 self.event_dict[self.seq][self.frame_id] = list()
@@ -109,8 +98,11 @@ class Tracker(BaseTracker):
             for f, b, gt_id, v, a, c in zip(feats, boxes, gt_ids, vis, areas_out, conf):
                 if (b[3] - b[1]) / (b[2] - b[0]
                                     ) < self.tracker_cfg['h_w_thresh']:
+                    if 'byte' in self.data and c < 0.6:
+                        continue
                     detection = {
                         'bbox': b,
+                        'area': b[2] * b[3],
                         'feats': f,
                         'im_index': self.frame_id,
                         'gt_id': gt_id,
@@ -119,7 +111,7 @@ class Tracker(BaseTracker):
                         'conf': c,
                         'frame': self.frame_id}
                     detections.append(detection)
-
+                    
                     if self.store_dist:
                         v = 0.999 if v == 1.0 else v
                         v = floor(v * 10) / 10
@@ -132,6 +124,7 @@ class Tracker(BaseTracker):
 
             # apply motion compensation to stored track positions
             if self.motion_model_cfg['motion_compensation']:
+                print("NC")
                 self.motion_compensation(whole_im, i)
 
             # add intersection over area to each bb
@@ -193,10 +186,15 @@ class Tracker(BaseTracker):
             with open(self.experiment + 'embeddings_by_id.json', 'w') as jf:
                 json.dump(self.embeddings_by_id, jf)
 
-        for k, v in self.short_experiment.items():
-            print(k, np.array(v).mean(), np.array(v).std(), np.array(v).mean()-0.5*np.array(v).std())
+        if self.log:
+            logger.info([[sum(v)/len(v)] for k, v in self.vel_dict.items()])
+
+        if self.make_weight_pred_dataset:
+            with open(self.experiment + 'dataset.json', 'w') as jf:
+                json.dump(self.weight_pred_dataset, jf)
         
-        print([[sum(v)/len(v)] for k, v in self.vel_dict.items()])
+        with open(self.experiment + 'emc.json', 'w') as jf:
+            json.dump(self.emc_dict, jf)
 
     def get_blurred_feats(self, whole_im, boxes):
         blurrer = T.GaussianBlur(kernel_size=(29, 29), sigma=5)
@@ -230,19 +228,26 @@ class Tracker(BaseTracker):
             for detection in detections:
                 if detection['conf'] < 0.9 and self.data == 'qdtrack_dets.txt':
                     continue
-                self.tracks[self.id] = Track(track_id=self.id, **detection)
+                if detection['conf'] < 0.1 and self.data == 'FairMOT_detes_Same_As_Fairmot.txt':
+                    continue
+                if detection['conf'] < 0.1 and 'byte' in self.data:
+                    continue
+                self.tracks[self.id] = Track(track_id=self.id, **detection, kalman=self.kalman, kalman_filter=self.kalman_filter)
                 tr_ids.append(self.id)
                 self.id += 1
 
         # association over frames for frame > 0
         elif i > 0:
             # get hungarian matching
-            if not self.tracker_cfg['avg_inact']['proxy'] == 'each_sample':
-                dist, row, col, ids = self.get_hungarian_with_proxy(
-                    detections, sep=self.tracker_cfg['assign_separately'])
+            if len(detections) > 0:
+                if not self.tracker_cfg['avg_inact']['proxy'] == 'each_sample':
+                    dist, row, col, ids = self.get_hungarian_with_proxy(
+                        detections, sep=self.tracker_cfg['assign_separately'])
+                else:
+                    dist, row, col, ids = self.get_hungarian_each_sample(
+                        detections, sep=self.tracker_cfg['assign_separately'])
             else:
-                dist, row, col, ids = self.get_hungarian_each_sample(
-                    detections, sep=self.tracker_cfg['assign_separately'])
+                dist, row, col, ids = 0, 0, 0, 0
             if dist is not None:
                 # get bb assignment
                 tr_ids = self.assign(
@@ -345,8 +350,13 @@ class Tracker(BaseTracker):
         # update thresholds
         self.update_thresholds(dist, num_active, num_inactive)
         if self.motion_model_cfg['apply_motion_model']:
-            self.motion()
-            iou = self.get_motion_dist(detections, curr_it)
+            if not self.kalman:
+                self.motion()
+                iou = self.get_motion_dist(detections, curr_it)
+            else:
+                self.motion(only_vel=True)
+                stracks = multi_predict(self.tracks, curr_it, self.shared_kalman)
+                iou = get_iou_kalman(stracks, detections)
             inactive_counts = [it.inactive_count for it in curr_it.values()]
             dist, ioa = self.combine_motion_appearance(
                 iou,
@@ -356,7 +366,8 @@ class Tracker(BaseTracker):
                 num_inactive,
                 inactive_counts,
                 gt_n,
-                gt_t)
+                gt_t,
+                curr_it)
 
         if self.nan_first:
             dist[:, :num_active] = np.where(dist[:, :num_active] <=
@@ -521,7 +532,7 @@ class Tracker(BaseTracker):
         # new
         elif len(curr_it) == 0 and len(self.tracks) == 0:
             for detection in detections:
-                self.tracks[self.id] = Track(track_id=self.id, **detection)
+                self.tracks[self.id] = Track(track_id=self.id, **detection, kalman=self.kalman, kalman_filter=self.kalman_filter)
                 self.id += 1
             return None, None, None, None
         # if there are active but no inactive
@@ -553,8 +564,6 @@ class Tracker(BaseTracker):
                     num_active,
                     num_inactive,
                     inactive_counts,
-                    velocity_center,
-                    positions,
                     gt_n,
                     gt_t)
 
@@ -569,7 +578,7 @@ class Tracker(BaseTracker):
                 dist[:, :num_active] = np.where(dist[:, :num_active] <=
                     self.act_reid_thresh, dist[:, :num_active], np.nan)
                 dist[:, num_active:] = np.where(dist[:, num_active:] <=
-                    self.act_reid_thresh, dist[:, num_active:], np.nan)
+                    self.inact_reid_thresh, dist[:, num_active:], np.nan)
 
             # row represent current frame
             # col represents last frame + inactiva tracks
@@ -599,18 +608,18 @@ class Tracker(BaseTracker):
         # assign tracks from hungarian
         active_tracks = list()
         tr_ids = [None for _ in range(len(detections))]
-
-        if not sep:
-            assigned = self.assign_act_inact_same_time(
-                row, col, dist, detections, active_tracks, ids, tr_ids)
-        else:
-            assigned = self.assign_separatly(
-                row, col, dist, detections, active_tracks, ids, tr_ids)
+        if len(detections) > 0:
+            if not sep:
+                assigned = self.assign_act_inact_same_time(
+                    row, col, dist, detections, active_tracks, ids, tr_ids)
+            else:
+                assigned = self.assign_separatly(
+                    row, col, dist, detections, active_tracks, ids, tr_ids)
 
         # move tracks not used to inactive tracks
         keys = list(self.tracks.keys())
         for k in keys:
-            if k not in active_tracks:
+            if k not in active_tracks: #and len(self.tracks[k]) > 1:
                 self.inactive_tracks[k] = self.tracks[k]
                 del self.tracks[k]
                 self.inactive_tracks[k].inactive_count += 0
@@ -631,6 +640,14 @@ class Tracker(BaseTracker):
             if i not in assigned:
                 if detections[i]['conf'] < 0.9 and self.data == 'qdtrack_dets.txt':
                     continue
+                if detections[i]['conf'] < 0.1 and self.data == 'FairMOT_detes_Same_As_Fairmot.txt':
+                    continue
+                if detections[i]['conf'] < 0.1 and 'byte' in self.data:
+                    continue
+
+                # if detections[i]['area'] <= 100 and self.data == 'FairMOT_dets.txt':
+                #     continue
+
                 if self.debug:
                     ioa = self.round1(detections[i]['ioa'])
                     vis = self.round1(detections[i]['vis'])
@@ -650,6 +667,7 @@ class Tracker(BaseTracker):
                         event = ['Unassigned', 'Act', dist[i, ind]] + _gt + _det
                         # if not detections[i]['gt_id'] == -1 or not id_gt == -1:
                         #     print(event)
+                        print(event)
                         event = [str(e) for e in event]
                         self.event_dict[self.seq][self.frame_id].append(event)
 
@@ -667,10 +685,11 @@ class Tracker(BaseTracker):
                         event = ['Unassigned', 'Inact', dist[i, ind]] + _gt + _det
                         # if not detections[i]['gt_id'] == -1 or not id_gt == -1:
                         #     print(event)
+                        print(event)
                         event = [str(e) for e in event]
                         self.event_dict[self.seq][self.frame_id].append(event)
 
-                self.tracks[self.id] = Track(track_id=self.id, **detections[i])
+                self.tracks[self.id] = Track(track_id=self.id, **detections[i], kalman=self.kalman, kalman_filter=self.kalman_filter)
                 tr_ids[i] = self.id
                 self.id += 1
         return tr_ids
@@ -703,6 +722,7 @@ class Tracker(BaseTracker):
             # assign tracks to active tracks if reid distance < thresh
             if ids[c] in self.tracks.keys() and \
                (dist[r, c] < act_thresh * scale or self.nan_first):
+                # detections[r]['area'] > 100:
                 if self.tracker_cfg['active_proximity']:
                     if not self.proximity[r, c]:
                         continue
@@ -719,6 +739,7 @@ class Tracker(BaseTracker):
                     id_gt = self.tracks[ids[c]].gt_id
                     _gt = [frame_gt, vis_gt, ioa_gt, id_gt]
                     event = ['WrongAssignment', 'Act', dist[r, c]] + _gt + _det
+                    print(event)
                     # if not detections[r]['gt_id'] == -1 or not id_gt == -1:
                     #     print(event)
                     event = [str(e) for e in event]
@@ -731,11 +752,7 @@ class Tracker(BaseTracker):
             # assign tracks to inactive tracks if reid distance < thresh
             elif ids[c] in self.inactive_tracks.keys() and \
                (dist[r, c] < inact_thresh * scale or self.nan_first):
-                # inact_ct = self.inactive_tracks[ids[c]].inactive_count
-                # ioa = detections[r]['ioa']
-                # print(inact_ct, self.hill_temp(inact_ct), ioa, self.hill_vis(ioa), self.hill_vis(ioa) * self.hill_temp(inact_ct) > 0.6)
-                # if self.hill_vis(ioa) * self.hill_temp(inact_ct) > 0.6:
-                #     continue
+                # and detections[r]['area'] > 100:
 
                 # generate error event if debug
                 if self.inactive_tracks[ids[c]].gt_id != detections[r]['gt_id'] \
@@ -751,6 +768,7 @@ class Tracker(BaseTracker):
                     event = ['WrongAssignment', 'Inct', dist[r, c]] + _gt + _det
                     # if not detections[r]['gt_id'] == -1 or not id_gt == -1:
                     #     print(event)
+                    print(event)
                     event = [str(e) for e in event]
                     self.event_dict[self.seq][self.frame_id].append(event)
 

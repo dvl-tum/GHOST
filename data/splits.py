@@ -10,6 +10,8 @@ dets = ('DPM', 'FRCNN', 'SDP')
 train_seq_nums=  (2, 4, 5, 9, 10, 11, 13)
 _SPLITS['mot17_train']['train'] = {'seq': [f'MOT17-{seq_num:02}' for seq_num in train_seq_nums], 'dir': 'train'}
 _SPLITS['mot17_train_test']['test'] = {'seq': [f'MOT17-{seq_num:02}' for seq_num in train_seq_nums], 'dir': 'train'}
+_SPLITS['mot17_train_test']['train'] = {'seq': [f'MOT17-{seq_num:02}' for seq_num in train_seq_nums], 'dir': 'train'}
+_SPLITS['mot17_train_test']['val'] = {'seq': [f'MOT17-{seq_num:02}' for seq_num in train_seq_nums], 'dir': 'train'}
 
 
 # Cross Validation splits
@@ -33,9 +35,10 @@ _SPLITS['mot17_split_along']['train'] = {'seq': [f'MOT17-{seq_num:02}' for seq_n
 _SPLITS['mot17_split_along']['val'] = {'seq': [f'MOT17-{seq_num:02}' for seq_num in (2, 4, 5, 9, 10, 11, 13)], 'dir': 'train'}
 
 #_SPLITS['debug_train']['train'] = {'seq': ['MOT17-02'], 'dir': 'train'}
-#_SPLITS['debug_train']['val'] = {'seq': ['MOT17-04'], 'dir': 'train'}
-_SPLITS['debug_train']['test'] = {'seq': ['MOT17-04'], 'dir': 'train'}
-#_SPLITS['debug_test']['test'] = {'seq': ['MOT17-13'], 'dir': 'train'}
+_SPLITS['debug_train']['train'] = {'seq': ['MOT17-04'], 'dir': 'train'}
+_SPLITS['debug_train']['val'] = {'seq': ['MOT17-04'], 'dir': 'train'}
+#_SPLITS['debug_train']['test'] = {'seq': ['MOT17-04'], 'dir': 'train'}
+_SPLITS['debug_train']['test'] = {'seq': ['MOT17-13'], 'dir': 'train'}
 
 # Remove IDs later
 _SPLITS['50-50-1']['test'] = {'seq': [f'MOT17-{seq_num:02}' for seq_num in train_seq_nums], 'dir': 'train'}
@@ -44,3 +47,11 @@ _SPLITS['50-50-2']['test'] = {'seq': [f'MOT17-{seq_num:02}' for seq_num in train
 # Test sequences
 test_seq_nums=  (1, 3, 6, 7, 8, 12, 14)
 _SPLITS['mot17_test']['test'] = {'seq': [f'MOT17-{seq_num:02}' for seq_num in test_seq_nums], 'dir': 'test'}
+
+
+#mot20 split
+train_seq_nums=  (1, 2, 3, 5)
+test_seq_nums = (4, 6, 7, 8)
+_SPLITS['mot20_train']['train'] = {'seq': [f'MOT20-{seq_num:02}' for seq_num in train_seq_nums], 'dir': 'train'}
+_SPLITS['mot20_train_test']['test'] = {'seq': [f'MOT20-{seq_num:02}' for seq_num in train_seq_nums], 'dir': 'train'}
+_SPLITS['mot20_test']['test'] = {'seq': [f'MOT20-{seq_num:02}' for seq_num in test_seq_nums], 'dir': 'test'}
