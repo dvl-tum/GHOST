@@ -718,21 +718,36 @@ class BaseTracker():
         if self.motion_model_cfg['ioa_threshold'] == 'sum':
             dist = (dist_emb + dist_iou)*0.5
 
-        elif self.motion_model_cfg['ioa_threshold'] == 'penalty':
-            w_e = (ioa + ioa_tr)/2 + np.finfo(float).eps
+        elif 'penalty' in self.motion_model_cfg['ioa_threshold']:
+            # w_e = ioa * ioa_tr + np.finfo(float).eps
+            w_e_1 = self.sig(ioa_tr, k=6, v_max=0.5, v_min=-0.5)
+            w_e_2 = self.sig(ioa, k=6, v_max=0.5, v_min=-0.5)
+            # w_e_1 = 0.25*np.exp(ioa*(-0.25))+np.log(2)
+            # w_e_2 = 0.25*np.exp(ioa_tr*(-0.25))+np.log(2)
+            w_e = (w_e_1 + w_e_2)/2 + np.finfo(float).eps
 
             w_1_m = np.array([0] * num_active + inactive_counts)/self.frame_rate
-            w_1_m = self.sig(w_1_m, k=-2, v_max=2, v_min=0)
+            w_1_m = self.sig(w_1_m, k=2, v_max=0.5, v_min=-0.5)
+            # w_1_m = 0.1*np.exp(w_1_m*0.5*np.log(3.5)) - 0.1
             w_1_m = np.repeat(
                 np.expand_dims(w_1_m, axis=1), dist_emb.shape[0], axis=1).T
             if self.overall_velocity is not None:
-                w_2_m = self.sig(self.overall_velocity, k=-80, v_max=2, v_min=0)
+                w_2_m = self.sig(self.overall_velocity, k=80, v_max=0.5, v_min=-0.5)
+                # w_2_m = 0.1*np.exp(self.overall_velocity*np.log(3.5)/0.06) - 0.1
                 w_2_m = w_2_m * np.ones(dist_emb.shape)
             else:
                 w_2_m = np.zeros(dist_emb.shape)
             w_m = (w_1_m + w_2_m)/2 + np.finfo(float).eps
 
-            dist = (1+w_e) * dist_emb + (1+w_m) * dist_iou
+            if 'reid' in self.motion_model_cfg['ioa_threshold']:
+                dist_emb = (1+w_e) * dist_emb
+            elif 'motion' in self.motion_model_cfg['ioa_threshold']:
+                dist_iou = (1+w_e) * dist_iou
+            else:
+                dist_emb = (1+w_e) * dist_emb
+                dist_iou = (1+w_e) * dist_iou
+
+            dist = (dist_emb + dist_iou)/2
 
         elif self.motion_model_cfg['ioa_threshold'] == 'real_dist':
             l_1 = self.strfrac2float(self.motion_model_cfg['lambda_temp'])
