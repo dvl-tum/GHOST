@@ -95,6 +95,18 @@ def main(args):
                 # mean of active 
                 act = [1.06, 1.05, 1.06, 1.04, 1.04, 1.04, 1.04, 1.04, 1.05, 1.01]
                 inact = [1.06, 1.05, 1.06, 1.04, 1.04, 1.04, 1.04, 1.04, 1.05, 1.01]
+        elif 'split' in config['dataset']['splits']:
+            act = [0.108, 0.081, 0.096, 0.095, 0.075, 0.085, 0.083, 0.1, 0.09, 0.078]
+            inact = [0.114, 0.107, 0.1, 0.099, 0.089, 0.1, 0.099, 0.116, 0.108, 0.104]
+        elif config['dataset']['splits'] == 'mot17_split_3':
+            act = [0.125, 0.126, 0.113, 0.113, 0.114, 0.117, 0.114, 0.123, 0.115, 0.124]
+            inact = [0.127, 0.139, 0.113, 0.112, 0.109, 0.121, 0.12, 0.131, 0.135, 0.115]
+        elif config['dataset']['splits'] == 'mot17_split_2':
+            act = [0.139, 0.123, 0.105, 0.105, 0.135, 0.11, 0.12, 0.118, 0.124, 0.132]
+            inact = [0.116, 0.113, 0.096, 0.096, 0.098, 0.106, 0.107, 0.115, 0.107, 0.087]
+        elif config['dataset']['splits'] == 'mot17_split_1':
+            act = [0.115, 0.09, 0.104, 0.093, 0.082, 0.096, 0.099, 0.099, 0.102, 0.092]
+            inact = [0.107, 0.087, 0.093, 0.097, 0.074, 0.09, 0.079, 0.109, 0.102, 0.084]
         else:
             if config['tracker']['inact_thresh'] == 30:
                 # from median dist init threshs
@@ -115,8 +127,8 @@ def main(args):
 
             else:
                 # from median dist
-                act = [0.7, 0.725, 0.67, 0.665, 0.675, 0.725, 0.71, 0.77, 0.77, 0.76]#0.75, 0.75, 0.75]
-                inact = [0.75, 0.76, 0.73, 0.72, 0.74, 0.76, 0.75, 0.75, 0.73, 0.625]#0.54, 0.54, 0.54]
+                act = [0.7, 0.725, 0.67, 0.665, 0.675, 0.725, 0.71, 0.77, 0.77, 0.76, 0.77]#0.75, 0.75, 0.75]
+                inact = [0.75, 0.76, 0.73, 0.72, 0.74, 0.76, 0.75, 0.75, 0.73, 0.625, 0.76]#0.54, 0.54, 0.54]
 
                 # act = [0.76, 0.73, 0.75, 0.74, 0.73, 0.73, 0.73]
                 # inact = [0.72, 0.66, 0.74, 0.7, 0.69, 0.73, 0.66]
@@ -135,16 +147,17 @@ def main(args):
             "TransTrack.txt",
             "CenterTrackPub.txt",
             "center_track.txt",
-            "tracktor_prepr_det.txt"]
+            "tracktor_prepr_det.txt",
+            'ctracker.txt']
 
         train = False
         # num_iter = 30
-        mot_20 = False
+        mot_20 = True
         tmoh = False
         qd_dets = False
         fairmot_dets = False
         get_test_set_results = False
-        byte = False
+        byte = True
         reid_ablation = False
 
         use_train_set = config['dataset']['half_train_set_gt']
@@ -156,22 +169,17 @@ def main(args):
         if train:
             config['tracker']['motion_config']['ioa_threshold'] = 'learned'
 
-        val_set = [0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1]
-        for det_file, a, ina, val in zip(det_files, act, inact, val_set):
+        val_set = [0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 0]
 
-            if det_file != 'FairMOT.txt':
+        # da = [-0.015, -0.01, -0.005, +0.005, +0.01,  +0.015, 0, 0, 0, 0]
+        # dina = [0, 0, 0, 0, 0, 0, -0.01, -0.005, +0.005, +0.01]
+        for i, (det_file, a, ina, val) in enumerate(zip(det_files, act, inact, val_set)):
+
+            if det_file != 'center_track.txt':
                 continue
-
-            # config['dataset']['validation_set_gt'] = 0
-            # val = 0
-            # config['dataset']['splits'] = 'mot17_test'
 
             if use_train_set:
                 det_file = det_file[:-4] + 'Train' + det_file[-4:]
-
-            # parameter mean
-            a = 0.9 #'every'
-            ina = 0.9 #'every'
 
             if train:
                 if det_file != "tracktor_prepr_det.txt":
@@ -185,8 +193,6 @@ def main(args):
                     config['dataset']['detector'] = 'all'
                 if mot_20:
                     config['dataset']['splits'] = 'mot20_test' #'mot20_train_test'
-                if det_file != "tracktor_prepr_det.txt":
-                    continue
 
             if tmoh:
                 # TMOH
@@ -221,12 +227,14 @@ def main(args):
                 a = 0.75 #0.75
                 ina = 0.7 #0.54
                 det_file = 'all_train_byte.txt'
-                #det_file = 'bytetrack_text.txt' 
+                if get_test_set_results:
+                    det_file = 'bytetrack_text.txt' 
+                    config['dataset']['splits'] = 'mot17_test'
                 config['dataset']['validation_set_gt'] = 0
                 val = 0
-                #config['dataset']['splits'] = 'mot17_test'
 
             if mot_20 and not byte:
+                print()
                 det_file = "tracktor_prepr_det.txt" #'TMOH.txt'
                 a = 0.7 # 0.76 #0.75 # 0.75
                 ina = 0.7 # 0.75 #0.54 # 0.54
@@ -235,15 +243,16 @@ def main(args):
 
                 config['dataset']['validation_set_gt'] = 0
                 val = 0
-                config['dataset']['splits'] = 'mot20_test'
+                # config['dataset']['splits'] = 'mot20_test'
             
             if byte and mot_20:
-                det_file = "byte_track_20.txt"
+                det_file = "bytetrack_train_MOT20.txt" #"byte_track_20.txt"
                 a = 0.65 #0.75
                 ina = 0.7 #0.54
                 config['dataset']['validation_set_gt'] = 0
                 val = 0
-                config['dataset']['splits'] = 'mot20_test'
+                if get_test_set_results:
+                    det_file = "byte_track_20.txt" #"bytetrack_text_MOT20.txt"
             
             if reid_ablation:
                 det_file = "center_track.txt"
@@ -255,6 +264,7 @@ def main(args):
             config['dataset']['validation_set'] = val
             config['tracker']['act_reid_thresh'] = a
             config['tracker']['inact_reid_thresh'] = ina
+
             for i in range(num_iter):
 
                 if config['tracker']['mode'] == 'hyper_search':
@@ -283,7 +293,8 @@ def main(args):
                 if train:
                     manager._train(config['train'])
                 manager._evaluate(mode='test', log=True)
-            quit()
+            # quit()
+            
 
 if __name__ == '__main__':
     args = init_args()
