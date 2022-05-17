@@ -192,9 +192,6 @@ class Tracker(BaseTracker):
         if self.make_weight_pred_dataset:
             with open(self.experiment + 'dataset.json', 'w') as jf:
                 json.dump(self.weight_pred_dataset, jf)
-        
-        with open(self.experiment + 'emc.json', 'w') as jf:
-            json.dump(self.emc_dict, jf)
 
     def get_blurred_feats(self, whole_im, boxes):
         blurrer = T.GaussianBlur(kernel_size=(29, 29), sigma=5)
@@ -241,10 +238,10 @@ class Tracker(BaseTracker):
             # get hungarian matching
             if len(detections) > 0:
                 if not self.tracker_cfg['avg_inact']['proxy'] == 'each_sample':
-                    dist, row, col, ids = self.get_hungarian_with_proxy(
+                    dist, row, col, ids, w_r, w_m = self.get_hungarian_with_proxy(
                         detections, sep=self.tracker_cfg['assign_separately'])
                 else:
-                    dist, row, col, ids = self.get_hungarian_each_sample(
+                    dist, row, col, ids, w_r, w_m = self.get_hungarian_each_sample(
                         detections, sep=self.tracker_cfg['assign_separately'])
             else:
                 dist, row, col, ids = 0, 0, 0, 0
@@ -256,10 +253,12 @@ class Tracker(BaseTracker):
                     row=row,
                     col=col,
                     ids=ids,
-                    sep=self.tracker_cfg['assign_separately'])
+                    sep=self.tracker_cfg['assign_separately'],
+                    w_r=w_r, w_m=w_m)
         return tr_ids
 
     def get_hungarian_each_sample(self, detections, sep=False, sep_confidence=False, greedy=False):
+        w_m, w_r = 1, 1
         # get new detections
         x = torch.stack([t['feats'] for t in detections])
         if 'gt_id' in detections[0].keys():
@@ -358,7 +357,7 @@ class Tracker(BaseTracker):
                 stracks = multi_predict(self.tracks, curr_it, self.shared_kalman)
                 iou = get_iou_kalman(stracks, detections)
             inactive_counts = [it.inactive_count for it in curr_it.values()]
-            dist, ioa = self.combine_motion_appearance(
+            dist, ioa, w_r, w_m = self.combine_motion_appearance(
                 iou,
                 dist,
                 detections,
@@ -407,7 +406,7 @@ class Tracker(BaseTracker):
             self.add_dist_to_storage(
                 gt_n, gt_t, num_active, num_inactive, dist, height)
 
-        return dist, row, col, ids
+        return dist, row, col, ids, w_r, w_m
 
     def solve_sep_confidence(self, conf, dist, num_inactive, inactive_counts, sep_inact=False, gt_t=None, gt_n=None):
         dist_emb = dist[0]
@@ -477,6 +476,7 @@ class Tracker(BaseTracker):
         return row, col, _dist
 
     def get_hungarian_with_proxy(self, detections, sep=False):
+        w_r, w_m = 1, 1
         # instantiate
         ids, gt_t, conf_t = list(), list(), list()
         y_inactive, y = None, None
@@ -557,7 +557,7 @@ class Tracker(BaseTracker):
                     t.last_vc for t in curr_it.values()]
                 positions = [t.pos for t in self.tracks.values()] + [
                     t.pos for t in curr_it.values()]
-                dist, ioa = self.combine_motion_appearance(
+                dist, ioa, w_r, w_m = self.combine_motion_appearance(
                     iou,
                     dist,
                     detections,
@@ -602,16 +602,16 @@ class Tracker(BaseTracker):
                 dist_inact = None
             dist = [dist_act, dist_inact]
 
-        return dist, row, col, ids
+        return dist, row, col, ids, w_r, w_m
 
-    def assign(self, detections, dist, row, col, ids, sep=False):
+    def assign(self, detections, dist, row, col, ids, sep=False, w_r=1, w_m=1):
         # assign tracks from hungarian
         active_tracks = list()
         tr_ids = [None for _ in range(len(detections))]
         if len(detections) > 0:
             if not sep:
                 assigned = self.assign_act_inact_same_time(
-                    row, col, dist, detections, active_tracks, ids, tr_ids)
+                    row, col, dist, detections, active_tracks, ids, tr_ids, w_r, w_m)
             else:
                 assigned = self.assign_separatly(
                     row, col, dist, detections, active_tracks, ids, tr_ids)
@@ -702,7 +702,9 @@ class Tracker(BaseTracker):
             detections,
             active_tracks,
             ids,
-            tr_ids):
+            tr_ids,
+            w_r,
+            w_m):
         # assigned contains all new detections that have been assigned
         assigned = list()
         act_thresh = 1000 if self.nan_first else self.act_reid_thresh
@@ -726,7 +728,7 @@ class Tracker(BaseTracker):
                 if self.tracker_cfg['active_proximity']:
                     if not self.proximity[r, c]:
                         continue
-                
+
                 # generate error event if debug
                 if self.tracks[ids[c]].gt_id != detections[r]['gt_id'] \
                   and self.debug:
