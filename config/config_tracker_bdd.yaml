@@ -1,0 +1,120 @@
+dataset:
+  mot_dir: "/storage/slurm/seidensc/datasets/BDD100/bdd100k/mot_files_gt" # mot17_test_FRCNN
+  det_dir: "/storage/slurm/seidensc/datasets/BDD100/bdd100k-models/det/mot_files"
+  det_file: "bdd100k.txt" #"tracktor_prepr_det.txt" #"center_track.txt" #"qdtrack.txt" # "CenterTrack.txt" #"CenterTrackPub.txt" #"CSTrack.txt" #"FairMOT.txt" #"JDE.txt" #"TraDeS.txt" #"TransTrack.txt"  #"tmoh.txt" #
+  detector: ""
+  splits: "bdd100k" #"mot17_split_1" #"mot17_split_2" #"mot17_split_3" #"mot17_train_test"
+  validation_set: 0
+  validation_set_gt: 0
+  half_train_set_gt: 0
+  gt_assign_min_iou: 0.5
+  prepro_again: 1
+  save_oracle: 1
+  gt_training_min_vis: 0
+  drop_unassigned: 0
+  sz_crop: [384, 128] #[256, 128]
+
+reid_net:
+  mode: 'hyper_search'
+  output: 'plain'
+  trained_on:
+    name: 'Market'
+    num_classes: 2820 #751
+  encoder_params:
+    pretrained_path: 'ReID/market_models/0.8518408551068883resnet50_Market.pth'
+    # Model M: 'ReID/market_models/0.8518408551068883resnet50_Market.pth'
+    # Split 3: 'ReID/models/MOT_models/same_epochs_for_decay/0.8947368421052632resnet50_MOT17.pth'
+    # Split 2: 'ReID/models/MOT_models/same_epochs_for_decay/0.9523809523809523resnet50_MOT17.pth'
+    # SPlit 1: 'ReID/models/MOT_models/same_epochs_for_decay/0.9203539823008849resnet50_MOT17.pth'
+    net_type: "resnet50" #"resnet50_analysis" #"resnet50_attention" #"resnet50" #"det_bb" #"batch_drop_block" #"query_guided" "resnet_attention"
+    add_distractors: 0
+    neck: 0
+    red: 4
+    pool: 'max'
+    last_stride: 0
+    final_drop: 0 #0.5
+    stoch_depth: 1 #0.8
+    weight_norm: 0
+    bn_inception:
+      embed: 0
+      sz_embedding: 512
+
+tracker:
+  kalman: 0
+  visualize: 0
+  store_dist: 0
+  save_embeddings_by_id: 0
+  debug: 0
+  use_bism: 0
+  pad_imgs: 0
+  nan_first: 0
+  scale_thresh_ioa: 0
+  use_blur: 0
+  assign_separately: 0
+  mode: "eval" #"hyper_search" #"eval" 
+  random_patches_several_frames: 0
+  several_frames: 0
+  random_patches: 0
+  random_patches_first: 0
+  running_mean_seq: 0
+  running_mean_seq_reset: 0
+  first_batch: 0
+  first_batch_reset: 0
+  eval_bb: 0
+  get_reid_performance: 0
+  oracle: 0
+  #ResNet 92....: 0.675, 0.3, 63 mean
+  #Torchreid: 0.6814211405013855, 0.14258016074055002, 90, mode
+  #ResNet: 0.40925543677573695, 0.31084457476623506, 27, median
+  #ResNet Neck: 0.18498964692794959, 0.05, 83, mode
+  #ResNet Dist Neck: 0.098, 0.074, 62, mode
+  #Detection Backbone: 0.3006055694824037, 0.3322236235805963, 77, mode
+  #ResNet + GNN (not batchwise rank): 0.5651008171629721, 0.5035112091729865, 59, median
+  #Market model: 0.75/0.7 0.54/0.375, median 63 (non eval / eval)
+  act_reid_thresh: 0.7 #0.71 #0.67 #0.675 #0.7 #0.665 #0.75 #0.7 
+  inact_reid_thresh: 0.7000001 #0.75 #0.73 #0.74 #0.75 #0.72 #0.54 #0.375  # 'act_reid_thresh': 0.9642701307721346, 'inact_reid_thresh': 0.7423529287840127
+  inact_thresh: 10000000
+  output_dir: 'out' 
+  avg_act:
+    do: 0
+    num: 0.95 #'uniform_2' #60 #10 #4 #20 #'all'
+    proxy: 'min_ioa' #'mv_avg' #'min_ioa' #'frames_gnn' #'frames_gnn' #'frames_gnn' #'mode'
+  avg_inact: 
+    do: 1
+    num: 2 #'uniform_2' #'mean' #'uniform_4' #10 #4 #20 #'all'  # each_sample: 1=min, 2=avg, 3=max, 4=0.5*(min+max)
+    proxy: 'each_sample' #'frames_gnn' #'60' #'frames_gnn' #'frames_gnn' #'mode'
+  h_w_thresh: 1000000
+  length_thresh: 2
+  distance: 'cosine'
+  motion_config:
+    motion_compensation: 0
+    num_iter_mc: 100
+    warp_mode: 'Euclidean'
+    termination_eps_mc: 0.00001
+    apply_motion_model: 0
+    center_only: 0
+    lambda_mot: 1/3
+    lambda_temp: 1/3
+    lambda_occ: 1/3
+    ioa_threshold: 'sum' #'real_dist_debug' #'MotionTemporalAndOcclusion_40_2_0.0' #'VelocityAndOcclusion' #'SeperateAssignment' #0.7
+    conf_threshold: 0.6
+    area_out_threshold: 1.0
+    num_occ_thresh: 100000
+    inter_threshold: 1.0
+    num_inter_thresh: 100000
+  active_proximity: 0
+  save_dataset: 0
+
+train:
+  num_epochs: 120
+  lr: 0.1
+  bs: 512
+  margin: 0.5
+  scale_loss: 100
+  path: 'weight_pred/dataset_weight_pred.json'
+  loss: 'l2'
+  input_dim: 5
+  weight: 10
+  wd: 0
+  optimizer: 'sgd'
+  load: 'weight_pred/weight_pred/0.50.1100l250sgdcheckpoint.tar' #'weight_pred/0.50.1100l2_weighted50sgdcheckpoint.tar' #'weight_pred/0.50.001100l250sgdcheckpoint.tar'
