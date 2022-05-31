@@ -3,7 +3,7 @@ dataset:
   det_dir: "/storage/slurm/seidensc/datasets/MOT/MOT17Labels"
   det_file: "qdtrack.txt" #"tracktor_prepr_det.txt" #"center_track.txt" #"qdtrack.txt" # "CenterTrack.txt" #"CenterTrackPub.txt" #"CSTrack.txt" #"FairMOT.txt" #"JDE.txt" #"TraDeS.txt" #"TransTrack.txt"  #"tmoh.txt" #
   detector: "FRCNN"
-  splits: "mot17_train_test" #"mot17_split_1_test" #
+  splits: "mot17_train_test" #"mot17_split_1" #"mot17_split_2" #"mot17_split_3" #"mot17_train_test"
   validation_set: 0
   validation_set_gt: 1
   half_train_set_gt: 0
@@ -22,23 +22,10 @@ reid_net:
     num_classes: 2820 #751
   encoder_params:
     pretrained_path: 'ReID/market_models/0.8518408551068883resnet50_Market.pth'
-    # 'ReID/0.9380530973451328resnet50_MOT17.pth', 'ReID/0.9285714285714286resnet50_MOT17.pth' , 'ReID/0.8859649122807017resnet50_MOT17.pth'
-    #'ReID/0.9073634204275535resnet50_Market.pth' #'ReID/0.9020190023752969resnet50_Market.pth' #'ReID/0.899643705463183resnet50_Market.pth' #'ReID/0.8364014251781473resnet50_Market.pth' #'ReID/0.8518408551068883resnet50_Market.pth'
-    #All Self-loops: 'ReID/0.6547426725132702resnet50_Market.pth'
-    #All Max CE loss new: 'ReID/0.7237479806138933resnet50_Market.pth'
-    #All Max CE loss: '../gnn_based_reid/storage/search_results_net/all_experiemnts/0.9094850426321114resnet50_Market.pth'
-    #Transformer model: 'weights/0.9233103714051737resnet50_Market.pth' 
-    #ReID + triplet + neck + dist 'ReID/models/0.7779097387173397neck_resnet50_Market.pth' 
-    #ReID + triplet + dist 'ReID/models/0.7586104513064132resnet50_Market.pth' 
-    #ReID + neck + dist 'ReID/models/0.8966745843230404neck_resnet50_Market.pth' 
-    #ResNet plain + dist:'ReID/models/0.8105700712589073resnet50_Market.pth'
-    #ResNet neck: 'ReID/models/0.879750593824228neck_resnet50_Market.pth'
-    #ResNet plain: "ReID/models/0.8634204275534442resnet50_Market.pth"
-    #ResNet + neck + spatial attention (train): "ReID/models/0.9046912114014252neck_resnet50_Market.pth"
-    #ResNet + neck + spatial attention: "ReID/models/0.9011282660332541neck_resnet50_Market.pth"
-    #ResNet + neck + spatial attention (batchwise): "ReID/models/0.9046912114014252neck_resnet50_Market.pth"
-    #ResNet + spatial attention: 'ReID/models/0.859060402684563neck_resnet50_Market.pth' 
-    #ResNet + statial attention w self-att: 'ReID/models/0.8422818791946308neck_resnet50_Market.pth' 
+    # Model M: 'ReID/market_models/0.8518408551068883resnet50_Market.pth'
+    # Split 3: 'ReID/models/MOT_models/same_epochs_for_decay/0.8947368421052632resnet50_MOT17.pth'
+    # Split 2: 'ReID/models/MOT_models/same_epochs_for_decay/0.9523809523809523resnet50_MOT17.pth'
+    # SPlit 1: 'ReID/models/MOT_models/same_epochs_for_decay/0.9203539823008849resnet50_MOT17.pth'
     net_type: "resnet50" #"resnet50_analysis" #"resnet50_attention" #"resnet50" #"det_bb" #"batch_drop_block" #"query_guided" "resnet_attention"
     add_distractors: 0
     neck: 0
@@ -55,7 +42,7 @@ reid_net:
 tracker:
   kalman: 0
   visualize: 0
-  store_dist: 1
+  store_dist: 0
   save_embeddings_by_id: 0
   debug: 0
   use_bism: 0
@@ -86,7 +73,7 @@ tracker:
   #Market model: 0.75/0.7 0.54/0.375, median 63 (non eval / eval)
   act_reid_thresh: 0.7 #0.71 #0.67 #0.675 #0.7 #0.665 #0.75 #0.7 
   inact_reid_thresh: 0.75 #0.75 #0.73 #0.74 #0.75 #0.72 #0.54 #0.375  # 'act_reid_thresh': 0.9642701307721346, 'inact_reid_thresh': 0.7423529287840127
-  inact_thresh: 1000000
+  inact_thresh: 10000000
   output_dir: 'out' 
   avg_act:
     do: 0
@@ -109,7 +96,7 @@ tracker:
     lambda_mot: 1/3
     lambda_temp: 1/3
     lambda_occ: 1/3
-    ioa_threshold: 'penalty' #'MotionTemporalAndOcclusion_40_2_0.0' #'VelocityAndOcclusion' #'SeperateAssignment' #0.7
+    ioa_threshold: 'sum' #'real_dist_debug' #'MotionTemporalAndOcclusion_40_2_0.0' #'VelocityAndOcclusion' #'SeperateAssignment' #0.7
     conf_threshold: 0.6
     area_out_threshold: 1.0
     num_occ_thresh: 100000

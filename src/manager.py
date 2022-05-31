@@ -17,11 +17,65 @@ import torchreid
 from src.eval_fairmot import Evaluator
 from src.eval_mpn_track import get_results, get_summary
 from src.eval_track_eval import evaluate_track_eval
+from src.eval_track_eval_bdd import evaluate_track_eval_bdd
 import torch
 import torch.nn as nn
 import torch.optim as optim
 from torch.utils.tensorboard import SummaryWriter
+import pandas as pd
+import json
 
+classes = [
+    'pedestrian',
+    'rider',
+    'car',
+    'truck',
+    'bus',
+    'train',
+    'motorcycle',
+    'bicycle',
+    'traffic light',
+    'traffic sign',
+    'other vehicle',
+    'trailer',
+    'other person']
+
+classes_for_eval = {
+    'pedestrian': 1,
+    'rider': 2,
+    # 'other person': 3,
+    'car': 4,
+    'bus': 5,
+    'truck': 6,
+    'train': 7,
+    # 'trailer': 8,
+    # 'other vehicle': 9,
+    'motorcycle': 10,
+    'bicycle': 11}
+
+col_names=[
+        'frame',
+        'id',
+        'bb_left',
+        'bb_top',
+        'bb_width',
+        'bb_height',
+        'conf',
+        '?',
+        'label',
+        'vis']
+
+col_names_short =[
+        'frame',
+        'id',
+        'bb_left',
+        'bb_top',
+        'bb_width',
+        'bb_height',
+        'conf',
+        # '?',
+        'label',
+        'vis']
 
 frames = {'JDE': [299, 524, 418, 262, 326, 449, 368],
           'CSTrack': [298, 523, 417, 261, 325, 448, 368],
@@ -211,12 +265,10 @@ class Manager():
         os.makedirs('weight_pred', exist_ok=True)
 
     def _evaluate(self, mode='val', first=False, log=True):
-        print(log)
         names = list()
         corresponding_gt = OrderedDict()
 
         # get tracking files
-        print(self.loaders)
         for seq in self.loaders[mode]:
             # first = feed sequence data through backbon and update statistics
             # before tracking
@@ -224,17 +276,21 @@ class Manager():
                 self.reset_for_first(seq)
 
             # get gt bbs corresponding to detections for oracle evaluations
-            if self.dataset_cfg['splits'] != 'mot17_test' and self.dataset_cfg['splits'] != 'mot20_test':
+            if self.dataset_cfg['splits'] != 'mot17_test' and self.dataset_cfg['splits'] != 'mot20_test' and 'bdd' not in self.dataset_cfg['splits']:
                 self.get_corresponding_gt(seq, corresponding_gt)
 
             self.tracker.encoder = self.encoder
             self.tracker.track(seq[0], log=log)
+            
             names.append(seq[0].name)
 
         # print interaction and occlusion stats
         self.print_interaction_occlusion_stats()
 
         # manually set experiment if already generated bbs
+        # self.tracker.experiment = 'qdtrackBDD_out_test'
+        # self.tracker.experiment = 'qdtrack_0.851840_evalBB:0_each_sample2:0.7:last_frame:0.75MM:1sum0.30.30.3InactPat:10000000ConfThresh:-10.0'
+        # self.tracker.experiment = "bytetrack_train_MOT20_0.851840_evalBB:0_each_sample2:0.7:last_frame:0.65MM:1sum0.30.30.3InactPat:1000000_clipped" #'ByteTrackMOT17weightsMOT20eval'
         # self.tracker.experiment = osp.join(
         #     'OtherTrackersOrig',
         #     # 'OtherTrackersOrigMOT20',
@@ -242,19 +298,23 @@ class Manager():
         if log:
             logger.info(self.tracker.experiment)
 
+        mota, idf1 = 0, 0
         # EVALUATION FAIRMOT
-        self.eval_fair_mot(names)
+        # self.eval_fair_mot(names)
 
         # EVALUATION FROM MPNTRACK
         # self.eval_mpn_track(names, corresponding_gt)
 
         # EVALUATION TRACKEVAL
-        output_res, _ = self.eval_track_eval(log)
-        mota = output_res['MotChallenge2DBox'][self.tracker.experiment][
-            'COMBINED_SEQ']['pedestrian']['CLEAR']['MOTA']
-        idf1 = output_res['MotChallenge2DBox'][self.tracker.experiment][
-            'COMBINED_SEQ']['pedestrian']['Identity']['IDF1']
-
+        if 'bdd' in self.dataset_cfg['mot_dir']:
+            output_res, _ = self.eval_track_eval_bdd(log)
+        else:
+            output_res, _ = self.eval_track_eval(log)
+            mota = output_res['MotChallenge2DBox'][self.tracker.experiment][
+                'COMBINED_SEQ']['pedestrian']['CLEAR']['MOTA']
+            idf1 = output_res['MotChallenge2DBox'][self.tracker.experiment][
+                'COMBINED_SEQ']['pedestrian']['Identity']['IDF1']
+        
         return mota, idf1
 
     def _get_models(self):
@@ -328,8 +388,6 @@ class Manager():
                     num_workers=0)
 
                 loaders[mode] = dl
-
-
 
         return loaders
 
@@ -432,3 +490,70 @@ class Manager():
         )
 
         return output_res, output_msg
+
+    def eval_track_eval_bdd(self, log=True):
+        self.MOT2BDD()
+        output_res, output_msg = evaluate_track_eval_bdd(
+            dir=self.dir,
+            tracker=self.tracker,
+            dataset_cfg=self.dataset_cfg,
+            log=log
+        )
+
+        return output_res, output_msg
+
+    def MOT2BDD(self, oracle_files=False):
+        files = os.listdir(os.path.join('out', self.tracker.experiment))
+        os.makedirs(os.path.join('out', self.tracker.experiment + '_orig'), exist_ok=True)
+        for seq in files:
+            if seq[-4:] == 'json':
+                continue
+            if oracle_files:
+                if 'qdtrack' not in self.tracker.experiment:
+                    seq_df = pd.read_csv(os.path.join('out', self.tracker.experiment, seq, 'bdd100k.txt'), names=col_names_short, index_col=False)
+                    def make_frame(i):
+                        return int(i.split('-')[-1])
+                    seq_df['frame'] = seq_df['frame'].apply(make_frame)
+                else:
+                    seq_df = pd.read_csv(os.path.join('out', self.tracker.experiment, seq, 'bdd100k.txt'), names=col_names, index_col=False)
+            else:
+                seq_df = pd.read_csv(os.path.join('out', self.tracker.experiment, seq), names=col_names, index_col=False)
+
+            if 'qdtrack' not in self.tracker.experiment and oracle_files:
+                seq_df = seq_df[seq_df['conf'] > 0.4] 
+
+            det_list = list()
+
+            for frame in seq_df['frame'].unique():
+                frame_dict = dict()
+                frame_df = seq_df[seq_df['frame'] == frame]
+                frame_dict['name'] = seq + "-" + f"{frame:07d}.jpg"
+                labels_list = list()
+                for idx, row in frame_df.iterrows():
+                    labels_dict = dict()
+                    labels_dict['id'] = row['id']
+                    labels_dict['category'] = classes[int(row['label'])]
+                    if labels_dict['category'] not in classes_for_eval.keys():
+                        continue
+                    labels_dict['box2d'] = {
+                        'x1': row['bb_left'],
+                        'y1': row['bb_top'],
+                        'x2': row['bb_left'] + row['bb_width'],
+                        'y2': row['bb_top'] + row['bb_height']
+                    }
+                    labels_list.append(labels_dict)
+
+                frame_dict['labels'] = labels_list
+                det_list.append(frame_dict)
+
+            with open(os.path.join('out', self.tracker.experiment, seq + '.json'), 'w') as f:
+                json.dump(det_list, f)
+
+            if oracle_files:
+                import shutil
+                os.rename(os.path.join('out', self.tracker.experiment, seq), os.path.join('out', self.tracker.experiment + '_orig', seq))
+            else:
+                os.rename(os.path.join('out', self.tracker.experiment, seq), os.path.join('out', self.tracker.experiment + '_orig', seq))
+            
+
+

@@ -357,7 +357,7 @@ def bbox_overlaps(boxes, query_boxes):
 
 
 def is_moving(seq, log=False):
-    if seq.split('-')[1] in ['13', '11', '10', '05', '14', '12', '07', '06']:
+    if seq.split('-')[1] in ['13', '11', '10', '05', '14', '12', '07', '06'] or "MOT" not in seq:
         if log:
             print('Seqence is moving {}'.format(seq))
         return True
@@ -400,7 +400,7 @@ def tlrb_to_xyah(tlrb):
 
 
 class Track():
-    def __init__(self, track_id, bbox, feats, im_index, gt_id, vis, ioa, ioa_nf, area_out, num_occ, num_inter, conf, frame, area, kalman=False, kalman_filter=None):
+    def __init__(self, track_id, bbox, feats, im_index, gt_id, vis, ioa, ioa_nf, area_out, num_occ, num_inter, conf, frame, area, label, kalman=False, kalman_filter=None):
         self.kalman = kalman
         self.xyah = tlrb_to_xyah(copy.deepcopy(bbox))
         if self.kalman:
@@ -465,11 +465,15 @@ class Track():
         self.conf = conf
 
         self.past_vs = list()
+
+        # labels of detections
+        self.label = list()
+        self.label.append(label)
     
     def __len__(self):
         return len(self.last_pos)
 
-    def add_detection(self, bbox, feats, im_index, gt_id, vis, ioa, ioa_nf, area_out, num_occ, num_inter, conf, frame, area):
+    def add_detection(self, bbox, feats, im_index, gt_id, vis, ioa, ioa_nf, area_out, num_occ, num_inter, conf, frame, area, label):
         # update all lists / states
         self.pos = bbox
         self.last_pos.append(bbox)
@@ -500,6 +504,7 @@ class Track():
 
         self.conf = conf
         self.past_frames.append(frame)
+        self.label.append(label)
         
         if self.kalman:
             self.mean, self.covariance = self.kalman_filter.update(

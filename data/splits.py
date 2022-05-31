@@ -1,3 +1,4 @@
+import os
 from collections import defaultdict
 _SPLITS = defaultdict(dict)
 
@@ -10,8 +11,8 @@ dets = ('DPM', 'FRCNN', 'SDP')
 train_seq_nums=  (2, 4, 5, 9, 10, 11, 13)
 _SPLITS['mot17_train']['train'] = {'seq': [f'MOT17-{seq_num:02}' for seq_num in train_seq_nums], 'dir': 'train'}
 _SPLITS['mot17_train_test']['test'] = {'seq': [f'MOT17-{seq_num:02}' for seq_num in train_seq_nums], 'dir': 'train'}
-_SPLITS['mot17_train_test']['train'] = {'seq': [f'MOT17-{seq_num:02}' for seq_num in train_seq_nums], 'dir': 'train'}
-_SPLITS['mot17_train_test']['val'] = {'seq': [f'MOT17-{seq_num:02}' for seq_num in train_seq_nums], 'dir': 'train'}
+# _SPLITS['mot17_train_test']['train'] = {'seq': [f'MOT17-{seq_num:02}' for seq_num in train_seq_nums], 'dir': 'train'}
+# _SPLITS['mot17_train_test']['val'] = {'seq': [f'MOT17-{seq_num:02}' for seq_num in train_seq_nums], 'dir': 'train'}
 
 
 # Cross Validation splits
@@ -51,7 +52,15 @@ _SPLITS['mot17_test']['test'] = {'seq': [f'MOT17-{seq_num:02}' for seq_num in te
 
 #mot20 split
 train_seq_nums=  (1, 2, 3, 5)
+debug = [1]
 test_seq_nums = (4, 6, 7, 8)
 _SPLITS['mot20_train']['train'] = {'seq': [f'MOT20-{seq_num:02}' for seq_num in train_seq_nums], 'dir': 'train'}
+_SPLITS['mot20_train_debug']['test'] = {'seq': [f'MOT20-{seq_num:02}' for seq_num in debug], 'dir': 'train'}
 _SPLITS['mot20_train_test']['test'] = {'seq': [f'MOT20-{seq_num:02}' for seq_num in train_seq_nums], 'dir': 'train'}
 _SPLITS['mot20_test']['test'] = {'seq': [f'MOT20-{seq_num:02}' for seq_num in test_seq_nums], 'dir': 'test'}
+
+
+#bdd100k
+_SPLITS['bdd100k']['test'] = {'seq': os.listdir('/storage/slurm/seidensc/datasets/BDD100/bdd100k/images/track/val'), 'dir': 'val'}
+_SPLITS['bdd100k_debug']['test'] = {'seq': ['b23c9e00-b425de1b'], 'dir': 'val'}
+

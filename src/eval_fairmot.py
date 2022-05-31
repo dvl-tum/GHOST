@@ -114,6 +114,7 @@ class Evaluator(object):
 
     @staticmethod
     def is_consecutive(input_list):
+        print(len(input_list))
         return input_list[-1]-input_list[0] == len(input_list)-1
 
     @staticmethod
