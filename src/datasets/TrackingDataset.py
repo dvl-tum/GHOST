@@ -1,9 +1,11 @@
+from cProfile import label
 import os
 
 from numpy.core.fromnumeric import shape
 import torch
 from .MOTDataset import MOTDataset
 from .MOT17_parser import MOTLoader
+from .bdd100k_parser import BDDLoader
 import pandas as pd
 import numpy as np
 import PIL.Image as Image
@@ -45,7 +47,10 @@ class TrackingDataset(MOTDataset):
             if not self.preprocessed_exists or self.dataset_cfg['prepro_again']:
                 # load and preprocess clipped (to image size) and unclipped
                 # detections
-                loader = MOTLoader([seq], self.dataset_cfg, self.dir)
+                if 'bdd' in self.dataset_cfg['mot_dir']:
+                    loader = BDDLoader([seq], self.dataset_cfg, self.dir)
+                else:
+                    loader = MOTLoader([seq], self.dataset_cfg, self.dir)
                 exist_gt = loader.get_seqs()
                 dets = loader.dets
                 dets_unclipped = loader.dets_unclipped
@@ -58,7 +63,7 @@ class TrackingDataset(MOTDataset):
 
                 # save ground truth bbs and ground truth bbs corresponding to
                 # detecionts
-                if exist_gt:
+                if exist_gt and not 'bdd' in loader.mot_dir:
                     gt = loader.gt
                     corresponding_gt = loader.corresponding_gt
                     os.makedirs(self.preprocessed_dir, exist_ok=True)
@@ -270,8 +275,8 @@ class Sequence():
         img = self.to_tensor(Image.open(path).convert("RGB"))
         frame_size = (img.shape[1], img.shape[2])
         img_for_det = copy.deepcopy(img)
-        res, dets, tracktor_ids, ids, vis, areas_out, conf = \
-            list(), list(), list(), list(), list(), list(), list()
+        res, dets, tracktor_ids, ids, vis, areas_out, conf, label = \
+            list(), list(), list(), list(), list(), list(), list(), list()
 
         # generate random patches if BatchNorm stats are updated with those
         if self.random_patches:
@@ -309,13 +314,14 @@ class Sequence():
             ids.append(row['id'])
             vis.append(row['vis'])
             conf.append(row['conf'])
+            label.append(row['label'])
             areas_out.append(area_out)
 
         res = torch.stack(res, 0)
         res = res.to(self.device)
 
         return res, dets, tracktor_ids, ids, vis, random_patches, img_for_det.to(
-            self.device), frame_size, areas_out, conf
+            self.device), frame_size, areas_out, conf, label
 
     def __iter__(self):
         self.frames = self.dets['frame'].unique()
@@ -331,7 +337,7 @@ class Sequence():
 
             assert len(dets_frame['frame_path'].unique()) == 1
 
-            img, dets_f, tracktor_ids, ids, vis, random_patches, img_for_det, frame_size, areas_out, conf = self._get_images(
+            img, dets_f, tracktor_ids, ids, vis, random_patches, img_for_det, frame_size, areas_out, conf, label = self._get_images(
                 dets_frame['frame_path'].unique()[0], dets_frame, dets_uncl_frame)
 
             if self.gt is not None:
@@ -351,6 +357,6 @@ class Sequence():
             self.i += 1
             return img, gt_f, dets_frame['frame_path'].unique(
             )[0], dets_f, tracktor_ids, ids, vis, random_patches, img_for_det,\
-                frame_size, areas_out, conf
+                frame_size, areas_out, conf, label
         else:
             raise StopIteration
