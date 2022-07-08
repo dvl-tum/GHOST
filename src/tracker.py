@@ -131,6 +131,12 @@ class Tracker(BaseTracker):
         # reset thresholds if every / tbd
         self.reset_threshs()
 
+        # store dist to json file
+        if self.store_dist:
+            path = os.path.join('distances', self.experiment + 'distances.json')
+            with open(path, 'w') as jf:
+                json.dump(self.distance_, jf)
+
     def _track(self, detections, i, frame=None):
         # just add all bbs to self.tracks / intitialize in the first frame
         if len(self.tracks) == 0:
@@ -277,7 +283,21 @@ class Tracker(BaseTracker):
                 dist_inact = None
             dist = [dist_act, dist_inact]
 
+        if self.store_dist:
+            self._add_dist(detections, curr_it, num_active, num_inactive, dist)
+
         return dist, row, col, ids
+
+    def _add_dist(self, detections, curr_it, num_active, num_inactive, dist):
+        gt_n = [v['gt_id'] for v in detections]
+        gt_t = list()
+        if num_active:
+            gt_t += [track.gt_id for track in self.tracks.values()]
+        if num_inactive:
+            gt_t += [track.gt_id for track in curr_it.values()]
+
+        self.add_dist_to_storage(
+            gt_n, gt_t, num_active, num_inactive, dist)
 
     def get_hungarian_with_proxy(self, detections, sep=False):
         # instantiate
@@ -376,6 +396,9 @@ class Tracker(BaseTracker):
             else:
                 dist_inact = None
             dist = [dist_act, dist_inact]
+
+        if self.store_dist:
+            self._add_dist(detections, curr_it, num_active, num_inactive, dist)
 
         return dist, row, col, ids
 

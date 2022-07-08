@@ -1,27 +1,14 @@
-import ReID
 from ReID import net
 import os.path as osp
-
 import os
 from data.splits import _SPLITS
-from src.datasets.TrainDatasetWeightPred import TrainDatasetWeightPred
-from src.tracking_utils import TripletLoss, WeightPredictor, collate, get_precision
 from .tracker import Tracker
 from src.datasets.TrackingDataset import TrackingDataset
 import logging
-import motmetrics as mm
 from collections import OrderedDict
-from pathlib import Path
-from torchreid import models
 import torchreid
-from src.eval_fairmot import Evaluator
-from src.eval_mpn_track import get_results, get_summary
 from src.eval_track_eval import evaluate_track_eval
 from src.eval_track_eval_bdd import evaluate_track_eval_bdd
-import torch
-import torch.nn as nn
-import torch.optim as optim
-from torch.utils.tensorboard import SummaryWriter
 import pandas as pd
 import json
 
@@ -198,18 +185,8 @@ class Manager():
                     dev=self.device)
                 loaders[mode] = dataset
             elif mode == 'train':
-                dataset = TrainDatasetWeightPred(
-                    path=self.cfg['train']['path']
-                )
-                dl = torch.utils.data.DataLoader(
-                    dataset,
-                    batch_size=self.cfg['train']['bs'],
-                    shuffle=True,
-                    sampler=None,
-                    collate_fn=collate,
-                    num_workers=0)
-
-                loaders[mode] = dl
+                print('currently no train mode implemented :)')
+                pass
 
         return loaders
 

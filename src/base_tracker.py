@@ -89,6 +89,10 @@ class BaseTracker():
         if self.store_visualization:
             self.init_vis()
 
+        self.store_dist = self.tracker_cfg['store_dist']
+        if self.store_dist:
+            self.init_dist()
+
     def dist(self, x, y):
         if self.tracker_cfg['distance'] == 'cosine':
             return 1 - F.cosine_similarity(x[:, :, None], y.t()[None, :, :])
@@ -467,6 +471,15 @@ class BaseTracker():
         self.col = 0
         self.round2 = lambda x: str(round(100 * x) / 100)
 
+    def init_dist(self):
+        self.distance_[self.seq]['inact_dist_same'] = list()
+        self.distance_[self.seq]['act_dist_same'] = list()
+        self.distance_[self.seq]['inact_dist_diff'] = list()
+        self.distance_[self.seq]['act_dist_diff'] = list()
+        self.distance_[self.seq]['active_inactive'] = list()
+        self.distance_[self.seq]['same_class_mat'] = list()
+        self.distance_[self.seq]['dist'] = list()
+        
     @staticmethod
     def plot_single_image(imgs, name):
         import matplotlib.pyplot as plt
@@ -592,3 +605,52 @@ class BaseTracker():
             dist = [dist_emb, dist_iou]
 
         return dist
+
+    def add_dist_to_storage(self, gt_n, gt_t, num_active, num_inactive, dist):
+        # remove unassigned bbs
+        keep_rows = gt_n != -1
+        keep_rows = keep_rows.squeeze()
+        dist = dist[keep_rows, :]
+        keep_cols = gt_t != -1
+        keep_cols = keep_cols.squeeze()
+
+        # generate same class matrix        
+        gt_n = np.atleast_2d(np.array(gt_n))
+        gt_t = np.atleast_2d(np.array(gt_t))
+        same = gt_t == gt_n.T
+        same = same[keep_rows, :]
+
+        # generate active matrix
+        act = np.atleast_2d(
+            np.array(
+                [1] *
+                num_active +
+                [0] *
+                num_inactive)) == np.atleast_2d(
+            np.ones(
+                dist.shape[0])).T
+        act = act[keep_rows, :]
+
+        # if there are rows left
+        if keep_rows.tolist():
+            # remove unnessecary 3rd dim
+            act = act[0] if len(act.shape) == 3 else act
+            dist = dist[0] if len(dist.shape) == 3 else dist
+            same = same[0] if len(same.shape) == 3 else same
+
+            # remove tracks with unassigned class
+            act = act[:, keep_cols]
+            dist = dist[:, keep_cols]
+            same = same[:, keep_cols]
+
+        self.distance_[self.seq]['inact_dist_same'].extend(
+            dist[same & ~act].tolist())
+        self.distance_[self.seq]['act_dist_same'].extend(
+            dist[same & act].tolist())
+        self.distance_[self.seq]['inact_dist_diff'].extend(
+            dist[~same & ~act].tolist())
+        self.distance_[self.seq]['act_dist_diff'].extend(
+            dist[~same & act].tolist())
+        self.distance_[self.seq]['active_inactive'].append(act.tolist())
+        self.distance_[self.seq]['same_class_mat'].append(same.tolist())
+        self.distance_[self.seq]['dist'].append(dist.tolist())
