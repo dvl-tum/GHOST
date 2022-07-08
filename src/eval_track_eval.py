@@ -53,49 +53,6 @@ def setup_trackeval():
 
     config = {**default_eval_config, **default_dataset_config,
               **default_metrics_config}  # Merge default configs
-    '''print('now here')
-    # generate config argument parser
-    parser = argparse.ArgumentParser()
-    args = dict()
-    for setting in config.keys():
-        print(setting)
-        args[setting] = None
-        if isinstance(
-                config[setting],
-                list) or isinstance(
-                config[setting],
-                type(None)):
-            parser.add_argument("--" + setting, nargs='+')
-        else:
-            parser.add_argument("--" + setting)
-
-    # update config dict with args from argument parser
-    print('jup')
-    print(parser)
-    # args = parser.parse_args().__dict__
-    print('jup2')
-    print(args)
-    for setting in args.keys():
-        if args[setting] is not None:
-            if isinstance(config[setting], type(True)):
-                if args[setting] == 'True':
-                    x = True
-                elif args[setting] == 'False':
-                    x = False
-                else:
-                    raise Exception(
-                        'Command line parameter ' +
-                        setting +
-                        'must be True or False')
-            elif isinstance(config[setting], type(1)):
-                x = int(args[setting])
-            elif isinstance(args[setting], type(None)):
-                x = None
-            elif setting == 'SEQ_INFO':
-                x = dict(zip(args[setting], [None] * len(args[setting])))
-            else:
-                x = args[setting]
-            config[setting] = x'''
 
     # get updated config dicts
     eval_config = {
