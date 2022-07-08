@@ -91,7 +91,7 @@ tracker:
     num_iter_mc: 100
     warp_mode: 'Euclidean'
     termination_eps_mc: 0.00001
-    apply_motion_model: 0
+    apply_motion_model: 1
     center_only: 0
     lambda_mot: 1/3
     lambda_temp: 1/3
