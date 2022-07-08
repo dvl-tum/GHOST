@@ -64,3 +64,11 @@ _SPLITS['mot20_test']['test'] = {'seq': [f'MOT20-{seq_num:02}' for seq_num in te
 _SPLITS['bdd100k']['test'] = {'seq': os.listdir('/storage/slurm/seidensc/datasets/BDD100/bdd100k/images/track/val'), 'dir': 'val'}
 _SPLITS['bdd100k_debug']['test'] = {'seq': ['b23c9e00-b425de1b'], 'dir': 'val'}
 
+
+#DANCE
+_SPLITS['dance']['train'] = {'seq': os.listdir('/storage/slurm/seidensc/datasets/DanceTrack/train'), 'dir': 'train'}
+_SPLITS['dance']['val'] = {'seq': os.listdir('/storage/slurm/seidensc/datasets/DanceTrack/val'), 'dir': 'val'}
+_SPLITS['dance']['test'] = {'seq': os.listdir('/storage/slurm/seidensc/datasets/DanceTrack/test'), 'dir': 'test'}
+
+_SPLITS['dance_val']['test'] = {'seq': os.listdir('/storage/slurm/seidensc/datasets/DanceTrack/val'), 'dir': 'val'}
+_SPLITS['dance_val_debug']['test'] = {'seq':['dancetrack0004'], 'dir': 'val'}

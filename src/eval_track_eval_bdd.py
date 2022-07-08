@@ -56,7 +56,7 @@ def setup_trackeval():
     config = {**default_eval_config, **default_dataset_config,
               **default_metrics_config}  # Merge default configs
 
-    # generate config argument parser
+    '''# generate config argument parser
     parser = argparse.ArgumentParser()
     for setting in config.keys():
         if isinstance(
@@ -90,7 +90,7 @@ def setup_trackeval():
                 x = dict(zip(args[setting], [None] * len(args[setting])))
             else:
                 x = args[setting]
-            config[setting] = x
+            config[setting] = x'''
     
     # get updated config dicts
     eval_config = {
@@ -229,6 +229,10 @@ def just_evaluate_track_eval_bdd(dir='val', log=True):
     experiment_list = [
         'bdd100k_0.851840_evalBB:0_each_sample2:0.850000005:last_frame:0.8MM:1sum0.30.30.3InactPat:10000000ConfThresh:-10'
     ]
+    
+    experiment_list = [
+            'qdtrack_dets_0.851840_evalBB:0_each_sample2:0.7:last_frame:0.8MM:1sum0.30.30.3InactPat:10000000ConfThresh:-10.0'
+            ]
 
     seq_list = None
     

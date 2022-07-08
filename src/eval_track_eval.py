@@ -53,10 +53,13 @@ def setup_trackeval():
 
     config = {**default_eval_config, **default_dataset_config,
               **default_metrics_config}  # Merge default configs
-
+    '''print('now here')
     # generate config argument parser
     parser = argparse.ArgumentParser()
+    args = dict()
     for setting in config.keys():
+        print(setting)
+        args[setting] = None
         if isinstance(
                 config[setting],
                 list) or isinstance(
@@ -67,7 +70,11 @@ def setup_trackeval():
             parser.add_argument("--" + setting)
 
     # update config dict with args from argument parser
-    args = parser.parse_args().__dict__
+    print('jup')
+    print(parser)
+    # args = parser.parse_args().__dict__
+    print('jup2')
+    print(args)
     for setting in args.keys():
         if args[setting] is not None:
             if isinstance(config[setting], type(True)):
@@ -88,8 +95,8 @@ def setup_trackeval():
                 x = dict(zip(args[setting], [None] * len(args[setting])))
             else:
                 x = args[setting]
-            config[setting] = x
-    
+            config[setting] = x'''
+
     # get updated config dicts
     eval_config = {
         k: v for k,
@@ -104,20 +111,30 @@ def setup_trackeval():
     return eval_config, dataset_config, metrics_config
 
 
-def evaluate_track_eval(dir, tracker, dataset_cfg, log=True):
+def evaluate_track_eval(dir, tracker, dataset_cfg, gt_path, log=True):
     eval_config, dataset_config, metrics_config = setup_trackeval()
-    gt_path = osp.join(dataset_cfg['mot_dir'], dir)
+
     dataset_config['GT_FOLDER'] = gt_path
     dataset_config['TRACKERS_FOLDER'] = 'out'
     dataset_config['TRACKERS_TO_EVAL'] = [tracker.experiment]
     dataset_config['OUTPUT_FOLDER'] = 'track_eval_output'
     dataset_config['PRINT_CONFIG'] = False
     eval_config['PRINT_CONFIG'] = False
-    dataset_config['SEQ_INFO'] = get_dict(dataset_cfg['mot_dir'], dataset_cfg['detector'])
+    if 'Dance' not in gt_path:
+        dataset_config['SEQ_INFO'] = get_dict(dataset_cfg['mot_dir'], dataset_cfg['detector'])
+    else:
+        if 'debug' in dataset_cfg['splits']:
+            dataset_config['SEQMAP_FILE'] = '/storage/slurm/seidensc/datasets/DanceTrack/val_seqmap_debug.txt'
+        else:
+            dataset_config['SEQMAP_FILE'] = '/storage/slurm/seidensc/datasets/DanceTrack/val_seqmap.txt'
+        dataset_config['SPLIT_TO_EVAL'] = 'val'
     dataset_config['SKIP_SPLIT_FOL'] = True
+
     dataset_config['TRACKER_SUB_FOLDER'] = ''
     eval_config['DISPLAY_LESS_PROGRESS'] = False
     eval_config['TIME_PROGRESS'] = False
+    eval_config['USE_PARALLEL'] = True
+    eval_config['NUM_PARALLEL_CORES'] = 8
     metrics_config['PRINT_CONFIG'] = False
 
     # Run code

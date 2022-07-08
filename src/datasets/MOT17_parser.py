@@ -114,10 +114,21 @@ class MOTLoader():
             self.dets['tracktor_id'] = self.dets['id']
 
             # add frame path
-            def add_frame_path(i):
+            def add_frame_path_MOT(i):
                 if type(i) == float:
                     i = int(i)
                 return osp.join(osp.join(img_dir, f"{i:06d}.jpg"))
+            
+            def add_frame_path_dance(i):
+                if type(i) == float:
+                    i = int(i)
+                return osp.join(osp.join(img_dir, f"{i:08d}.jpg"))
+            
+            if 'Dance' in self.mot_dir:
+                add_frame_path = add_frame_path_dance
+            else:
+                add_frame_path = add_frame_path_MOT
+
             self.dets['frame_path'] = self.dets['frame'].apply(add_frame_path)
 
     def get_seq_info(self, seq_file, gt_file, det_file):

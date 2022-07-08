@@ -40,7 +40,6 @@ class BaseTracker():
             output='plain',
             weight='No',
             data='tracktor_preprocessed_files.txt',
-            weight_pred=None,
             device='cpu',
             train_cfg=None):
 
@@ -51,20 +50,10 @@ class BaseTracker():
         else:
             self.kalman_filter = None
 
-        #self.overall_time = dict()
-
         self.log = True
         self.train_cfg = train_cfg
         self.device = device
         self.round1_float = lambda x: round(10 * x) / 10
-        self.hill = lambda x, y: x/(x+y)
-        self.hill_vis = lambda x, y: x/(x+y)
-
-        def sig(a, k=1, v_min=0, v_max=1, shift=0):
-            res = 1/(1+np.exp(-(a+shift)*k))
-            res = v_min + res * (v_max-v_min)
-            return res
-        self.sig = sig
 
         self.net_type = net_type
         self.encoder = encoder
@@ -96,34 +85,9 @@ class BaseTracker():
         if self.tracker_cfg['eval_bb']:
             self.encoder.eval()
 
-        self.distance_ = defaultdict(dict)
-        self.interaction = defaultdict(list)
-        self.occlusion = defaultdict(list)
-
-        self.store_dist = self.tracker_cfg['store_dist']
-
         self.store_visualization = self.tracker_cfg['visualize']
         if self.store_visualization:
             self.init_vis()
-
-        self.debug = self.tracker_cfg['debug']
-        if self.debug:
-            self.init_debug()
-
-        self.save_embeddings_by_id = self.tracker_cfg['save_embeddings_by_id']
-        if self.save_embeddings_by_id:
-            self.embeddings_by_id = dict()
-
-        self.vel_dict = defaultdict(list)
-
-        if self.motion_model_cfg['ioa_threshold'] == 'learned':
-            self.weight_pred = weight_pred
-
-        self.make_weight_pred_dataset = self.tracker_cfg['save_dataset']
-        if self.make_weight_pred_dataset:
-            self.weight_pred_dataset = dict()
-
-        self.emc_dict = defaultdict(list)
 
     def dist(self, x, y):
         if self.tracker_cfg['distance'] == 'cosine':
@@ -142,17 +106,8 @@ class BaseTracker():
             if self.net_type == 'resnet50_analysis':
                 feats = self.encoder(frame)
             else:
-                '''from datetime import datetime
-                now = datetime.now()'''
                 _, feats = self.encoder(frame, output_option=self.output)
-                '''then = datetime.now()
-                if 'features' not in self.overall_time.keys():
-                    self.overall_time['features'] = then-now
-                    self.overall_time['count'] = 1
-                else:
-                    self.overall_time['features'] += then-now
-                    self.overall_time['count'] += 1
-                print('reatures', then, now, then-now)'''
+
         return feats
 
     def make_results(self):
@@ -167,11 +122,6 @@ class BaseTracker():
         for k, v in all_tracks.items():
             if len(v) > self.tracker_cfg['length_thresh']:
                 tracks_new[k] = v
-        if self.log:
-            logger.info(
-                "Removed {} short tracks".format(
-                    len(all_tracks) -
-                    len(tracks_new)))
         return tracks_new
 
     def write_results(self, output_dir, seq_name):
@@ -244,9 +194,6 @@ class BaseTracker():
         if self.tracker_cfg['nan_first']:
             self.experiment += 'nanfirst:1'
 
-        if self.tracker_cfg['scale_thresh_ioa']:
-            self.experiment += 'IOAscale:1'
-
         if self.motion_model_cfg['motion_compensation']:
             self.experiment += 'MCOM:1' # Only Moving
 
@@ -264,15 +211,12 @@ class BaseTracker():
                     self.experiment += str(self.round1_float(self.strfrac2float(self.motion_model_cfg['lambda_mot'])))
                     self.experiment += str(self.round1_float(self.strfrac2float(self.motion_model_cfg['lambda_temp'])))
                     self.experiment += str(self.round1_float(self.strfrac2float(self.motion_model_cfg['lambda_occ'])))
-            
-        if self.tracker_cfg['active_proximity']:
-            self.experiment += 'ActProx:1'
 
         self.experiment = '_'.join([self.data[:-4],
                                     weight,
                                     'evalBB:' + str(self.tracker_cfg['eval_bb']),
                                     self.experiment])
-        
+
         self.experiment += 'InactPat:' + str(self.tracker_cfg['inact_thresh'])
         self.experiment += 'ConfThresh:' + str(self.tracker_cfg['thresh'])
 
@@ -382,39 +326,6 @@ class BaseTracker():
             self.encoder.eval()
             seq.random_patches = False
 
-    def inst_dist(self):
-        self.distance_[self.seq]['inact_dist_same'] = list()
-        self.distance_[self.seq]['act_dist_same'] = list()
-        self.distance_[self.seq]['inact_dist_diff'] = list()
-        self.distance_[self.seq]['act_dist_diff'] = list()
-        self.distance_[self.seq]['interaction_mat'] = list()
-        self.distance_[self.seq]['occlusion_mat'] = list()
-        self.distance_[self.seq]['active_inactive'] = list()
-        self.distance_[self.seq]['same_class_mat'] = list()
-        self.distance_[self.seq]['dist'] = list()
-        self.distance_[self.seq]['size'] = list()
-        self.distance_[self.seq]['iou_dist'] = list()
-        self.distance_[self.seq]['inactive_count'] = list()
-        self.distance_[self.seq]['iou_dist_diff'] = {
-            'same': defaultdict(list),
-            'diff': defaultdict(list)}
-
-        self.distance_[
-            self.seq]['visibility_count'] = {
-            -1: 0,
-            0: 0,
-            0.1: 0,
-            0.2: 0,
-            0.3: 0,
-            0.4: 0,
-            0.5: 0,
-            0.6: 0,
-            0.7: 0,
-            0.8: 0,
-            0.9: 0}
-        
-        self.distance_[self.seq]['prob_dict'] = dict()
-
     def setup_seq(self, seq=None, first=False, seq_name=None):
         if seq_name is None and "MOT" in seq:
             if len(seq.name.split('-')) > 2:
@@ -438,8 +349,6 @@ class BaseTracker():
         self.inactive_tracks = defaultdict(list)
         self.mv_avg = dict()
         self.id = 0
-        if self.store_dist:
-            self.inst_dist()
 
         # set backbone into evaluation mode
         if self.tracker_cfg['eval_bb'] and not first:
@@ -456,71 +365,11 @@ class BaseTracker():
         if self.log:
             logger.info("Frame rate: {}".format(self.frame_rate))
 
-        if self.save_embeddings_by_id:
-            self.embeddings_by_id[seq.name] = defaultdict(list)
-
-        if self.make_weight_pred_dataset:
-            self.weight_pred_dataset[seq.name] = defaultdict(dict)
-
     def reset_threshs(self):
         self.act_reid_thresh = 'every' if self.thresh_every else self.act_reid_thresh
         self.inact_reid_thresh = 'every' if self.thresh_every else self.inact_reid_thresh
         self.act_reid_thresh = 'tbd' if self.thresh_tbd else self.act_reid_thresh
         self.inact_reid_thresh = 'tbd' if self.thresh_tbd else self.inact_reid_thresh
-
-    def add_dist_to_storage(self, gt_n, gt_t, num_active, num_inactive, dist, height):
-        gt_n = np.atleast_2d(np.array(gt_n))
-        gt_t = np.atleast_2d(np.array(gt_t))
-
-        same_class = gt_t == gt_n.T
-        keep_rows = gt_n != -1
-        keep_rows = keep_rows.squeeze()
-        keep_cols = gt_t != -1
-        keep_cols = keep_cols.squeeze()
-        
-        act = np.atleast_2d(
-            np.array(
-                [1] *
-                num_active +
-                [0] *
-                num_inactive)) == np.atleast_2d(
-            np.ones(
-                dist.shape[0])).T
-
-        act = act[keep_rows, :]
-        dist = dist[keep_rows, :]
-        same_class = same_class[keep_rows, :]
-
-        if keep_rows.tolist() != False:
-            act = act[0] if len(act.shape) == 3 else act
-            dist = dist[0] if len(dist.shape) == 3 else dist
-            same_class = same_class[0] if len(same_class.shape) == 3 else same_class
-            act = act[:, keep_cols]
-            dist = dist[:, keep_cols]
-            same_class = same_class[:, keep_cols]
-
-        intersection = self.curr_interaction#[keep_rows, :]
-        intersection = intersection#[:, keep_cols]
-        occlusion = self.curr_occlusion#[keep_rows, :]
-        occlusion = occlusion#[:, keep_cols]
-
-        self.distance_[self.seq]['inact_dist_same'].extend(
-            dist[same_class & ~act].tolist())
-        self.distance_[self.seq]['act_dist_same'].extend(
-            dist[same_class & act].tolist())
-        self.distance_[self.seq]['inact_dist_diff'].extend(
-            dist[~same_class & ~act].tolist())
-        self.distance_[self.seq]['act_dist_diff'].extend(
-            dist[~same_class & act].tolist())
-        self.distance_[self.seq]['interaction_mat'].append(
-            intersection.tolist())
-        self.distance_[
-            self.seq]['occlusion_mat'].append(
-            occlusion.tolist())
-        self.distance_[self.seq]['size'].append(height)
-        self.distance_[self.seq]['active_inactive'].append(act.tolist())
-        self.distance_[self.seq]['same_class_mat'].append(same_class.tolist())
-        self.distance_[self.seq]['dist'].append(dist.tolist())
 
     def update_thresholds(self, dist, num_active, num_inactive):
         # update active threshold
@@ -586,7 +435,7 @@ class BaseTracker():
 
             # add text with id, ioa and visibility
             text = ', '.join(
-                [str(tr_id), str(d['gt_id']), self.round2(d['ioa']), self.round2(d['vis']), self.round2(d['conf'])])
+                [str(tr_id), str(d['gt_id'])])
             plt.text(
                 d['bbox'][0] - 15,
                 d['bbox'][1] + (d['bbox'][3] - d['bbox'][1]) / 2,
@@ -617,11 +466,6 @@ class BaseTracker():
         self.id_to_col = dict()
         self.col = 0
         self.round2 = lambda x: str(round(100 * x) / 100)
-
-    def init_debug(self):
-        self.errors = defaultdict(int)
-        self.event_dict = defaultdict(dict)
-        self.round1 = lambda x: str(round(10 * x) / 10)
 
     @staticmethod
     def plot_single_image(imgs, name):
@@ -655,7 +499,6 @@ class BaseTracker():
                     self.motion_model_cfg['warp_mode']], criteria, None, 15)
             warp_matrix = torch.from_numpy(warp_matrix)
             self.warp_matrix_nomr = np.linalg.norm(warp_matrix[:, -1])
-            self.emc_dict[self.seq_name].append(warp_matrix.tolist())
             if self.is_moving and self.motion_model_cfg['motion_compensation']:
                 for tracks in [self.tracks, self.inactive_tracks]:
                     for k, track in tracks.items():
@@ -681,15 +524,12 @@ class BaseTracker():
         else:
             track.pos = track.pos + track.last_v
 
-    def motion(self, approximate=True, only_vel=False):
+    def motion(self, approximate=True):
         # adapted from tracktor
         """Applies a simple linear motion model that considers the last n_steps steps."""
-        self.overall_velocity = list()
         height = list()
         for track in self.tracks.values():
             if len(track.last_pos) > 1:
-                '''from datetime import datetime
-                now = datetime.now()'''
                 last_pos = np.asarray(track.last_pos)
                 # avg velocity between each pair of consecutive positions in
                 # t.last_pos
@@ -715,55 +555,13 @@ class BaseTracker():
                         vs_c = [(get_center(p2) - get_center(p1))/t
                                     for p1, p2, t in zip(last_pos, last_pos[1:], dt)]
 
-                        # print(np.stack(vs).mean(axis=0)-np.stack(vs_).mean(axis=0))
-                '''then = datetime.now()
-                if 'only vel' not in self.overall_time.keys():
-                    self.overall_time['only vel'] = then-now
-                else:
-                    self.overall_time['only vel'] += then-now
+                track.update_v(np.stack(vs).mean(axis=0))
+                track.last_vc = np.stack(vs_c).mean(axis=0)
+                self.motion_step(track)                
 
-                print('motion only vel', then, now, then-now)'''
-
-                if not only_vel:
-                    track.update_v(np.stack(vs).mean(axis=0))
-                    track.last_vc = np.stack(vs_c).mean(axis=0)
-                    #now2 = datetime.now()
-                    self.motion_step(track)
-
-                    '''then = datetime.now()
-                    if 'only motion step' not in self.overall_time.keys():
-                        self.overall_time['only motion step'] = then-now2
-                    else:
-                        self.overall_time['only motion step'] += then-now2
-                    if 'steps count' not in self.overall_time.keys():
-                        self.overall_time['steps count'] = 1
-                    else:
-                        self.overall_time['steps count'] += 1
-                    if 'motion all' not in self.overall_time.keys():
-                        self.overall_time['motion all'] = then-now
-                    else:
-                        self.overall_time['motion all'] += then-now
-
-                    print('motion only step', then, now2, then-now2)
-                    print('motion all', then, now, then-now)'''
-
-                self.overall_velocity.append(np.linalg.norm(
-                    track.last_vc, ord=2))
-                
-
-        if not only_vel:
-            for track in self.inactive_tracks.values():
-                if len(track.last_pos) > 1:
-                    self.motion_step(track)
-        
-        # get mean velicoty by (vc/h)*frame_rate
-        if len(self.overall_velocity):
-            self.overall_velocity = (np.asarray(
-                self.overall_velocity)/np.asarray(height)).mean() \
-                    * self.frame_rate
-            self.vel_dict[self.seq].append(self.overall_velocity)
-        else:
-            self.overall_velocity = None
+        for track in self.inactive_tracks.values():
+            if len(track.last_pos) > 1:
+                self.motion_step(track)
 
     def get_motion_dist(self, detections, curr_it):
         act_pos = [track.pos for track in self.tracks.values()]
@@ -775,13 +573,7 @@ class BaseTracker():
         iou = 1 - iou
         return iou
 
-    def combine_motion_appearance(self, iou, dist, detections, num_active, num_inactive, inactive_counts, gt_n=None, gt_t=None, curr_it=None):
-        # occlusion
-        ioa = torch.tensor([d['ioa'] for d in detections])
-        ioa = ioa.repeat(dist.shape[1], 1).T.numpy()
-        # ioa_tr = torch.tensor([t.ioa for t in self.tracks.values()] + [t.ioa for t in curr_it.values()])
-        # ioa_tr = ioa_tr.repeat(dist.shape[0], 1).numpy()
-
+    def combine_motion_appearance(self, iou, dist):
         # init distances
         dist_emb = copy.deepcopy(dist)
         if type(iou) != np.ndarray:
@@ -799,34 +591,4 @@ class BaseTracker():
         elif self.motion_model_cfg['ioa_threshold'] == 'SeperateAssignment':
             dist = [dist_emb, dist_iou]
 
-        '''if self.make_weight_pred_dataset:
-            frame_info = {
-                'iou': dist_iou.tolist(),
-                'emb': dist_emb.tolist(),
-                'ioa': ioa.tolist(),
-                'vel': self.overall_velocity,
-                'act_counts': [0] * num_active + inactive_counts,
-                'gt_n': gt_n.tolist(),
-                'gt_t': gt_t.tolist()}
-            self.weight_pred_dataset[self.seq_name][self.frame_id] = frame_info'''
-
-        return dist, ioa
-
-    def active_proximity(self, dist, num_active, detections):
-        active_pos = np.asarray([track.pos for track in self.tracks.values()])
-        det_pos = np.asarray([t['bbox'] for t in detections])
-
-        center_active = get_center(active_pos)
-        center_active = np.atleast_2d(center_active.T)
-        center_det = get_center(det_pos)
-        center_det = np.atleast_2d(center_det.T)
-
-        center_dist = sklearn.metrics.pairwise_distances(
-                    center_det, center_active, metric='euclidean')
-        
-        center_dist = center_dist < 100
-
-        #dist[:, :num_active] = np.where(center_dist > 20, np.nan,  dist[:, :num_active])
-
-        return center_dist
-
+        return dist

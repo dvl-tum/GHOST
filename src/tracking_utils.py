@@ -10,66 +10,6 @@ from src.kalman import KalmanFilter
 from cython_bbox import bbox_overlaps as bbox_ious
 
 
-def add_ioa(tracks, seq, interaction=None, occlusion=None, frame_size=None):
-    curr_interaction, curr_occlusion = 0, 0
-    if len(tracks) > 0:
-        bbs = torch.from_numpy(np.vstack([tr['bbox'] for tr in tracks]))
-        # add dummy bbs for outside of frame bounding boxes
-        bbs, foot_pos = add_dummy_bb(bbs, frame_size)
-
-        inter, area, _, inter_bbs = _box_inter_area(bbs, bbs)
-        ioa = inter / np.atleast_2d(area).T
-        # ioa = ioa - np.eye(ioa.shape[0])
-        np.fill_diagonal(ioa, 0)
-
-        # not taking foot position into account --> ioa_nofoot
-        curr_interaction = copy.deepcopy(ioa)
-        curr_interaction = remove_intersection(curr_interaction, inter_bbs, foot_pos, bbs, area)
-
-        # get number of interactors
-        num_inter = copy.deepcopy(curr_interaction)
-        num_inter = np.where(num_inter > 0, 1, 0)
-        num_inter = np.sum(num_inter, axis=1)
-
-        # remove dummy bbs as not important for interaction
-        curr_interaction = curr_interaction[:-4, :-4]
-        ioa_nf = np.sum(curr_interaction, axis=1)
-        ioa_nf = np.round(ioa_nf*100)/100
-        ioa_nf = ioa_nf.tolist()
-        if interaction is not None:
-            interaction[seq] += ioa_nf
-
-        # taking foot position into account
-        bot = np.atleast_2d(foot_pos).T < np.atleast_2d(foot_pos)
-        ioa[~bot] = 0
-        ioa = remove_intersection(ioa, inter_bbs, foot_pos, bbs, area)
-
-        # remove rows of dummy bounding boxes
-        ioa = ioa[:-4, :]
-
-        # get number of occluders
-        num_occ = copy.deepcopy(ioa)
-        num_occ = np.where(num_occ > 0, 1, 0)
-        num_occ = np.sum(num_occ, axis=1)
-
-        curr_occlusion = ioa
-        ioa = np.sum(ioa, axis=1)
-        ioa = np.round(ioa*100)/100
-        ioa = ioa.tolist()
-        if occlusion is not None:
-            occlusion[seq] += ioa
-        
-        for i, s, ni, ns, t in zip(ioa, num_occ, ioa_nf, num_inter, tracks):
-            assert i <= 1, "ioa cannot be larger than 1 {}".format(ioa)
-            assert ni <= 1, "interaction cannot be larger than 1 {}".format(ioa_nf)
-            t['ioa'] = min([1, i])
-            t['num_occ'] = s
-            t['ioa_nf'] = ni
-            t['num_inter'] = ns
-
-    return curr_interaction, curr_occlusion
-
-
 def add_dummy_bb(bbs, frame_size):
     # frame_size = [H, B]
     left = torch.clip(torch.min(bbs[:, 0]), min=None, max=-1)
@@ -237,48 +177,6 @@ def get_proxy(curr_it, mode='inact', tracker_cfg=None, mv_avg=None):
     return feats
 
 
-def get_reid_performance(topk=8, first_match_break=True, tracks=None):
-    feats = torch.cat([t.past_feats.cpu().unsqueeze(0) for k, v in tracks.items() for t in v if t['id'] != -1], 0)
-    lab = np.array([t['id'] for k, v in tracks.items() for t in v if t['id'] != -1])
-    dist = sklearn.metrics.pairwise_distances(feats.numpy(), metric='cosine')
-    m, n = dist.shape
-
-    # Sort and find correct matches
-    indices = np.argsort(dist, axis=1)
-    indices = indices[:, 1:]
-    matches = (lab[indices] == lab[:, np.newaxis])
-
-    # Compute CMC for each query
-    ret = np.zeros(topk)
-    num_valid_queries = 0
-
-    for i in range(m):
-        if not np.any(matches[i, :]): continue
-
-        index = np.nonzero(matches[i, :])[0]
-        delta = 1. / (len(index))
-        for j, k in enumerate(index):
-            if k - j >= topk: break
-            if first_match_break:
-                ret[k - j] += 1
-                break
-            ret[k - j] += delta
-        num_valid_queries += 1
-
-    cmc = ret.cumsum() / num_valid_queries
-
-    aps = []
-    for k in range(dist.shape[0]):
-        # Filter out the same id and same camera
-        y_true = matches[k, :]
-
-        y_score = -dist[k][indices[k]]
-        if not np.any(y_true): continue
-        aps.append(average_precision_score(y_true, y_score))
-    
-    return cmc, aps
-
-
 def get_center(pos):
     # adapted from tracktor
     if len(pos.shape) <= 1:
@@ -357,7 +255,12 @@ def bbox_overlaps(boxes, query_boxes):
 
 
 def is_moving(seq, log=False):
-    if seq.split('-')[1] in ['13', '11', '10', '05', '14', '12', '07', '06'] or "MOT" not in seq:
+    print(seq)
+    if "MOT" not in seq:
+        if log:
+            print('Seqence is moving {}'.format(seq))
+        return True
+    elif seq.split('-')[1] in ['13', '11', '10', '05', '14', '12', '07', '06']:
         if log:
             print('Seqence is moving {}'.format(seq))
         return True
@@ -369,7 +272,9 @@ def is_moving(seq, log=False):
         assert False, 'Seqence not valid {}'.format(seq)
 
 def frame_rate(seq):
-    if seq.split('-')[1] in ['11', '10', '12', '07',  '09', '04', '02', '08', '03', '01']:
+    if 'dance' in seq:
+        return 20
+    elif seq.split('-')[1] in ['11', '10', '12', '07',  '09', '04', '02', '08', '03', '01']:
         return 30
     elif seq.split('-')[1] in ['05', '06']:
         return 14
@@ -400,7 +305,7 @@ def tlrb_to_xyah(tlrb):
 
 
 class Track():
-    def __init__(self, track_id, bbox, feats, im_index, gt_id, vis, ioa, ioa_nf, area_out, num_occ, num_inter, conf, frame, area, label, kalman=False, kalman_filter=None):
+    def __init__(self, track_id, bbox, feats, im_index, gt_id, vis, conf, frame, label, kalman=False, kalman_filter=None):
         self.kalman = kalman
         self.xyah = tlrb_to_xyah(copy.deepcopy(bbox))
         if self.kalman:
@@ -411,30 +316,12 @@ class Track():
         self.pos = bbox
         self.bbox = list()
         self.bbox.append(bbox)
-        self.area = area
 
         # init variables for motion model
         self.last_pos = list()
         self.last_pos.append(self.pos)
         self.last_v = np.array([0, 0, 0, 0])
         self.last_vc = np.array([0, 0])
-
-        # initialize ioa variables
-        self.ioa = ioa
-        self.past_ioa = list()
-        self.past_ioa.append(ioa)
-        self.interaction = ioa_nf
-        self.past_interaction = list()
-        self.past_interaction.append(ioa_nf)
-        self.area_out = area_out
-        self.past_areas_out = list()
-        self.past_areas_out.append(area_out)
-        self.num_occ = num_occ
-        self.past_num_occ = list()
-        self.past_num_occ.append(num_occ)
-        self.num_inter = num_inter
-        self.past_num_inter = list()
-        self.past_num_inter.append(num_inter)
 
         # embedding feature list of detections
         self.past_feats = list()
@@ -473,23 +360,11 @@ class Track():
     def __len__(self):
         return len(self.last_pos)
 
-    def add_detection(self, bbox, feats, im_index, gt_id, vis, ioa, ioa_nf, area_out, num_occ, num_inter, conf, frame, area, label):
+    def add_detection(self, bbox, feats, im_index, gt_id, vis, conf, frame, label):
         # update all lists / states
         self.pos = bbox
         self.last_pos.append(bbox)
         self.bbox.append(bbox)
-        self.area = area
-
-        self.ioa = 0.1 * ioa + 0.9 * self.ioa
-        self.past_ioa.append(ioa)
-        self.interaction = ioa_nf
-        self.past_interaction.append(ioa_nf)
-        self.area_out = area_out
-        self.past_areas_out.append(area_out)
-        self.num_occ = num_occ
-        self.past_num_occ.append(num_occ)
-        self.num_inter = num_inter
-        self.past_num_inter.append(num_inter)
 
         self.feats = feats
         self.past_feats.append(feats)
