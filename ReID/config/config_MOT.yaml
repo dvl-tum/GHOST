@@ -8,11 +8,9 @@ models:
     pretrained_path: "0.8518408551068883resnet50_Market.pth" #"models/0.8634204275534442resnet50_Market.pth" 
     net_type: "resnet50" #"resnet50FPN"
     neck: 0
+    add_distractors: 0
     red: 4
     pool: 'max'
-    bn_inception:
-      embed: 1
-      sz_embedding: 512
 
 dataset:
   dataset_path: "MOT17"

@@ -1,9 +1,9 @@
 dataset:
-  mot_dir: "/storage/slurm/seidensc/datasets/MOT/MOT17" # mot17_test_FRCNN
+  mot_dir: "/storage/slurm/seidensc/datasets/MOT/MOT17" 
   det_dir: "/storage/slurm/seidensc/datasets/MOT/MOT17Labels"
-  det_file: "qdtrack.txt" #"tracktor_prepr_det.txt" #"center_track.txt" #"qdtrack.txt" # "CenterTrack.txt" #"CenterTrackPub.txt" #"CSTrack.txt" #"FairMOT.txt" #"JDE.txt" #"TraDeS.txt" #"TransTrack.txt"  #"tmoh.txt" #
+  det_file: "qdtrack.txt"
   detector: "FRCNN"
-  splits: "mot17_train_test" #"mot17_split_1" #"mot17_split_2" #"mot17_split_3" #"mot17_train_test"
+  splits: "debug_train"
   validation_set: 1
   validation_set_gt: 1
   half_train_set_gt: 0
@@ -26,18 +26,11 @@ reid_net:
     # Split 3: 'ReID/models/MOT_models/same_epochs_for_decay/0.8947368421052632resnet50_MOT17.pth'
     # Split 2: 'ReID/models/MOT_models/same_epochs_for_decay/0.9523809523809523resnet50_MOT17.pth'
     # SPlit 1: 'ReID/models/MOT_models/same_epochs_for_decay/0.9203539823008849resnet50_MOT17.pth'
-    net_type: "resnet50" #"resnet50_analysis" #"resnet50_attention" #"resnet50" #"det_bb" #"batch_drop_block" #"query_guided" "resnet_attention"
+    net_type: "resnet50"
     add_distractors: 0
     neck: 0
     red: 4
     pool: 'max'
-    last_stride: 0
-    final_drop: 0 #0.5
-    stoch_depth: 1 #0.8
-    weight_norm: 0
-    bn_inception:
-      embed: 0
-      sz_embedding: 512
 
 tracker:
   kalman: 0
@@ -65,26 +58,18 @@ tracker:
   eval_bb: 0
   get_reid_performance: 0
   oracle: 0
-  #ResNet 92....: 0.675, 0.3, 63 mean
-  #Torchreid: 0.6814211405013855, 0.14258016074055002, 90, mode
-  #ResNet: 0.40925543677573695, 0.31084457476623506, 27, median
-  #ResNet Neck: 0.18498964692794959, 0.05, 83, mode
-  #ResNet Dist Neck: 0.098, 0.074, 62, mode
-  #Detection Backbone: 0.3006055694824037, 0.3322236235805963, 77, mode
-  #ResNet + GNN (not batchwise rank): 0.5651008171629721, 0.5035112091729865, 59, median
-  #Market model: 0.75/0.7 0.54/0.375, median 63 (non eval / eval)
-  act_reid_thresh: 0.7 #0.71 #0.67 #0.675 #0.7 #0.665 #0.75 #0.7 
-  inact_reid_thresh: 0.75 #0.75 #0.73 #0.74 #0.75 #0.72 #0.54 #0.375  # 'act_reid_thresh': 0.9642701307721346, 'inact_reid_thresh': 0.7423529287840127
+  act_reid_thresh: 0.7
+  inact_reid_thresh: 0.75
   inact_thresh: 10000000
   output_dir: 'out' 
   avg_act:
     do: 0
-    num: 0.95 #'uniform_2' #60 #10 #4 #20 #'all'
-    proxy: 'min_ioa' #'mv_avg' #'min_ioa' #'frames_gnn' #'frames_gnn' #'frames_gnn' #'mode'
+    num: 0.95
+    proxy: 'min_ioa'
   avg_inact: 
     do: 1
-    num: 0.9 #'uniform_2' #'mean' #'uniform_4' #10 #4 #20 #'all'  # each_sample: 1=min, 2=avg, 3=max, 4=0.5*(min+max)
-    proxy: 'mv_avg' #'frames_gnn' #'60' #'frames_gnn' #'frames_gnn' #'mode'
+    num: 0.9
+    proxy: 'mv_avg'
   h_w_thresh: 1000000
   length_thresh: 2
   distance: 'cosine'
@@ -98,7 +83,7 @@ tracker:
     lambda_mot: 1/3
     lambda_temp: 1/3
     lambda_occ: 1/3
-    ioa_threshold: 'sum' #'real_dist_debug' #'MotionTemporalAndOcclusion_40_2_0.0' #'VelocityAndOcclusion' #'SeperateAssignment' #0.7
+    ioa_threshold: 'sum'
     conf_threshold: 0.6
     area_out_threshold: 1.0
     num_occ_thresh: 100000

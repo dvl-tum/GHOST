@@ -162,9 +162,7 @@ class Manager():
         else:
             # own trained network
             encoder, self.sz_embed = net.load_net(
-                self.reid_net_cfg['trained_on']['name'],
                 self.reid_net_cfg['trained_on']['num_classes'],
-                'test', attention=False,
                 **self.reid_net_cfg['encoder_params'])
 
         self.encoder = encoder.to(self.device)

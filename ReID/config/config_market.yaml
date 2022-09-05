@@ -8,11 +8,9 @@ models:
     pretrained_path: "no" #"models/0.8422818791946308neck_resnet50_Market.pth" #"models/QG_redLRtwice/0.8187919463087249neck_resnet50_Market.pth" #"0.7818791946308725neck_resnet50_Market.pth" #"models/0.8590604026845637neck_resnet50_Market.pth" #"models/0.8422818791946308neck_resnet50_Market.pth" 
     net_type: "resnet50" #"resnet50FPN"
     neck: 0
+    add_distractors: 0
     red: 4
     pool: 'max'
-    bn_inception:
-      embed: 1
-      sz_embedding: 512
 
 dataset:
   dataset_path: "/storage/slurm/seidensc/datasets/Market-1501-v15.09.15"
