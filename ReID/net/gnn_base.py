@@ -1,4 +1,4 @@
-from torch_scatter import scatter_mean, scatter_max, scatter_add
+#from torch_scatter import scatter_mean, scatter_max, scatter_add
 import torch
 from torch import nn
 import math
@@ -31,7 +31,7 @@ class MetaLayer(torch.nn.Module):
             if hasattr(item, 'reset_parameters'):
                 item.reset_parameters()
 
-    def forward(self, feats, edge_index, edge_attr=None):
+    def forward(self, feats, edge_index, edge_attr=None, attention=True):
 
         r, c = edge_index[:, 0], edge_index[:, 1]
 
@@ -41,7 +41,7 @@ class MetaLayer(torch.nn.Module):
 
         if self.node_model is not None:
             feats, edge_index, edge_attr = self.node_model(feats, edge_index,
-                                                           edge_attr)
+                                                           edge_attr, attention)
 
         return feats, edge_index, edge_attr
 
@@ -64,6 +64,7 @@ class GNNReID(nn.Module):
         self.edge_encoder_params = params['edge_encoder']
         self.edge_params = params['edge']
         self.gnn_params = params['gnn']
+        self.attention = self.gnn_params['use_attention']
         self.distractor_bce = add_distractors
         
         self.dim_red = nn.Linear(embed_dim, int(embed_dim/params['red']))
@@ -98,9 +99,10 @@ class GNNReID(nn.Module):
         else:
             layers = [nn.Linear(dim, num_classes) for _ in range(self.gnn_params['num_layers'])] if every else [nn.Linear(dim, num_classes)]
             self.fc = Sequential(*layers)
-            if self.distractor_bce:
-                self.fc_person = nn.Linear(dim, 1,bias=False)
-                self.sig = nn.Sigmoid()
+        
+        if self.distractor_bce:
+            self.fc_person = nn.Linear(dim, 1,bias=False)
+            self.sig = nn.Sigmoid()
 
     def _build_GNN_Net(self, embed_dim: int = 2048):
 
@@ -152,7 +154,7 @@ class GNNReID(nn.Module):
         if self.params['use_node_encoder']:
             feats = self.node_encoder(feats)
 
-        feats, _, _ = self.gnn_model(feats, edge_index, edge_attr)
+        feats, _, _ = self.gnn_model(feats, edge_index, edge_attr, attention=self.attention)
         
         if self.params['cat']:
             feats = [torch.cat(feats, dim=1).to(self.dev)]
@@ -214,10 +216,10 @@ class GNNNetwork(nn.Module):
 
         self.layers = Sequential(*layers)
 
-    def forward(self, feats, edge_index, edge_attr):
+    def forward(self, feats, edge_index, edge_attr, attention=False):
         out = list()
         for layer in self.layers:
-            feats, egde_index, edge_attr = layer(feats, edge_index, edge_attr)
+            feats, egde_index, edge_attr = layer(feats, edge_index, edge_attr, attention=attention)
             out.append(feats)
         return out, edge_index, edge_attr
 
@@ -253,14 +255,15 @@ class DotAttentionLayer(nn.Module):
             return feats2
         return custom_forward
     
-    def forward(self, feats, egde_index, edge_attr):
-        feats2  = self.att(feats, egde_index, edge_attr)
-        # if gradient checkpointing should be apllied for the gnn, comment line above and uncomment line below
-        #feats2 = checkpoint.checkpoint(self.custom(), feats, egde_index, edge_attr, preserve_rng_state=True)
+    def forward(self, feats, egde_index, edge_attr, attention=False):
+        if attention:
+            feats2  = self.att(feats, egde_index, edge_attr)
+            # if gradient checkpointing should be apllied for the gnn, comment line above and uncomment line below
+            #feats2 = checkpoint.checkpoint(self.custom(), feats, egde_index, edge_attr, preserve_rng_state=True)
 
-        feats2 = self.dropout1(feats2)
-        feats = feats + feats2 if self.res1 else feats2
-        feats = self.norm1(feats) if self.norm1 is not None else feats
+            feats2 = self.dropout1(feats2)
+            feats = feats + feats2 if self.res1 else feats2
+            feats = self.norm1(feats) if self.norm1 is not None else feats
 
         if self.mlp:
             feats2 = self.linear2(self.dropout(self.act(self.linear1(feats))))

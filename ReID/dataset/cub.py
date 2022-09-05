@@ -1,11 +1,12 @@
 import os
+from typing import Sized
 from . import utils
 import torch
 import torchvision
 import numpy as np
 import PIL.Image
 import tarfile
-import imageio
+#import imageio
 import matplotlib.pyplot as plt
 from collections import defaultdict, Counter
 import copy
@@ -33,7 +34,7 @@ class Birds(torch.utils.data.Dataset):
     def __init__(self, root, labels, paths, trans=None,
                  eval_reid=False, magnitude=15, number_aug=0,
                  labels_train=None, paths_train=None, labels_gallery=None,
-                 paths_gallery=None, rand_scales=False):
+                 paths_gallery=None, rand_scales=False, sz_crop=None):
         self.trans = trans
         self.magnitude = magnitude
         self.number_aug = number_aug
@@ -108,14 +109,14 @@ class Birds(torch.utils.data.Dataset):
                     os.path.join(root, 'images', '{:05d}'.format(
                         int(paths_gallery[i].split('_')[0])), paths_gallery[i]))
 
-        self.transform = self.get_transform()
+        self.transform = self.get_transform(sz_crop=sz_crop)
 
-    def get_transform(self):
+    def get_transform(self, sz_crop):
 
         if self.trans == 'norm':
-            trans = utils.make_transform(is_train=not self.eval_reid)
+            trans = utils.make_transform(is_train=not self.eval_reid, sz_crop=sz_crop)
         elif self.trans == 'bot':
-            trans = utils.make_transform_bot(is_train=not self.eval_reid)
+            trans = utils.make_transform_bot(is_train=not self.eval_reid, sz_crop=sz_crop)
         print(trans)
         return trans
 
@@ -149,7 +150,7 @@ class Birds(torch.utils.data.Dataset):
 
 class All(torch.utils.data.Dataset):
     def __init__(self, root, labels, paths, trans=None,
-                 eval_reid=False):
+                 eval_reid=False, sz_crop=None):
         root = os.path.dirname(root)
         self.dirs = {'market': os.path.join('/storage/slurm/seidensc/datasets', 'Market-1501-v15.09.15'),
                      'cuhk03': os.path.join('/storage/slurm/seidensc/datasets', 'cuhk03', 'detected')}
@@ -185,13 +186,13 @@ class All(torch.utils.data.Dataset):
                 self.im_paths.append(os.path.join(self.dirs[dataset], 'images', '{:05d}'.format(
                     int(dat.split('_')[0])), dat))
 
-        self.transform = self.get_transform()
+        self.transform = self.get_transform(sz_crop=sz_crop)
 
-    def get_transform(self):
+    def get_transform(self, sz_crop):
         if self.trans == 'norm':
-            trans = utils.make_transform(is_train=not self.eval_reid)
+            trans = utils.make_transform(is_train=not self.eval_reid, sz_crop=sz_crop)
         elif self.trans == 'bot':
-            trans = utils.make_transform_bot(is_train=not self.eval_reid)
+            trans = utils.make_transform_bot(is_train=not self.eval_reid, sz_crop=sz_crop)
         elif self.trans == 'imgaug':
             trans = utils.make_transform_imaug(is_train=not self.eval_reid)
         elif self.trans == 'appearance':

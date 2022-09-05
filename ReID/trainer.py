@@ -131,9 +131,10 @@ class Trainer():
             mode = self.init_iter(i)
             self.corrupt = self.config['dataset']['corrupt'] != 'no'
 
-            # get data
-            self.get_data(self.config['dataset'], self.train_params,
-                          self.config['mode'])
+            if 'all' in self.config['mode']:
+                # get data
+                self.get_data(self.config['dataset'], self.train_params,
+                            self.config['mode'])
 
             # get models
             encoder, sz_embed = net.load_net(
@@ -145,6 +146,11 @@ class Trainer():
                 **self.model_params['encoder_params'])
             self.encoder = encoder.cuda(self.device)  # to(self.device)
             param_groups = self.get_gnn(sz_embed)
+
+            if 'all' not in self.config['mode']:
+                # get data
+                self.get_data(self.config['dataset'], self.train_params,
+                            self.config['mode'])
             
             # get evaluator
             self.evaluator = Evaluator(**self.config['eval_params'])    
@@ -213,12 +219,16 @@ class Trainer():
         if 'test' in self.config['mode'].split('_'):
                 best_rank_iter = self.evaluate(eval_params, scores, 0, 0)
         else:
+
+            best_rank_iter = self.evaluate(eval_params, scores, 0,
+                                best_rank_iter)
+
             for e in range(1, train_params['num_epochs'] + 1):
                 logger.info(
                     'Epoch {}/{}'.format(e, train_params['num_epochs']))
 
                 self.milestones(e, train_params, logger)
-
+                
                 for i, (x, Y, I, P) in enumerate(self.dl_tr):
                     loss = self.forward_pass(x, Y, I, P, train_params, e)
 
@@ -521,7 +531,7 @@ class Trainer():
         if mode == 'val':
             with torch.no_grad():
                 logger.info('EVALUATION')
-                if self.config['mode'] in ['train', 'test', 'hyper_search', 'all', 'test_all']:
+                if self.config['mode'] in ['train', 'test', 'hyper_search', 'all', 'all_test']:
                     mAP, top = self.evaluator.evaluate(self.encoder,
                                                        self.dl_ev,
                                                        self.query,
@@ -782,7 +792,8 @@ class Trainer():
                 bssampling=self.config['dataset']['bssampling'],
                 rand_scales=config['rand_scales'],
                 add_distractors=config['add_distractors'],
-                split=config['split'])
+                split=config['split'],
+                sz_crop=config['sz_crop'])
             
         self.config['dataset']['num_classes'] = len(set(self.dl_tr.dataset.ys)) - 1
         self.model_params['gnn_params']['classifier']['num_classes'] = len(set(self.dl_tr.dataset.ys)) - 1

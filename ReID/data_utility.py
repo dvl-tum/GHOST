@@ -16,7 +16,8 @@ logger = logging.getLogger('GNNReID.DataUtility')
 def create_loaders(data_root, num_workers, num_classes_iter=None, 
         num_elements_class=None, mode='single', trans='norm', 
         distance_sampler='only', val=0, seed=0, bssampling=None, 
-        rand_scales=False, add_distractors=False, split='split_3'):
+        rand_scales=False, add_distractors=False, split='split_3',
+        sz_crop=[384, 128]):
 
     config = {'bss': bssampling,'num_workers': num_workers,
               'nci': num_classes_iter, 'nec': num_elements_class,
@@ -44,22 +45,23 @@ def create_loaders(data_root, num_workers, num_classes_iter=None,
     return dl_tr, dl_ev, query, gallery, dl_ev_gnn
 
 
-def get_train_dataloader(config, labels, paths, data_root, rand_scales, split='split_3'):
+def get_train_dataloader(config, labels, paths, data_root, rand_scales, split='split_3', sz_crop=[384, 128]):
     # get dataset
     if data_root == 'MOT17':
         Dataset = get_sequence_class(split=split)
         Dataset = Dataset(mode='train')
-    elif config['mode'] != 'all':
+    elif 'all' not in config['mode']:
         Dataset = dataset.Birds(root=data_root,
                                 labels=labels['bounding_box_train'],
                                 paths=paths['bounding_box_train'],
-                                trans=config['trans'], rand_scales=rand_scales)
+                                trans=config['trans'], rand_scales=rand_scales,
+                                sz_crop=sz_crop)
     else:
         print("HERE")
         Dataset = dataset.All(root=data_root,
                               labels=labels['bounding_box_train'],
                               paths=paths['bounding_box_train'],
-                              trans=config['trans'])
+                              trans=config['trans'], sz_crop=sz_crop)
     
     # get sampler
     ddict = defaultdict(list)
@@ -100,7 +102,7 @@ def get_train_dataloader(config, labels, paths, data_root, rand_scales, split='s
     return dl_tr
 
 
-def get_val_dataloader(config, data, data_root, rand_scales=False, split='split_3'):
+def get_val_dataloader(config, data, data_root, rand_scales=False, split='split_3', sz_crop=[384, 128]):
     if data is not None:
         labels_ev, paths_ev, query, gallery = data
 
@@ -109,14 +111,15 @@ def get_val_dataloader(config, data, data_root, rand_scales=False, split='split_
         dataset_ev = get_sequence_class(split=split)
         dataset_ev = dataset_ev(mode='test')
 
-    elif config['mode'] != 'all':
+    elif 'all' not in config['mode']:
         dataset_ev = dataset.Birds(
             root=data_root,
             labels=labels_ev,
             paths=paths_ev,
             trans=config['trans'],
             eval_reid=True,
-            rand_scales=rand_scales)
+            rand_scales=rand_scales,
+            sz_crop=sz_crop)
 
     else:
         print("AND HERE")
@@ -125,7 +128,8 @@ def get_val_dataloader(config, data, data_root, rand_scales=False, split='split_
             labels=labels_ev,
             paths=paths_ev,
             trans=config['trans'],
-            eval_reid=True
+            eval_reid=True,
+            sz_crop=sz_crop
         )
 
     # dataloader
@@ -188,7 +192,7 @@ def get_val_dataloader(config, data, data_root, rand_scales=False, split='split_
 def get_validation_images(mode, labels, paths, data_root):
     if mode == 'both':
         data, data_root = get_labeled_and_detected(labels, paths, data_root)
-    elif mode == 'all':
+    elif 'all' in mode:
         data, data_root = get_market_and_cuhk03(labels, paths, data_root)
     else:
         data, data_root = get_single(labels, paths, data_root)

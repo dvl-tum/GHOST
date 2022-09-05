@@ -6,9 +6,10 @@ import math
 import numpy as np
 
 
-def make_transform(sz_resize=[256, 128], sz_crop=[256, 128],
+def make_transform(sz_crop=[256, 128],
                    mean=[0.485, 0.456, 0.406], std=[0.299, 0.224, 0.225],
                    is_train=True):
+
     return transforms.Compose([
         transforms.Compose([  # train: horizontal flip and random resized crop
             transforms.Resize(sz_crop),
@@ -16,7 +17,7 @@ def make_transform(sz_resize=[256, 128], sz_crop=[256, 128],
             transforms.Pad(10),
             transforms.RandomCrop(sz_crop),
         ]) if is_train else transforms.Compose([  # test: else center crop
-            transforms.Resize(sz_resize)
+            transforms.Resize(sz_crop)
         ]),
         transforms.ToTensor(),
         transforms.Normalize(mean=mean, std=std)

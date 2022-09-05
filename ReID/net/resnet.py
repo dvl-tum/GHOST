@@ -6,7 +6,7 @@ import torch.nn.functional as F
 import torch.utils.checkpoint as checkpoint
 from .utils import Sequential
 from .utils import weights_init_kaiming, weights_init_classifier
-
+ 
 
 __all__ = ['ResNet', 'resnet18', 'resnet34', 'resnet50', 'resnet101',
            'resnet152', 'resnext50_32x4d', 'resnext101_32x8d',
@@ -308,6 +308,7 @@ class ResNet(nn.Module):
         fc7 = torch.flatten(x, 1)
 
         if self.red: 
+            unred_fc7 = fc7
             fc7 = self.red(fc7)
 
         if self.neck:
@@ -325,6 +326,12 @@ class ResNet(nn.Module):
         if self.distractor_bce:
             x_person = self.fc_person(feats_after)
             x_person = self.sig(x_person)
+
+
+
+        #fc7 = unred_fc7
+
+
 
         if output_option == 'norm':
             if self.attention:
