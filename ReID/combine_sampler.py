@@ -9,6 +9,7 @@ import logging
 
 logger = logging.getLogger('GNNReID.CombineSampler')
 
+
 class CombineSampler(Sampler):
     """
     l_inds (list of lists)
@@ -16,7 +17,8 @@ class CombineSampler(Sampler):
     n_cl (int): num of obs per class inside the batch
     """
 
-    def __init__(self, l_inds, cl_b, n_cl, batch_sampler=None, distractor_idx=None):
+    def __init__(self, l_inds, cl_b, n_cl, batch_sampler=None,
+            distractor_idx=None):
         logger.info("Combine Sampler")
         self.l_inds = l_inds
         self.max = -1
@@ -44,19 +46,6 @@ class CombineSampler(Sampler):
         # shuffle elements inside each class
         l_inds = list(map(lambda a: random.sample(a, len(a)), self.l_inds))
 
-        # add elements till every class has the same num of obs
-        # np.random.choice(idxs, size=self.num_instances, replace=True)
-        #for inds in l_inds:
-        #    choose = copy.deepcopy(inds)
-        #    while len(inds) < self.max:
-        #        inds += [random.choice(choose)]
-        #print("NEW MAX")
-
-        #for inds in l_inds:
-        #    n_els = self.max - len(inds) + 1  # take out 1?
-        #    inds.extend(inds[:n_els])  # max + 1
-        #print("OLD MAX")
-
         for inds in l_inds:
             choose = copy.deepcopy(inds)
             while len(inds) < self.n_cl:
@@ -67,37 +56,46 @@ class CombineSampler(Sampler):
         import time
         s = time.time()
         for inds in l_inds:
-            inds = inds + np.random.choice(inds, size=(len(inds) // self.n_cl + 1)*self.n_cl - len(inds), replace=False).tolist()
+            inds = inds + np.random.choice(
+                inds,
+                size=(len(inds) // self.n_cl + 1)*self.n_cl - len(inds),
+                replace=False).tolist()
+
             # drop the last < n_cl elements
             while len(inds) >= self.n_cl:
                 split_list_of_indices.append(inds[:self.n_cl])
-                inds = inds[self.n_cl:] 
+                inds = inds[self.n_cl:]
             assert len(inds) == 0
 
-        s = time.time()
         if self.distractor_idx is not None:
             split_list_of_distractor_indices = []
             distractor_idx = copy.deepcopy(self.distractor_idx)
             random.shuffle(distractor_idx)
             while len(distractor_idx) >= self.n_cl:
-                split_list_of_distractor_indices.append(distractor_idx[:self.n_cl])
+                split_list_of_distractor_indices.append(
+                    distractor_idx[:self.n_cl])
                 distractor_idx = distractor_idx[self.n_cl:]
-                if len(split_list_of_distractor_indices) == len(split_list_of_indices)+5:
+                if len(split_list_of_distractor_indices) \
+                        == len(split_list_of_indices)+5:
                     break
-        # shuffle the order of classes --> Could it be that same class appears twice in one batch?
+        # shuffle the order of classes --> Could it be that same class 
+        # appears twice in one batch?
         random.shuffle(split_list_of_indices)
         if len(split_list_of_indices) % self.cl_b != 0:
-            b = np.random.choice(np.arange(len(split_list_of_indices)), \
-                size=self.cl_b - len(split_list_of_indices) % self.cl_b, \
+            b = np.random.choice(
+                    np.arange(len(split_list_of_indices)),
+                    size=self.cl_b - len(split_list_of_indices) % self.cl_b,
                     replace=False).tolist()
 
             [split_list_of_indices.append(split_list_of_indices[m]) for m in b]
 
         if self.distractor_idx is not None:
-            split_list_of_indices = [s + split_list_of_distractor_indices[i] \
+            split_list_of_indices = [
+                s + split_list_of_distractor_indices[i]
                 for i, s in enumerate(split_list_of_indices)]
 
-        self.flat_list = [item for sublist in split_list_of_indices for item in sublist]
+        self.flat_list = [
+            item for sublist in split_list_of_indices for item in sublist]
         return iter(self.flat_list)
 
     def __len__(self):
@@ -122,24 +120,3 @@ class BatchSizeSampler():
         num_samples = random.choice(range(2, 20))
         logger.info("Number classes {}, number samples per class {}".format(num_classes, num_samples))
         return num_classes, num_samples
-
-
-class QueryGuidedSampler(Sampler):
-    def __init__(self, batch_size):
-        self.indices_gallery = None
-        self.indices_query = None
-        self.current_query_index = None
-        self.batch_size = batch_size
-
-    def __iter__(self):
-        batches = list()
-        import copy
-        gallery_inds = copy.deepcopy(self.indices_gallery)
-        while len(gallery_inds):
-            batch = [self.indices_query[self.current_query_index]] + gallery_inds[:self.batch_size-1]
-            gallery_inds = gallery_inds[self.batch_size-1:]
-            batches.append(batch)
-
-        self.flat_list = [s for batch in batches for s in batch]
-        return iter(self.flat_list)
-        
