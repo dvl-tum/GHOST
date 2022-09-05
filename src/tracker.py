@@ -64,7 +64,7 @@ class Tracker(BaseTracker):
         self.setup_seq(seq, first)
 
         # batch norm experiemnts I
-        self.normalization_before(seq, first)        
+        self.normalization_before(seq, first=first)
 
         # iterate over frames
         for i, (frame, _, path, boxes, _, gt_ids, vis,
@@ -84,6 +84,8 @@ class Tracker(BaseTracker):
             feats = self.get_features(frame)
 
             # just feeding for bn stats update
+            if i == 0:
+                print('Mode in training mode: ', self.encoder.training)
             if first:
                 continue
             
@@ -106,6 +108,9 @@ class Tracker(BaseTracker):
                         'label': l}
                     detections.append(detection)
 
+                    if self.store_feats:
+                        self.add_feats_to_storage(detections)
+
             # apply motion compensation to stored track positions
             if self.motion_model_cfg['motion_compensation']:
                 print("NC")
@@ -120,6 +125,12 @@ class Tracker(BaseTracker):
         # just fed for bn stats update
         if first:
             logger.info('Done with pre-tracking feed...')
+            i = 0
+            for m in self.encoder.modules():
+                if isinstance(m, nn.BatchNorm2d):
+                    if i == 0:
+                        print(m, m.running_mean, m.running_var)
+                        i += 1
             return
 
         # add inactive tracks to active tracks for evaluation
@@ -136,6 +147,11 @@ class Tracker(BaseTracker):
             path = os.path.join('distances', self.experiment + 'distances.json')
             with open(path, 'w') as jf:
                 json.dump(self.distance_, jf)
+        if self.store_feats:
+            os.makedirs('features', exist_ok=True)
+            path = os.path.join('features', self.experiment + 'features.json')
+            with open(path, 'w') as jf:
+                json.dump(self.features_, jf)
 
     def _track(self, detections, i, frame=None):
         # just add all bbs to self.tracks / intitialize in the first frame
@@ -295,7 +311,6 @@ class Tracker(BaseTracker):
             gt_t += [track.gt_id for track in self.tracks.values()]
         if num_inactive:
             gt_t += [track.gt_id for track in curr_it.values()]
-
         self.add_dist_to_storage(
             gt_n, gt_t, num_active, num_inactive, dist)
 

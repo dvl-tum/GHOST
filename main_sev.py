@@ -84,7 +84,7 @@ def main_track(args):
         get_test_set_results = False
         byte = False
         reid_ablation = False
-        bdd = True
+        bdd = False
         thresh = args.thresh
         use_train_set = config['dataset']['half_train_set_gt']
 
@@ -103,6 +103,8 @@ def main_track(args):
         for i, (det_file, a, ina, val) in enumerate(zip(det_files, act, inact, val_set)):
 
             # for a in [0.5, 0.55, 0.6, 0.65, 0.7, 0.75, 0.8, 0.85, 0.9, 0.95]:
+            a = 0.7
+            ina = 0.65
 
             if det_file != "center_track.txt":
                 continue

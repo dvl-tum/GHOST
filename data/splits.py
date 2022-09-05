@@ -69,6 +69,7 @@ _SPLITS['bdd100k_debug']['test'] = {'seq': ['b23c9e00-b425de1b'], 'dir': 'val'}
 _SPLITS['dance']['train'] = {'seq': os.listdir('/storage/slurm/seidensc/datasets/DanceTrack/train'), 'dir': 'train'}
 _SPLITS['dance']['val'] = {'seq': os.listdir('/storage/slurm/seidensc/datasets/DanceTrack/val'), 'dir': 'val'}
 _SPLITS['dance']['test'] = {'seq': os.listdir('/storage/slurm/seidensc/datasets/DanceTrack/test'), 'dir': 'test'}
+_SPLITS['dance_test']['test'] = {'seq': os.listdir('/storage/slurm/seidensc/datasets/DanceTrack/test'), 'dir': 'test'}
 
 _SPLITS['dance_val']['test'] = {'seq': os.listdir('/storage/slurm/seidensc/datasets/DanceTrack/val'), 'dir': 'val'}
 _SPLITS['dance_val_debug']['test'] = {'seq':['dancetrack0004'], 'dir': 'val'}

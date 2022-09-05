@@ -59,7 +59,10 @@ def main_track(args):
             config['tracker'],
             config)
 
-        manager._evaluate(mode='test', log=True)
+        manager._evaluate(
+            mode='test',
+            log=True,
+            first=config['tracker']['first_all'])
    
 
 if __name__ == '__main__':

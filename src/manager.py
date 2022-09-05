@@ -100,14 +100,16 @@ class Manager():
         corresponding_gt = OrderedDict()
 
         # get tracking files
+        i = 0
         for seq in self.loaders[mode]:
             # first = feed sequence data through backbon and update statistics
             # before tracking
             if first:
-                self.reset_for_first(seq)
+                self.reset_for_first(seq, i)
+                i += 1
 
             # get gt bbs corresponding to detections for oracle evaluations
-            if self.dataset_cfg['splits'] != 'mot17_test' and self.dataset_cfg['splits'] != 'mot20_test' and 'bdd' not in self.dataset_cfg['splits']:
+            if 'bdd' not in self.dataset_cfg['splits'] and 'test' not in self.dataset_cfg['splits']:
                 self.get_corresponding_gt(seq, corresponding_gt)
 
             self.tracker.encoder = self.encoder
@@ -190,12 +192,21 @@ class Manager():
 
         return loaders
 
-    def reset_for_first(self, seq):
+    def reset_for_first(self, seq, i):
         experiment = self.tracker.experiment
+        if self.tracker_cfg['store_dist']:
+            distance = self.tracker.distance_
         self._get_models()
+        if i == 0:
+            experiment = 'first_' + experiment
         self.tracker.experiment = experiment
+        logger.info('Run first for adaption')
         self.tracker.encoder = self.encoder
+        if self.tracker_cfg['store_dist']:
+            self.tracker.distance_ = distance
+        self.encoder.train()
         self.tracker.track(seq[0], first=True)
+        self.encoder.eval()
 
     def get_corresponding_gt(self, seq, corresponding_gt):
         df = seq[0].corresponding_gt
