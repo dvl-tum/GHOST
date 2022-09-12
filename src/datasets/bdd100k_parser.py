@@ -30,10 +30,11 @@ class BDDLoader():
             gt_file = osp.join(self.mot_dir, s, 'gt_bdd100k.txt')
             # exist_gt = os.path.isfile(gt_file)
             det_file = osp.join(self.det_dir, s, self.det_file)
-
             self.get_seq_info(s)
             exist_gt = self.seq_info['has_gt']
             self.get_dets(det_file, s)
+            #print(self.dets)
+            #quit()
             if exist_gt:
                 self.get_gt(gt_file)
             self.dets_unclipped = deepcopy(self.dets)
@@ -91,21 +92,8 @@ class BDDLoader():
         path = os.path.dirname(os.path.dirname(self.mot_dir))
         img_dir = os.path.join(path, 'images', 'track', self.dir, s)
         if osp.exists(det_file):
-
-            '''if 'out/qdtrackBDD_out_test_orig/val' in det_file:'''
-            names = [
-                'frame',
-                'id',
-                'bb_left',
-                'bb_top',
-                'bb_width',
-                'bb_height',
-                'conf',
-                'vis',
-                'label',
-                '?']
-            '''else:
-                names=[
+            if 'cascade' in det_file or 'bdd100k_cls_score' in det_file:
+                names = [
                     'frame',
                     'id',
                     'bb_left',
@@ -115,11 +103,23 @@ class BDDLoader():
                     'conf',
                     'label',
                     'vis',
-                    '?']'''
+                    '?']
+            else:
+                names = [
+                    'frame',
+                    'id',
+                    'bb_left',
+                    'bb_top',
+                    'bb_width',
+                    'bb_height',
+                    'conf',
+                    'vis',
+                    'label',
+                    '?']
             self.dets = pd.read_csv(
                 det_file,
                 names=names)
-                
+
             self.dets = self.dets[self.dets['label'].isin([0,1, 2, 3, 4, 5, 6, 7])].copy()
 
             self.dets['bb_left'] -= 1  # Coordinates are 1 based
@@ -134,18 +134,15 @@ class BDDLoader():
             self.dets['tracktor_id'] = self.dets['id']
 
             # add frame path
-            ''' if 'out/qdtrackBDD_out_test_orig/val' in det_file:'''
-            def add_frame_path(i):
-                return osp.join(osp.join(img_dir, s + '-' + f"{i:07d}.jpg"))
-            '''else:
+            if 'cascade' in det_file or 'bdd100k_cls_score' in det_file:
                 def add_frame_path(i):
-                    return osp.join(osp.join(img_dir, str(i) + ".jpg"))'''
-            self.dets['frame_path'] = self.dets['frame'].apply(add_frame_path)
+                    return osp.join(osp.join(img_dir, i + ".jpg"))
+            else:
+                def add_frame_path(i):
+                    return osp.join(
+                        osp.join(img_dir, s + '-' + f"{i:07d}.jpg"))
 
-            '''if 'out/qdtrackBDD_out_test_orig/val' not in det_file:
-                def make_frame(i):
-                    return int(i.split('-')[-1])
-                self.dets['frame'] = self.dets['frame'].apply(make_frame)'''
+            self.dets['frame_path'] = self.dets['frame'].apply(add_frame_path)
 
     def get_seq_info(self, s):
         seq_info = dict()

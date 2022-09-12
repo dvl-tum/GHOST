@@ -145,13 +145,26 @@ class Tracker(BaseTracker):
         # store dist to json file
         if self.store_dist:
             path = os.path.join('distances', self.experiment + 'distances.json')
+            if os.path.isfile(path):
+                with open(path, 'r') as jf:
+                    distance_ = json.load(jf)
+                self.distance_.update(distance_)
+
             with open(path, 'w') as jf:
                 json.dump(self.distance_, jf)
+            self.distance_ = defaultdict(dict)
+
         if self.store_feats:
             os.makedirs('features', exist_ok=True)
             path = os.path.join('features', self.experiment + 'features.json')
+            if os.path.isfile(path):
+                with open(path, 'r') as jf:
+                    features_ = json.load(jf)
+                self.features_.update(features_)
+
             with open(path, 'w') as jf:
                 json.dump(self.features_, jf)
+            self.features_ = defaultdict(dict)
 
     def _track(self, detections, i, frame=None):
         # just add all bbs to self.tracks / intitialize in the first frame

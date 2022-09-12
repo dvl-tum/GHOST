@@ -35,8 +35,8 @@ reid_net:
 tracker:
   kalman: 0
   visualize: 0
-  store_dist: 1
-  store_feats: 1
+  store_dist: 0
+  store_feats: 0
   save_embeddings_by_id: 0
   debug: 0
   use_bism: 0

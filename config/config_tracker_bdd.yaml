@@ -31,18 +31,14 @@ reid_net:
     neck: 0
     red: 4
     pool: 'max'
-    last_stride: 0
-    final_drop: 0 #0.5
-    stoch_depth: 1 #0.8
-    weight_norm: 0
-    bn_inception:
-      embed: 0
-      sz_embedding: 512
 
 tracker:
+  store_feats: 0
+  first_all: 0
   kalman: 0
   visualize: 0
   store_dist: 0
+  store_feats: 0
   save_embeddings_by_id: 0
   debug: 0
   use_bism: 0
