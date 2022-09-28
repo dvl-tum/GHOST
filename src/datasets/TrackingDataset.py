@@ -89,7 +89,6 @@ class TrackingDataset(MOTDataset):
             
             if self.dataset_cfg['save_oracle']:
                 self._save_oracle(seq, dets)
-
             self.data.append(Sequence(name=seq, dets=dets, gt=gt,
                                       to_pil=self.to_pil,
                                       to_tensor=self.to_tensor,

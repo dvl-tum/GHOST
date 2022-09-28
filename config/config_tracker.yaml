@@ -68,8 +68,8 @@ tracker:
     proxy: 'min_ioa'
   avg_inact: 
     do: 1
-    num: 0.9
-    proxy: 'mv_avg'
+    num: 2
+    proxy: 'each_sample'
   h_w_thresh: 1000000
   length_thresh: 2
   distance: 'cosine'

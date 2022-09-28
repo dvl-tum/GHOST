@@ -101,6 +101,7 @@ class Manager():
 
         # get tracking files
         i = 0
+        
         for seq in self.loaders[mode]:
             # first = feed sequence data through backbon and update statistics
             # before tracking
@@ -109,16 +110,17 @@ class Manager():
                 i += 1
 
             # get gt bbs corresponding to detections for oracle evaluations
-            if 'bdd' not in self.dataset_cfg['splits'] and 'test' not in self.dataset_cfg['splits']:
+            if 'bdd' not in self.dataset_cfg['splits'] and 'test' not in \
+                    self.dataset_cfg['splits']:
                 self.get_corresponding_gt(seq, corresponding_gt)
 
             self.tracker.encoder = self.encoder
             self.tracker.track(seq[0], log=log)
             
             names.append(seq[0].name)
-
+        
         # manually set experiment if already generated bbs
-        # self.tracker.experiment = 'qdtrack_orig2_bdd'
+        # self.tracker.experiment = 'byte_dets_0.851840_evalBB:0_mv_avg0.9:0.85:last_frame:0.8InactPat:10000000ConfThresh:-0.6'
         
         if log:
             logger.info(self.tracker.experiment)
@@ -223,7 +225,7 @@ class Manager():
         df = df.set_index(['FrameId', 'Id'])
         corresponding_gt[seq[0].name] = df
 
-    def eval_track_eval(self, log=True):
+    def eval_track_eval(self, log=True, dir='val'):
         output_res, output_msg = evaluate_track_eval(
             dir=self.dir,
             tracker=self.tracker,
@@ -234,13 +236,12 @@ class Manager():
 
         return output_res, output_msg
 
-    def eval_track_eval_dance(self, log=True):
-        print('Here')
+    def eval_track_eval_dance(self, log=True, dir='val'):
         output_res, output_msg = evaluate_track_eval(
             dir=self.dir,
             tracker=self.tracker,
             dataset_cfg=self.dataset_cfg,
-            gt_path='/storage/slurm/seidensc/datasets/DanceTrack/val',
+            gt_path='/storage/user/seidensc/datasets/DanceTrack/val',
             log=log
         )
 

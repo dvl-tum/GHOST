@@ -81,9 +81,9 @@ def evaluate_track_eval(dir, tracker, dataset_cfg, gt_path, log=True):
         dataset_config['SEQ_INFO'] = get_dict(dataset_cfg['mot_dir'], dataset_cfg['detector'])
     else:
         if 'debug' in dataset_cfg['splits']:
-            dataset_config['SEQMAP_FILE'] = '/storage/slurm/seidensc/datasets/DanceTrack/val_seqmap_debug.txt'
+            dataset_config['SEQMAP_FILE'] = '/storage/user/seidensc/datasets/DanceTrack/val_seqmap_debug.txt'
         else:
-            dataset_config['SEQMAP_FILE'] = '/storage/slurm/seidensc/datasets/DanceTrack/val_seqmap.txt'
+            dataset_config['SEQMAP_FILE'] = '/storage/user/seidensc/datasets/DanceTrack/val_seqmap.txt'
         dataset_config['SPLIT_TO_EVAL'] = 'val'
     dataset_config['SKIP_SPLIT_FOL'] = True
 
