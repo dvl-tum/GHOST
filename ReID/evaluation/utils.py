@@ -25,6 +25,8 @@ class Evaluator():
             gc = np.array([camids[k] for k in gallery])
             qi = np.array([labels[k] for k in query])
             gi = np.array([labels[k] for k in gallery])
+        else:
+            gc = qc = gi = qi = None
 
         mAP, cmc = calc_mean_average_precision(features, query, gallery,
                                             gc=gc, qc=qc, gi=gi, qi=qi) 

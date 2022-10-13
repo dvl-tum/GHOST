@@ -2,7 +2,7 @@ import random
 import dataset
 import torch
 from collections import defaultdict
-from combine_sampler import BatchSizeSampler, CombineSampler, QueryGuidedSampler
+from combine_sampler import BatchSizeSampler, CombineSampler
 from dataset.MOTdata import get_sequence_class
 import numpy as np
 import os
@@ -36,14 +36,14 @@ def create_loaders(
 
     dl_tr = get_train_dataloader(
         config, labels, paths, data_root, rand_scales, split, sz_crop)
-    dl_ev, dl_ev_gnn = get_val_dataloader(
+    dl_ev = get_val_dataloader(
         config, data, data_root, rand_scales=False, split=split, sz_crop=sz_crop)
 
     if query is None:
         query = dl_ev.dataset.query_paths
         gallery = dl_ev.dataset.gallery_paths
 
-    return dl_tr, dl_ev, query, gallery, dl_ev_gnn
+    return dl_tr, dl_ev, query, gallery
 
 
 def get_train_dataloader(config, labels, paths, data_root, rand_scales,

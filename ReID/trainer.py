@@ -73,13 +73,10 @@ class Trainer():
             # tensorboard path
             path = 'runs/' + "_".join([
                 str(self.model_params['freeze_bb']),
-                self.config['dataset']['corrupt'],
                 self.train_params['loss_fn']['fns'],
                 pretrained,
                 self.train_params['output_train_enc'],
-                self.train_params['output_train_gnn'],
                 self.config['eval_params']['output_test_enc'],
-                self.config['eval_params']['output_test_gnn'],
                 self.model_params['encoder_params']['pool'],
                 self.config['mode'],
                 str(self.model_params['encoder_params']['red']),
@@ -109,15 +106,10 @@ class Trainer():
         for i in range(self.num_iter):
             # init writer, make det det save name and update params
             self.init_iter(i)
-            self.corrupt = self.config['dataset']['corrupt'] != 'no'
 
             # get models
             encoder, sz_embed = net.load_net(
-                self.config['dataset']['dataset_short'],
                 self.config['dataset']['num_classes'],
-                self.config['mode'],
-                self.model_params['attention'],
-                add_distractors=self.config['dataset']['add_distractors'],
                 **self.model_params['encoder_params'])
             self.encoder = encoder.cuda(self.device)  # to(self.device)
             param_groups = [{'params': list(set(self.encoder.parameters())),
@@ -335,31 +327,25 @@ class Trainer():
         # Label smoothing for CrossEntropy Loss
         if 'lsce' in params['fns'].split('_'):
             self.ce = losses.CrossEntropyLabelSmooth(
-                num_classes=num_classes, dev=self.gnn_dev).cuda(self.gnn_dev)
+                num_classes=num_classes, dev=self.device).cuda(self.device)
         elif 'focalce' in params['fns'].split('_'):
-            self.ce = losses.FocalLoss().cuda(self.gnn_dev)
+            self.ce = losses.FocalLoss().cuda(self.device)
         elif 'ce' in params['fns'].split('_'):
-            self.ce = nn.CrossEntropyLoss().cuda(self.gnn_dev)
+            self.ce = nn.CrossEntropyLoss().cuda(self.device)
         else:
             self.ce = None
         
         # Add triplet loss
         if 'triplet' in params['fns'].split('_'):
-            self.triplet = losses.TripletLoss(margin=0.3).cuda(self.gnn_dev)
+            self.triplet = losses.TripletLoss(margin=0.3).cuda(self.device)
         else:
             self.triplet = None
 
     def update_params(self):
         self.sample_hypers() if 'hyper' in self.config['mode'].split('_') else None
 
-        if self.config['dataset']['val']:
-            self.config['dataset']['num_classes'] -= 100
-
         if 'test' in self.config['mode'].split('_'):
             self.train_params['num_epochs'] = 1
-
-        if self.config['dataset']['sampling'] != 'no':
-            self.train_params['num_epochs'] += 10
 
     def sample_hypers(self):
         # sample hypers for all iters before training bc of deterministic
@@ -384,7 +370,7 @@ class Trainer():
 
     def get_data(self, config, train_params, mode):
         # If distance sampling
-        self.dl_tr, self.dl_ev, self.query, self.gallery, self.dl_ev_gnn = data_utility.create_loaders(
+        self.dl_tr, self.dl_ev, self.query, self.gallery = data_utility.create_loaders(
                 data_root=config['dataset_path'],
                 num_workers=config['nb_workers'],
                 num_classes_iter=train_params['num_classes_iter'],
