@@ -1,0 +1,110 @@
+ 
+dataset:
+  mot_dir: "/storage/user/seidensc/datasets/DanceTrack" # mot17_test_FRCNN
+  det_dir: "/storage/user/seidensc/datasets/DanceTrack"
+  det_file: "byte_out.txt" #"tracktor_prepr_det.txt" #"center_track.txt" #"qdtrack.txt" # "CenterTrack.txt" #"CenterTrackPub.txt" #"CSTrack.txt" #"FairMOT.txt" #"JDE.txt" #"TraDeS.txt" #"TransTrack.txt"  #"tmoh.txt" #
+  detector: ""
+  splits: "dance_val_debug" #"mot17_split_1" #"mot17_split_2" #"mot17_split_3" #"mot17_train_test"
+  validation_set: 0
+  validation_set_gt: 0
+  half_train_set_gt: 0
+  gt_assign_min_iou: 0.5
+  prepro_again: 1
+  save_oracle: 1
+  gt_training_min_vis: 0
+  drop_unassigned: 0
+  fixed_aspect_ratio: 0
+  sz_crop: [384, 128] #[256, 128]
+
+reid_net:
+  mode: 'hyper_search'
+  output: 'plain'
+  trained_on:
+    name: 'Market'
+    num_classes: 2820 #751
+  encoder_params:
+    pretrained_path: 'ReID/market_models/0.8518408551068883resnet50_Market.pth'
+    # Model M: 'ReID/market_models/0.8518408551068883resnet50_Market.pth'
+    # Split 3: 'ReID/models/MOT_models/same_epochs_for_decay/0.8947368421052632resnet50_MOT17.pth'
+    # Split 2: 'ReID/models/MOT_models/same_epochs_for_decay/0.9523809523809523resnet50_MOT17.pth'
+    # SPlit 1: 'ReID/models/MOT_models/same_epochs_for_decay/0.9203539823008849resnet50_MOT17.pth'
+    net_type: "resnet50"
+    add_distractors: 0
+    neck: 0
+    red: 4
+    pool: 'max'
+
+tracker:
+  kalman: 0
+  visualize: 0
+  store_dist: 0
+  store_feats: 0
+  save_embeddings_by_id: 0
+  debug: 0
+  use_bism: 0
+  pad_imgs: 0
+  nan_first: 0
+  scale_thresh_ioa: 0
+  use_blur: 0
+  assign_separately: 0
+  mode: "eval" #"hyper_search" #"eval" 
+  random_patches_several_frames: 0
+  every_frame_several_frames: 0
+  several_frames: 0
+  random_patches: 0
+  random_patches_first: 0
+  running_mean_seq: 0
+  running_mean_seq_reset: 0
+  first_batch: 0
+  first_batch_reset: 0
+  first_all: 0
+  eval_bb: 0
+  get_reid_performance: 0
+  oracle: 0
+  act_reid_thresh: 0.7
+  inact_reid_thresh: 0.75
+  inact_thresh: 50
+  output_dir: 'out' 
+  avg_act:
+    do: 0
+    num: 0.95
+    proxy: 'min_ioa'
+  avg_inact: 
+    do: 1
+    num: 2
+    proxy: 'each_sample'
+  h_w_thresh: 1000000
+  length_thresh: 0
+  distance: 'cosine'
+  motion_config:
+    motion_compensation: 0
+    num_iter_mc: 100
+    warp_mode: 'Euclidean'
+    termination_eps_mc: 0.00001
+    apply_motion_model: 1
+    center_only: 0
+    lambda_mot: 1/3
+    lambda_temp: 1/3
+    lambda_occ: 1/3
+    ioa_threshold: 'sum'
+    conf_threshold: 0.6
+    area_out_threshold: 1.0
+    num_occ_thresh: 100000
+    inter_threshold: 1.0
+    num_inter_thresh: 100000
+  active_proximity: 0
+  save_dataset: 0
+
+train:
+  num_epochs: 120
+  lr: 0.1
+  bs: 512
+  margin: 0.5
+  scale_loss: 100
+  path: 'weight_pred/dataset_weight_pred.json'
+  loss: 'l2'
+  input_dim: 5
+  weight: 10
+  wd: 0
+  optimizer: 'sgd'
+  load: 'weight_pred/weight_pred/0.50.1100l250sgdcheckpoint.tar' #'weight_pred/0.50.1100l2_weighted50sgdcheckpoint.tar' #'weight_pred/0.50.001100l250sgdcheckpoint.tar'
