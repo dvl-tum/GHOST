@@ -8,6 +8,7 @@ import torch.nn as nn
 from torch.autograd import Variable
 from src.kalman import KalmanFilter
 from cython_bbox import bbox_overlaps as bbox_ious
+import torch.nn.functional as F
 
 
 def add_dummy_bb(bbs, frame_size):
@@ -153,6 +154,8 @@ def get_proxy(curr_it, mode='inact', tracker_cfg=None, mv_avg=None):
                 f = torch.median(torch.stack(it.past_feats), dim=0)[0]
             elif proxy == 'mode':
                 f = torch.mode(torch.stack(it.past_feats), dim=0)[0]
+            elif proxy == 'meannorm':
+                f =  F.normalize(torch.mean(torch.stack(it.past_feats), dim=0), p=2, dim=0)
 
         # get proxy of last avg number of frames
         else:
@@ -162,6 +165,8 @@ def get_proxy(curr_it, mode='inact', tracker_cfg=None, mv_avg=None):
                 f = torch.median(torch.stack(it.past_feats[-avg:]), dim=0)[0]
             elif proxy == 'mode':
                 f = torch.mode(torch.stack(it.past_feats[-avg:]), dim=0)[0]
+            elif proxy == 'meannorm':
+                f =  F.normalize(torch.mean(torch.stack(it.past_feats[-avg:]), dim=0), p=2, dim=1)
         
         feats.append(f)
     

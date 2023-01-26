@@ -20,6 +20,7 @@ from src.base_tracker import BaseTracker
 import torchvision.transforms as T
 import torch.nn.functional as F
 import torch.nn as nn
+import time
 
 
 logger = logging.getLogger('AllReIDTracker.Tracker')
@@ -48,6 +49,7 @@ class Tracker(BaseTracker):
             device,
             train_cfg)
         self.short_experiment = defaultdict(list)
+        self.inact_patience = self.tracker_cfg['inact_thresh']
 
     def track(self, seq, first=False, log=True):
         '''
@@ -55,6 +57,11 @@ class Tracker(BaseTracker):
         seq -   sequence instance for iteratration and with meta information
                 like name or lentgth
         '''
+        if self.inact_patience == 5 or self.inact_patience == 10:
+            self.tracker_cfg['inact_thresh'] = self.inact_patience * self.fps[seq.name]
+            self.inact_thresh = self.tracker_cfg['inact_thresh']
+
+        logger.info(f"Patience {self.tracker_cfg['inact_thresh']} / {self.inact_thresh}...")
         self.log = log
         if self.log:
             logger.info(self.experiment)
@@ -65,16 +72,22 @@ class Tracker(BaseTracker):
 
         # batch norm experiemnts I
         self.normalization_before(seq, first=first)
+        self.prev_frame = 0
 
+        # s = time.time()
         # iterate over frames
         for i, (frame, _, path, boxes, _, gt_ids, vis,
                 random_patches, whole_im, frame_size, _, conf, label) in enumerate(seq):
+            self.i = i
             # batch norm experiments II
-            self.normalization_experiments(random_patches, frame, i)
+            self.normalization_experiments(random_patches, frame, i, seq)
             if 'bdd' in path:
                 self.frame_id = int(path.split('/')[-1].split('-')[-1].split('.')[0])
             else:
                 self.frame_id = int(path.split(os.sep)[-1][:-4])
+            
+            self.frame_size = frame_size
+            
             if self.frame_id % 20 == 0:
                 logger.info(self.frame_id)
 
@@ -93,10 +106,11 @@ class Tracker(BaseTracker):
             for f, b, gt_id, v, c, l in zip(feats, boxes, gt_ids, vis, conf, label):
                 if (b[3] - b[1]) / (b[2] - b[0]
                                     ) < self.tracker_cfg['h_w_thresh']:
-                    if 'byte' in self.data and c < 0.6:
+                    if 'byte' in self.data and not 'bdd' in self.data and c < self.tracker_cfg['thresh']:
                         continue
                     if 'bdd' in self.data and c < self.tracker_cfg['thresh']:
                         continue
+
                     detection = {
                         'bbox': b,
                         'feats': f,
@@ -120,7 +134,14 @@ class Tracker(BaseTracker):
             tr_ids = self._track(detections, i, frame=frame)
 
             if self.store_visualization:
+                #print(i+1)
+                #print(tr_ids, [d['gt_id'] for d in detections])
                 self.visualize(detections, tr_ids, path, seq.name, i+1)
+                #print()
+            
+            self.prev_frame = self.frame_id
+
+        # print("time: ", time.time()-s)
 
         # just fed for bn stats update
         if first:
@@ -157,6 +178,7 @@ class Tracker(BaseTracker):
         if self.store_feats:
             os.makedirs('features', exist_ok=True)
             path = os.path.join('features', self.experiment + 'features.json')
+            logger.info(f'Storing features to {path}...')
             if os.path.isfile(path):
                 with open(path, 'r') as jf:
                     features_ = json.load(jf)
@@ -166,9 +188,21 @@ class Tracker(BaseTracker):
                 json.dump(self.features_, jf)
             self.features_ = defaultdict(dict)
 
+        '''print(sum(self.motion_step_time)/len(self.motion_step_time))
+        print(sum(self.motion_update_time)/len(self.motion_update_time))
+        print(sum(self.reid_features_time)/len(self.reid_features_time))
+        print(sum(self.motion_distance_time)/len(self.motion_distance_time))
+        print(sum(self.reid_distance_time)/len(self.reid_distance_time))
+        print(sum(self.hungarian_time)/len(self.hungarian_time))
+        print(sum(self.assign_time)/len(self.assign_time))'''
+
     def _track(self, detections, i, frame=None):
+        #print()
+        self.curr_it = {k: track for k, track in self.inactive_tracks.items()
+                if track.inactive_count <= self.inact_thresh}
+        #print(i+1, len(self.tracks), len(self.inactive_tracks), len(self.curr_it), len(detections))
         # just add all bbs to self.tracks / intitialize in the first frame
-        if len(self.tracks) == 0:
+        if len(self.tracks) == 0 and len(self.curr_it) == 0:
             tr_ids = list()
             for detection in detections:
                 self.tracks[self.id] = Track(
@@ -178,9 +212,11 @@ class Tracker(BaseTracker):
                     kalman_filter=self.kalman_filter)
                 tr_ids.append(self.id)
                 self.id += 1
+            #print('track ids of newly started tracks', tr_ids)
 
         # association over frames for frame > 0
         elif i > 0:
+            #print(i+1, len(self.tracks), len(self.inactive_tracks), len(self.curr_it), len(detections))
             # get hungarian matching
             if len(detections) > 0:
                 if not self.tracker_cfg['avg_inact']['proxy'] == 'each_sample':
@@ -193,6 +229,7 @@ class Tracker(BaseTracker):
                 dist, row, col, ids = 0, 0, 0, 0
             if dist is not None:
                 # get bb assignment
+                # s = time.time()
                 tr_ids = self.assign(
                     detections=detections,
                     dist=dist,
@@ -200,9 +237,13 @@ class Tracker(BaseTracker):
                     col=col,
                     ids=ids,
                     sep=self.tracker_cfg['assign_separately'])
+                # self.assign_time.append(time.time()-s)
+            #print('track ids assigned to detections', tr_ids)
+            #print(i+1, len(self.tracks), len(self.inactive_tracks), len(self.curr_it), len(detections))
         return tr_ids
 
     def get_hungarian_each_sample(self, detections, nan_over_classes=True, sep=False):
+        # s = time.time()
         # get new detections
         x = torch.stack([t['feats'] for t in detections])
         dist_all, ids = list(), list()
@@ -211,38 +252,40 @@ class Tracker(BaseTracker):
             labels_dets = np.array([t['label'] for t in detections])
         
         # if use each sample for active frames
-        if not self.tracker_cfg['avg_act']['do'] and len(detections) > 0:
-            y = torch.stack([t.feats for t in self.tracks.values()])
-            ids.extend([i for i in self.tracks.keys()])
-            dist = self.dist(x, y).T
-            dist = dist.cpu().numpy()
-            if nan_over_classes:
-                labels = np.array([t.label[-1] for t in self.tracks.values()])
-                label_mask = np.atleast_2d(labels).T == np.atleast_2d(labels_dets)
-                dist[~label_mask] = np.nan
-            dist_all.extend([d for d in dist])
-        else:
-            for id, tr in self.tracks.items():
-                y = torch.stack(tr.past_feats)
-                ids.append(id)
-                dist = self.dist(x, y)
+        if len(self.tracks) > 0:
+            if not self.tracker_cfg['avg_act']['do'] and len(detections) > 0:
+                y = torch.stack([t.feats for t in self.tracks.values()])
+                ids.extend([i for i in self.tracks.keys()])
+                dist = self.dist(x, y).T
                 dist = dist.cpu().numpy()
+                if nan_over_classes:
+                    labels = np.array([t.label[-1] for t in self.tracks.values()])
+                    label_mask = np.atleast_2d(labels).T == np.atleast_2d(labels_dets)
+                    dist[~label_mask] = np.nan
+                dist_all.extend([d for d in dist])
+            else:
+                for id, tr in self.tracks.items():
+                    y = torch.stack(tr.past_feats)
+                    ids.append(id)
+                    dist = self.dist(x, y)
+                    dist = dist.cpu().numpy()
 
-                if self.tracker_cfg['avg_act']['num'] == 1:
-                    dist_all.append(np.min(dist, axis=1))
-                elif self.tracker_cfg['avg_act']['num'] == 2:
-                    dist_all.append(np.mean(dist, axis=1))
-                elif self.tracker_cfg['avg_act']['num'] == 3:
-                    dist_all.append(np.max(dist, axis=1))
-                elif self.tracker_cfg['avg_act']['num'] == 4:
-                    dist_all.append(
-                        (np.max(dist, axis=1) + np.min(dist, axis=1)) / 2)
+                    if self.tracker_cfg['avg_act']['num'] == 1:
+                        dist_all.append(np.min(dist, axis=1))
+                    elif self.tracker_cfg['avg_act']['num'] == 2:
+                        dist_all.append(np.mean(dist, axis=1))
+                    elif self.tracker_cfg['avg_act']['num'] == 3:
+                        dist_all.append(np.max(dist, axis=1))
+                    elif self.tracker_cfg['avg_act']['num'] == 4:
+                        dist_all.append(
+                            (np.max(dist, axis=1) + np.min(dist, axis=1)) / 2)
+                    elif self.tracker_cfg['avg_act']['num'] == 5:
+                        dist_all.append(np.median(dist, axis=1))
 
         num_active = len(ids)
 
         # get distances to inactive tracklets (inacht thresh = 100000)
-        curr_it = {k: track for k, track in self.inactive_tracks.items()
-                   if track.inactive_count <= self.inact_thresh}
+        curr_it = self.curr_it
         if len(curr_it) > 0:
             if not self.tracker_cfg['avg_inact']['do']:
                 y = torch.stack([t.feats for t in curr_it.values()])
@@ -265,6 +308,8 @@ class Tracker(BaseTracker):
                         dist = np.max(dist, axis=1)
                     elif self.tracker_cfg['avg_inact']['num'] == 4:
                         dist = (np.max(dist, axis=1) + np.min(dist, axis=1))/2
+                    elif self.tracker_cfg['avg_inact']['num'] == 5:
+                        dist = np.median(dist, axis=1)
 
                     if nan_over_classes:
                         label_mask = np.atleast_2d(np.array(tr.label[-1])) == \
@@ -276,6 +321,8 @@ class Tracker(BaseTracker):
 
         # solve assignment problem
         dist = np.vstack(dist_all).T
+
+        # self.reid_distance_time.append(time.time()-s)
 
         # update thresholds
         self.update_thresholds(dist, num_active, num_inactive)
@@ -293,7 +340,8 @@ class Tracker(BaseTracker):
                 iou = get_iou_kalman(stracks, detections)
             dist = self.combine_motion_appearance(
                 iou,
-                dist)
+                dist,
+                detections)
 
         if self.nan_first:
             dist[:, :num_active] = np.where(dist[:, :num_active] <=
@@ -302,7 +350,9 @@ class Tracker(BaseTracker):
                 self.inact_reid_thresh, dist[:, num_active:], np.nan)
 
         if not sep:
+            # s = time.time()
             row, col = solve_dense(dist)
+            # self.hungarian_time.append(time.time()-s)
         else:
             dist_act = dist[:, :num_active]
             row, col = solve_dense(dist_act)
@@ -314,6 +364,11 @@ class Tracker(BaseTracker):
 
         if self.store_dist:
             self._add_dist(detections, curr_it, num_active, num_inactive, dist)
+        #print('track ids tracks', list(self.tracks.keys()) + list(self.curr_it.keys()))
+        #print(dist)
+        #print(row)
+        #print(col)
+        #print(ids)
 
         return dist, row, col, ids
 
@@ -328,12 +383,12 @@ class Tracker(BaseTracker):
             gt_n, gt_t, num_active, num_inactive, dist)
 
     def get_hungarian_with_proxy(self, detections, sep=False):
+        # s = time.time()
         # instantiate
         ids = list()
         y_inactive, y = None, None
 
         x = torch.stack([t['feats'] for t in detections])
-        height = [int(v['bbox'][3]-v['bbox'][1]) for v in detections]
 
         # Get active tracklets
         if len(self.tracks) > 0:
@@ -396,13 +451,16 @@ class Tracker(BaseTracker):
             else:
                 dist = 1 - bisoftmax(x.cpu(), y.cpu())
 
+            # self.reid_distance_time.append(time.time()-s)
+
             if self.motion_model_cfg['apply_motion_model']:
                 self.motion()
                 iou = self.get_motion_dist(detections, curr_it)
                 dist = self.combine_motion_appearance(
                     iou,
-                    dist)
-
+                    dist,
+                    detections)
+            
             # update thresholds
             self.update_thresholds(dist, num_active, num_inactive)
 
@@ -411,8 +469,9 @@ class Tracker(BaseTracker):
                     self.act_reid_thresh, dist[:, :num_active], np.nan)
                 dist[:, num_active:] = np.where(dist[:, num_active:] <=
                     self.inact_reid_thresh, dist[:, num_active:], np.nan)
-
+            # s = time.time()
             row, col = solve_dense(dist)
+            # self.hungarian_time.append(time.time()-s)
         else:
             dist_act = self.dist(x, y)
             dist_act = dist_act.cpu().numpy()
@@ -446,16 +505,18 @@ class Tracker(BaseTracker):
         keys = list(self.tracks.keys())
         for k in keys:
             if k not in active_tracks:
-                self.inactive_tracks[k] = self.tracks[k]
+                unconfirmed = len(self.tracks[k]) >= 2 if self.tracker_cfg['unconfirmed'] else True
+                if unconfirmed:
+                    self.inactive_tracks[k] = self.tracks[k]
+                    self.inactive_tracks[k].inactive_count = 0
                 del self.tracks[k]
-                self.inactive_tracks[k].inactive_count += 0
 
         # increase inactive count by one
         for k in self.inactive_tracks.keys():
-            self.inactive_tracks[k].inactive_count += 1
+            self.inactive_tracks[k].inactive_count += self.frame_id - self.prev_frame
 
         for i in range(len(detections)):
-            if i not in assigned:
+            if i not in assigned and detections[i]['conf'] > self.tracker_cfg['new_track_thresh']:
                 self.tracks[self.id] = Track(
                     track_id=self.id,
                     **detections[i],

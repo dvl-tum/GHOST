@@ -23,10 +23,10 @@ class MOTLoader():
         self.det_dir = osp.join(dataset_cfg['det_dir'], dir)
         self.det_file = dataset_cfg['det_file']
 
-    def get_seqs(self, split='split-1', use_clear=True):
+    def get_seqs(self, split='split-1', use_clear=True, assign_gt=False):
         for s in self.sequence:
             gt_file = osp.join(self.mot_dir, s, 'gt', 'gt.txt')
-            exist_gt = os.path.isfile(gt_file)
+            exist_gt = os.path.isfile(gt_file) and assign_gt
             if self.det_file == 'gt.txt':
                 det_file = osp.join(self.det_dir, s, 'gt', self.det_file)
             else:
@@ -321,7 +321,7 @@ class MOTLoader():
             self.dets = self.dets[self.dets['id'].isin(test_data_ids)]
         elif split == '50-50-2':
             self.dets = self.dets[~self.dets['id'].isin(test_data_ids)]
-
+        
         if self.dataset_cfg['validation_set'] and not self.train_mode:
             self.dets = self.dets[self.dets['frame'] >
                                   self.dets['frame'].values.max() * 0.5]

@@ -3,7 +3,7 @@ import os.path as osp
 import PIL.Image as Image
 from torchvision.transforms import ToTensor
 from torchvision import transforms
-from ReID.dataset.utils import make_transform_bot, make_transfor_obj_det
+from ReID.dataset.utils import make_transform_bot, make_transfor_obj_det, make_transform_IBN
 from torch.utils.data import Dataset
 import pandas as pd
 import torch
@@ -17,6 +17,7 @@ class MOTDataset(Dataset):
             sequences,
             dataset_cfg,
             dir,
+            net_type='resnet50',
             datastorage='data',
             add_detector=True):
         super(MOTDataset, self).__init__()
@@ -36,8 +37,13 @@ class MOTDataset(Dataset):
         self.to_tensor = ToTensor()
         self.to_pil = transforms.ToPILImage()
         self.transform_det = make_transfor_obj_det(is_train=False)
-        self.transform = make_transform_bot(
-            is_train=False, sz_crop=dataset_cfg['sz_crop'])
+        self.net_type = net_type
+        if net_type == "IBN":
+            self.transform = make_transform_IBN()
+        else:
+            self.transform = make_transform_bot(
+                is_train=False, sz_crop=dataset_cfg['sz_crop'])
+        print(self.transform)
         self.process()
 
     def add_detector(self, sequence, detector):

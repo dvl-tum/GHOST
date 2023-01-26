@@ -29,9 +29,9 @@ class TrackingDataset(MOTDataset):
             dataset_cfg,
             dir,
             datastorage='data',
+            net_type='resnet50',
             dev=None):
         self.device = dev
-
         super(
             TrackingDataset,
             self).__init__(
@@ -39,7 +39,9 @@ class TrackingDataset(MOTDataset):
             sequences,
             dataset_cfg,
             dir,
+            net_type,
             datastorage)
+        
 
     def process(self):
         self.data = list()
@@ -89,6 +91,7 @@ class TrackingDataset(MOTDataset):
             
             if self.dataset_cfg['save_oracle']:
                 self._save_oracle(seq, dets)
+
             self.data.append(Sequence(name=seq, dets=dets, gt=gt,
                                       to_pil=self.to_pil,
                                       to_tensor=self.to_tensor,
@@ -96,7 +99,9 @@ class TrackingDataset(MOTDataset):
                                       dev=self.device,
                                       dets_unclipped=dets_unclipped,
                                       corresponding_gt=corresponding_gt,
-                                      transform_det=self.transform_det))
+                                      transform_det=self.transform_det,
+                                      fixed_aspect_ratio=self.dataset_cfg['fixed_aspect_ratio'],
+                                      net_type=self.net_type))
             #self.data.append({'name': seq, 'dets': dets, 'gt': gt})
 
         self.id += 1
@@ -165,13 +170,16 @@ class Sequence():
             corresponding_gt=None,
             zero_pad=True,
             transform_det=None,
-            use_unclipped_for_eval=True):
+            use_unclipped_for_eval=True,
+            fixed_aspect_ratio=0,
+            net_type='resnet50'):
         # detections and ground truth
         self.dets = dets
         self.dets_unclipped = dets_unclipped
         self.gt = gt
         self.corresponding_gt = corresponding_gt
         self.name = name
+        self.net_type = net_type
 
         # transformations
         self.to_pil = to_pil
@@ -185,6 +193,7 @@ class Sequence():
         self.random_patches = False
         self.transform_det = transform_det
         self.use_unclipped_for_eval = use_unclipped_for_eval
+        self.fixed_aspect_ratio = fixed_aspect_ratio
 
         logger.info("Padding of images {}".format(self.zero_pad))
         logger.info("Using unclipped detections for evaluation {}".format(
@@ -213,8 +222,7 @@ class Sequence():
 
         return torch.stack(patches, 0).to(self.device)
 
-    @staticmethod
-    def pad_bbs(padding, img, im, row_unclipped):
+    def pads(self, img, row_unclipped):
         left_pad = abs(int(row_unclipped['bb_left'])) if int(
             row_unclipped['bb_left']) < 0 else 0
         right_pad = abs(
@@ -227,6 +235,30 @@ class Sequence():
         bot_pad = abs(int(row_unclipped['bb_bot']) - img.shape[1]
                       ) if int(row_unclipped['bb_bot']) > img.shape[1] else 0
 
+        to_pad = sum([left_pad, right_pad, top_pad, bot_pad])
+
+        return left_pad, right_pad, top_pad, bot_pad, to_pad
+
+    def pad_bbs(
+            self,
+            padding,
+            img,
+            im,
+            row_unclipped,
+            left_pad,
+            right_pad,
+            top_pad,
+            bot_pad):
+
+        if self.fixed_aspect_ratio:
+            w = row_unclipped['bb_right'] + right_pad - row_unclipped['bb_left'] - left_pad
+            h_fixed = w * self.fixed_aspect_ratio
+            h = row_unclipped['bb_bot'] + bot_pad - row_unclipped['bb_top'] - top_pad
+            dh = h_fixed - h
+            bot_pad += dh
+            bot_pad = round(bot_pad)
+
+        # compute area out
         h = (row_unclipped['bb_bot'] - row_unclipped['bb_top'])
         w = (row_unclipped['bb_right'] - row_unclipped['bb_left'])
         area_out = (left_pad + right_pad) * h + (top_pad + bot_pad) * w
@@ -269,9 +301,27 @@ class Sequence():
 
         return im, area_out
 
+    def get_fixed_ratio(self, img, row):
+        w = row['bb_right'] - row['bb_left']
+        h_fixed = w * self.fixed_aspect_ratio
+        h = row['bb_bot'] - row['bb_top']
+        dh = h_fixed - h
+        row['bb_bot'] += dh
+
+        im = img[:, int(row['bb_top']):int(row['bb_bot']), int(
+                    row['bb_left']):int(row['bb_right'])]
+
+        return im, row
+
     def _get_images(self, path, dets_frame, dets_uncl_frame, padding='zero'):
         # get and image
-        img = self.to_tensor(Image.open(path).convert("RGB"))
+        if self.net_type == 'IBN':
+            img = Image.open(path)
+            img = np.asarray(img)
+            img = Image.fromarray(img)
+            img = self.to_tensor(img)
+        else:
+            img = self.to_tensor(Image.open(path).convert("RGB"))
         frame_size = (img.shape[1], img.shape[2])
         img_for_det = copy.deepcopy(img)
         res, dets, tracktor_ids, ids, vis, areas_out, conf, label = \
@@ -287,15 +337,37 @@ class Sequence():
         for ind, row in dets_frame.iterrows():
             # get unclipped detections and bb (im)
             row_unclipped = dets_uncl_frame.loc[ind]
-            im = img[:, int(row['bb_top']):int(row['bb_bot']), int(
-                row['bb_left']):int(row['bb_right'])]
+
+            if self.zero_pad:
+                left_pad, right_pad, top_pad, bot_pad, to_pad = \
+                    self.pads(img, row_unclipped)
+            else:
+                left_pad, right_pad, top_pad, bot_pad, to_pad = \
+                    0, 0, 0, 0, False
+            
+            if self.fixed_aspect_ratio and not (to_pad and self.zero_pad):
+                im, row = self.get_fixed_ratio(img, row)
+            else:
+                im = img[:, int(row['bb_top']):int(row['bb_bot']), int(
+                    row['bb_left']):int(row['bb_right'])]
 
             # pad if part of bb outside of image
-            if self.zero_pad:
-                im, area_out = self.pad_bbs(padding, img, im, row_unclipped)
+            if self.zero_pad and to_pad:
+                im, area_out = self.pad_bbs(
+                    padding,
+                    img,
+                    im,
+                    row_unclipped,
+                    left_pad,
+                    right_pad,
+                    top_pad,
+                    bot_pad)
+            elif self.zero_pad:
+                area_out = 0
 
             # transform bb
             im = self.to_pil(im)
+            # im.save(f'{ind}.jpg')
             im = self.transform(im)
 
             # append to bbs, detections, tracktor ids, ids and visibility
@@ -316,7 +388,11 @@ class Sequence():
             label.append(row['label'])
             areas_out.append(area_out)
 
-        res = torch.stack(res, 0)
+        if self.net_type == "IBN":
+            res = torch.stack(res, 0) * 255
+        else:
+            res = torch.stack(res, 0)
+
         res = res.to(self.device)
 
         return res, dets, tracktor_ids, ids, vis, random_patches, img_for_det.to(
@@ -330,32 +406,39 @@ class Sequence():
     def __next__(self):
         # iterate over frames
         if self.i < self.num_frames:
-            frame = self.frames[self.i]
-            dets_frame = self.dets[self.dets['frame'] == frame]
-            dets_uncl_frame = self.dets_unclipped[self.dets_unclipped['frame'] == frame]
-
-            assert len(dets_frame['frame_path'].unique()) == 1
-
-            img, dets_f, tracktor_ids, ids, vis, random_patches, img_for_det, frame_size, areas_out, conf, label = self._get_images(
-                dets_frame['frame_path'].unique()[0], dets_frame, dets_uncl_frame)
-
-            if self.gt is not None:
-                gt_frame = self.gt[self.gt['frame'] == frame]
-                gt_f = {
-                    row['id']: np.array(
-                        [
-                            row['bb_left'],
-                            row['bb_top'],
-                            row['bb_right'],
-                            row['bb_bot']],
-                        dtype=np.float32) for i,
-                    row in gt_frame.iterrows()}
-            else:
-                gt_f = None
-
+            out = self._get(self.i)
             self.i += 1
-            return img, gt_f, dets_frame['frame_path'].unique(
-            )[0], dets_f, tracktor_ids, ids, vis, random_patches, img_for_det,\
-                frame_size, areas_out, conf, label
+            return out
         else:
             raise StopIteration
+
+    def _get(self, idx, just_frame=False):
+        frame = self.frames[idx]
+        dets_frame = self.dets[self.dets['frame'] == frame]
+        dets_uncl_frame = self.dets_unclipped[self.dets_unclipped['frame'] == frame]
+
+        assert len(dets_frame['frame_path'].unique()) == 1
+
+        img, dets_f, tracktor_ids, ids, vis, random_patches, img_for_det, frame_size, areas_out, conf, label = self._get_images(
+            dets_frame['frame_path'].unique()[0], dets_frame, dets_uncl_frame)
+
+        if self.gt is not None:
+            gt_frame = self.gt[self.gt['frame'] == frame]
+            gt_f = {
+                row['id']: np.array(
+                    [
+                        row['bb_left'],
+                        row['bb_top'],
+                        row['bb_right'],
+                        row['bb_bot']],
+                    dtype=np.float32) for i,
+                row in gt_frame.iterrows()}
+        else:
+            gt_f = None
+
+        if just_frame:
+            return img
+
+        return img, gt_f, dets_frame['frame_path'].unique(
+        )[0], dets_f, tracktor_ids, ids, vis, random_patches, img_for_det,\
+            frame_size, areas_out, conf, label

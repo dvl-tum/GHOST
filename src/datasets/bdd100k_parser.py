@@ -15,9 +15,10 @@ logger = logging.getLogger('AllReIDTracker.BDDParser')
 
 
 class BDDLoader():
-    def __init__(self, sequence, dataset_cfg, dir, mode='eval'):
+    def __init__(self, sequence, dataset_cfg, dir, mode='eval', only_pedestrian=True):
         self.dataset_cfg = dataset_cfg
         self.sequence = sequence
+        self.only_pedestrian = dataset_cfg['only_pedestrian']
         self.train_mode = self.dataset_cfg['half_train_set_gt'] or mode == 'train'
 
         self.mot_dir = osp.join(dataset_cfg['mot_dir'], dir)
@@ -25,7 +26,7 @@ class BDDLoader():
         self.det_file = dataset_cfg['det_file']
         self.dir = dir
 
-    def get_seqs(self, split='split-1', use_clear=True):
+    def get_seqs(self, split='split-1', use_clear=False):
         for s in self.sequence:
             gt_file = osp.join(self.mot_dir, s, 'gt_bdd100k.txt')
             # exist_gt = os.path.isfile(gt_file)
@@ -33,10 +34,10 @@ class BDDLoader():
             self.get_seq_info(s)
             exist_gt = self.seq_info['has_gt']
             self.get_dets(det_file, s)
-            #print(self.dets)
-            #quit()
+            
             if exist_gt:
                 self.get_gt(gt_file)
+            
             self.dets_unclipped = deepcopy(self.dets)
             self.dets = self.clip_boxes_to_image(df=self.dets)
 
@@ -48,12 +49,16 @@ class BDDLoader():
             self.dets_unclipped.sort_values(by='frame', inplace=True)
 
             self.dets['detection_id'] = np.arange(self.dets.shape[0])
-            if exist_gt and not 'bdd' in self.mot_dir:
+            if exist_gt:
                 if use_clear:
                     self.assign_gt_clear(split)
                 else:
                     self.assign_gt(split)
             self.dets.attrs.update(self.seq_info)
+            
+            if self.only_pedestrian:
+                self.dets = self.dets[self.dets['label'] == 0]
+                self.gt = self.gt[self.gt['label'] == 0]
 
         return exist_gt
 
@@ -92,7 +97,7 @@ class BDDLoader():
         path = os.path.dirname(os.path.dirname(self.mot_dir))
         img_dir = os.path.join(path, 'images', 'track', self.dir, s)
         if osp.exists(det_file):
-            if 'cascade' in det_file or 'bdd100k_cls_score' in det_file:
+            if 'cascade' in det_file or 'bdd100k_cls_score' in det_file or 'byte' in det_file:
                 names = [
                     'frame',
                     'id',
@@ -151,7 +156,7 @@ class BDDLoader():
         first_img = os.listdir(path)[0]
         import matplotlib
         img = matplotlib.image.imread(os.path.join(path, first_img))
-        seq_info['name'] = 'MOT17-04-FRCNN'
+        seq_info['name'] = s
         seq_info['imDir'] = path
         seq_info['seqLength'] = len(os.listdir(path))
         seq_info['imWidth'] = img.shape[1]
@@ -237,12 +242,12 @@ class BDDLoader():
             self.gt = make_consecutive(self.gt)
             print("now consecutive: {}".format(checkConsecutive(
                 set(sorted(self.gt['id'].values.tolist())))))
-
+        print(self.gt)
         num_gt_ids = len(set(sorted(self.gt['id'].values.tolist())))
         prev_tracker_id = np.nan * np.zeros(num_gt_ids)  # For scoring IDSW
         prev_timestep_tracker_id = np.nan * \
             np.zeros(num_gt_ids)  # For matching IDSW
-        distractor_classes = [2, 7, 8, 12]
+        # distractor_classes = [2, 7, 8, 12]
         from scipy.optimize import linear_sum_assignment
         for frame in self.dets['frame'].unique():
             # get df entries of current frame
@@ -265,27 +270,30 @@ class BDDLoader():
             match_cols = match_cols[actually_matched_mask.numpy()]
 
             # remove tracked bbs that correspond to distractor classes
-            is_distractor_class = np.isin(
+            '''is_distractor_class = np.isin(
                 frame_gt['label'].values[match_rows],
                 distractor_classes)
             to_remove_tracker = match_cols[is_distractor_class]
             frame_detects_drop = deepcopy(frame_detects).drop(
                 frame_detects.index.values[to_remove_tracker])
-            similarity = np.delete(similarity, to_remove_tracker, axis=1)
+            similarity = np.delete(similarity, to_remove_tracker, axis=1)'''
 
             # only keep gt of person class + confidence = 1
-            gt_zero_marked = frame_gt['conf'].values
+            '''gt_zero_marked = frame_gt['conf'].values
             gt_to_keep_mask = (np.not_equal(gt_zero_marked, 0)) & \
-                (np.equal(frame_gt['label'].values, 1))
+                (np.equal(frame_gt['label'].values, 1))'''
 
             # remove gt its that are not of person class or have confidence 0
-            similarity = similarity[gt_to_keep_mask]
+            '''similarity = similarity[gt_to_keep_mask]
             frame_gt_drop = deepcopy(frame_gt).drop(
-                frame_gt.index.values[~gt_to_keep_mask])
+                frame_gt.index.values[~gt_to_keep_mask])'''
 
             # get current IDs for score matrix
-            tracker_ids_t = frame_detects_drop['id'].values
-            gt_ids_t = frame_gt_drop['id'].values
+            # tracker_ids_t = frame_detects_drop['id'].values
+            tracker_ids_t = frame_detects['id'].values
+            print(tracker_ids_t)
+            # gt_ids_t = frame_gt_drop['id'].values
+            gt_ids_t = frame_gt['id'].values
             print(gt_ids_t)
             print()
             print(prev_timestep_tracker_id)

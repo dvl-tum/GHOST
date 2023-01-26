@@ -23,6 +23,22 @@ def make_transform(sz_crop=[256, 128],
         transforms.Normalize(mean=mean, std=std)
     ])
 
+
+def make_transform_heavy(sz_crop=[256, 128],
+                    mean=[0.485, 0.456, 0.406], std=[0.299, 0.224, 0.225],
+                    is_train=True):
+
+    return transforms.Compose([
+        transforms.Compose([  # train: horizontal flip and random resized crop
+            transforms.RandomResizedCrop(sz_crop),
+            transforms.RandomHorizontalFlip(p=0.5),
+        ]) if is_train else transforms.Compose([  # test: else center crop
+            transforms.Resize(sz_crop)
+        ]),
+        transforms.ToTensor(),
+        transforms.Normalize(mean=mean, std=std)
+    ])
+
 def make_transform_whole_img(mean=[0.485, 0.456, 0.406], std=[0.299, 0.224, 0.225],
                    is_train=True):
     if is_train:
@@ -126,4 +142,10 @@ def make_transform_bot(sz_crop=[384, 128], mean=[0.485, 0.456, 0.406],
     return transform
 
 
+def make_transform_IBN(sz_crop=[384, 128]):
+    res = list()
+    res.append(transforms.Resize(sz_crop, interpolation=3))
+    res.append(transforms.ToTensor())
+
+    return transforms.Compose(res)
 

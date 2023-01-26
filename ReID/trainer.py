@@ -114,18 +114,18 @@ class Trainer():
             self.encoder = encoder.cuda(self.device)  # to(self.device)
             param_groups = [{'params': list(set(self.encoder.parameters())),
                             'lr': self.train_params['lr']}]
-
+            
             # get data
             self.get_data(self.config['dataset'], self.train_params,
                 self.config['mode'])
-
+            
             # get evaluator
             self.evaluator = Evaluator(**self.config['eval_params'])
-
+            
             self.opt = RAdam(param_groups,
                              weight_decay=self.train_params[
                                  'weight_decay'])
-
+            
             # get loss functions
             self.get_loss_fn(self.train_params['loss_fn'],
                              self.config['dataset']['num_classes'],
@@ -154,9 +154,10 @@ class Trainer():
 
             # save best model of iterations
             if best_rank_iter > best_rank and self.write:
-                os.rename(osp.join(self.save_folder_nets, self.file_name + '.pth'),
-                          str(best_rank_iter) + mode + self.net_type + '_' +
-                          self.dataset_short + '.pth')
+                if 'hyper' not in self.config['mode'].split('_'):
+                    os.rename(osp.join(self.save_folder_nets, self.file_name + '.pth'),
+                              str(best_rank_iter) + self.net_type + '_' +
+                              self.dataset_short + '.pth')
 
                 best_rank = best_rank_iter
                 
@@ -323,7 +324,7 @@ class Trainer():
             self.bce_distractor = nn.BCELoss()
         else:
             self.bce_distractor = None
-
+        
         # Label smoothing for CrossEntropy Loss
         if 'lsce' in params['fns'].split('_'):
             self.ce = losses.CrossEntropyLabelSmooth(
@@ -381,9 +382,10 @@ class Trainer():
                 add_distractors=config['add_distractors'],
                 split=config['split'],
                 sz_crop=config['sz_crop'])
-            
-        self.config['dataset']['num_classes'] = len(
-            set(self.dl_tr.dataset.ys)) - 1
+        
+        if config['add_distractors']:
+            self.config['dataset']['num_classes'] = len(
+                set(self.dl_tr.dataset.ys)) - 1
 
     def milestones(self, e, train_params, logger):
         if e in train_params['milestones']:

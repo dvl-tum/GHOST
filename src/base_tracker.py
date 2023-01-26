@@ -19,6 +19,7 @@ from src.tracking_utils import get_center, get_height, get_width,\
 import cv2
 import copy
 from src.kalman import KalmanFilter
+import time
 
 
 logger = logging.getLogger('AllReIDTracker.BaseTracker')
@@ -90,6 +91,39 @@ class BaseTracker():
         if self.store_feats:
             self.features_ = defaultdict(dict)
 
+        self.fps = {
+            'MOT17-13-SDP': 25,
+            'MOT17-11-SDP': 30,
+            'MOT17-10-SDP': 30,
+            'MOT17-09-SDP': 30,
+            'MOT17-05-SDP': 14,
+            'MOT17-02-SDP': 30,
+            'MOT17-04-SDP': 30,
+            'MOT17-13-DMP': 25,
+            'MOT17-11-DMP': 30,
+            'MOT17-10-DMP': 30,
+            'MOT17-09-DMP': 30,
+            'MOT17-05-DMP': 14,
+            'MOT17-02-DMP': 30,
+            'MOT17-04-DMP': 30,
+            'MOT17-13-FRCNN': 25,
+            'MOT17-11-FRCNN': 30,
+            'MOT17-10-FRCNN': 30,
+            'MOT17-09-FRCNN': 30,
+            'MOT17-05-FRCNN': 14,
+            'MOT17-02-FRCNN': 30,
+            'MOT17-04-FRCNN': 30,
+        }
+
+        '''self.motion_step_time = list()
+        self.motion_update_time = list()
+        self.reid_features_time = list()
+        self.motion_distance_time = list()
+        self.reid_distance_time = list()
+        self.hungarian_time = list()
+        self.assign_time = list()'''
+
+
     def dist(self, x, y):
         if self.tracker_cfg['distance'] == 'cosine':
             return 1 - F.cosine_similarity(x[:, :, None], y.t()[None, :, :])
@@ -104,10 +138,13 @@ class BaseTracker():
     def get_features(self, frame):
         # forward pass
         with torch.no_grad():
-            if self.net_type == 'resnet50_analysis':
+            if self.net_type == 'resnet50_analysis' or self.net_type == "IBN":
                 feats = self.encoder(frame)
+                feats = F.normalize(feats, p=2, dim=1)
             else:
+                # s = time.time()
                 _, feats = self.encoder(frame, output_option=self.output)
+                # self.reid_features_time.append(time.time()-s)
 
         return feats
 
@@ -123,6 +160,9 @@ class BaseTracker():
         for k, v in all_tracks.items():
             if len(v) > self.tracker_cfg['length_thresh']:
                 tracks_new[k] = v
+            else:
+                logger.info(len(v))
+        logger.info(f"Removed {len(all_tracks) - len(tracks_new)} short tracks")
         return tracks_new
 
     def write_results(self, output_dir, seq_name):
@@ -188,6 +228,13 @@ class BaseTracker():
             self.experiment += 'running_mean_seq_reset:1'
         if self.tracker_cfg['first_batch_reset']:
             self.experiment += 'first_batch_reset:1'
+        if self.tracker_cfg['every_frame_several_frames']:
+            self.experiment += 'every_frame_several_frames:1'
+        
+        self.experiment += 'lenthresh:' + str(self.tracker_cfg['length_thresh'])
+        self.experiment += 'newtrackthresh:' + str(self.tracker_cfg['new_track_thresh'])
+        self.experiment += 'unconfirmed:' + str(self.tracker_cfg['unconfirmed'])
+        self.experiment += 'lastnframes:' + str(self.motion_model_cfg['last_n_frames'])
 
         if self.tracker_cfg['use_bism']:
             self.experiment += 'bism:1'
@@ -224,7 +271,7 @@ class BaseTracker():
         if self.log:
             logger.info(self.experiment)
 
-    def normalization_experiments(self, random_patches, frame, i):
+    def normalization_experiments(self, random_patches, frame, i, seq, k=10):
         '''
 
         Normalization experiments:
@@ -293,6 +340,35 @@ class BaseTracker():
                     logger.info("Resetting BatchNorm statistics...")
             with torch.no_grad():
                 _, _ = self.encoder(frame, output_option=self.output)
+            self.encoder.eval()
+        
+        elif self.tracker_cfg['every_frame_several_frames']:
+            if i == 0:
+                if self.log:
+                    logger.info(
+                        f"Using {k} frames of bounding boxes before every frame to set BatchNorm statistics for each frame...")
+            # reset stats
+            for m in self.encoder.modules():
+                if isinstance(m, nn.BatchNorm2d):
+                    m.reset_running_stats()
+                    m.momentum = 1
+                    m.first_batch_mean = True
+            # set model in train mode
+            self.encoder.train()
+            
+            # feed bounding boxes to adapt stats
+            if i < k:
+                idxs = list(range(k))
+            if i+k > seq.num_frames:
+                idxs = list(range(seq.num_frames-k, seq.num_frames))
+            else:
+                idxs = list(range(i, i+k))
+            # feed k frames through encoder
+            for idx in idxs:
+                frame = seq._get(idx, just_frame=True)
+                with torch.no_grad():
+                    _, _ = self.encoder(frame, output_option=self.output)
+            # set to eval mode again
             self.encoder.eval()
 
     def normalization_before(self, seq, k=5, first=False):
@@ -418,7 +494,7 @@ class BaseTracker():
                 self.inact_reid_thresh = np.mean(
                     dist[~act]) - 1 * np.std(dist[~act])
 
-    def visualize(self, detections, tr_ids, path, seq, frame):
+    def visualize(self, detections, tr_ids, path, seq, frame, do_text=False):
         if frame == 1:
             os.makedirs(
                 osp.join('visualizations', self.experiment, seq),
@@ -430,7 +506,13 @@ class BaseTracker():
             if tr_id not in self.id_to_col.keys():
                 self.id_to_col[tr_id] = self.color_list[self.col]
                 self.col += 1
-                
+            
+            d = copy.deepcopy(d)
+            d['bbox'][0] = max(d['bbox'][0], 0)
+            d['bbox'][1] = max(d['bbox'][1], 0)
+            d['bbox'][2] = min(d['bbox'][2], img.shape[1])
+            d['bbox'][3] = min(d['bbox'][3], img.shape[0])
+
             # add rectangle
             rect = matplotlib.patches.Rectangle(
                 (d['bbox'][0], d['bbox'][1]),
@@ -442,16 +524,17 @@ class BaseTracker():
             ax.add_patch(rect)
 
             # add text with id, ioa and visibility
-            text = ', '.join(
-                [str(tr_id), str(d['gt_id'])])
-            plt.text(
-                d['bbox'][0] - 15,
-                d['bbox'][1] + (d['bbox'][3] - d['bbox'][1]) / 2,
-                text,
-                va='center',
-                rotation='vertical',
-                c=self.id_to_col[tr_id],
-                fontsize=8)
+            if do_text:
+                text = ', '.join(
+                    [str(tr_id), str(d['gt_id'])])
+                plt.text(
+                    d['bbox'][0] - 15,
+                    d['bbox'][1] + (d['bbox'][3] - d['bbox'][1]) / 2,
+                    text,
+                    va='center',
+                    rotation='vertical',
+                    c=self.id_to_col[tr_id],
+                    fontsize=8)
 
         ax.imshow(img)
         plt.axis('off')
@@ -544,56 +627,69 @@ class BaseTracker():
         else:
             track.pos = track.pos + track.last_v
 
-    def motion(self, approximate=True):
+    def motion(self, approximate=False):
+        if self.i == 0:
+            logger.info(f"Appriximating motion {approximate}...")
         # adapted from tracktor
         """Applies a simple linear motion model that considers the last n_steps steps."""
         height = list()
         for track in self.tracks.values():
             if len(track.last_pos) > 1:
-                last_pos = np.asarray(track.last_pos)
+                # s = time.time()
+                last_pos = np.asarray(track.last_pos[-self.motion_model_cfg['last_n_frames']:])
+                frames = np.asarray(track.past_frames[-self.motion_model_cfg['last_n_frames']:])
+
                 # avg velocity between each pair of consecutive positions in
                 # t.last_pos
-                if self.motion_model_cfg['center_only']:
+                if self.motion_model_cfg['center_only']: 
                     if approximate:
-                        vs_c = [get_center(p2) - get_center(p1)
-                                for p1, p2 in zip(last_pos, last_pos[1:])]
+                        vs = np.stack([get_center(p2) - get_center(p1)
+                                for p1, p2 in zip(last_pos, last_pos[1:])])
                     else:
-                        frames = np.asarray(track.past_frames)
                         dt = [p2 - p1 for p1, p2 in zip(frames, frames[1:])]
-                        vs_c = [(get_center(p2) - get_center(p1))/t
-                                    for p1, p2, t in zip(last_pos, last_pos[1:], dt)]
+                        vs = np.stack([(get_center(p2) - get_center(p1))/t
+                                    for p1, p2, t in zip(last_pos, last_pos[1:], dt)])
+                    
+                    track.update_v(vs.mean(axis=0))
+                    # motion step
+                    center_new = get_center(track.pos) + track.last_v
+                    track.pos = make_pos(
+                        *center_new,
+                        get_width(track.pos),
+                        get_height(track.pos))
                 else:
                     height.append((last_pos[:, 3]-last_pos[:, 1]).mean())
                     if approximate:
-                        vs_c = [get_center(p2) - get_center(p1)
-                                for p1, p2 in zip(last_pos, last_pos[1:])]
                         vs = [p2 - p1 for p1, p2 in zip(last_pos, last_pos[1:])]
                     else:
-                        frames = np.asarray(track.past_frames)
-                        dt = [f2 - f1 for f1, f2 in zip(frames, frames[1:])]
-                        vs = [(p2 - p1)/t for p1, p2, t in zip(last_pos, last_pos[1:], dt)]
-                        vs_c = [(get_center(p2) - get_center(p1))/t
-                                    for p1, p2, t in zip(last_pos, last_pos[1:], dt)]
+                        # dt = [f2 - f1 for f1, f2 in zip(frames, frames[1:])]
+                        # vs = np.stack([(p2 - p1)/t for p1, p2, t in zip(last_pos, last_pos[1:], dt)])
+                        vs = (last_pos[1:, ]-last_pos[:-1, ])/np.repeat(np.expand_dims((frames[1:]-frames[:-1]), 1), [4], axis=1)
 
-                track.update_v(np.stack(vs).mean(axis=0))
-                track.last_vc = np.stack(vs_c).mean(axis=0)
-                self.motion_step(track)                
+                    track.update_v(vs.mean(axis=0))
+                    # self.motion_update_time.append(time.time()-s)
+                    # motion step
+                    # s = time.time()
+                    track.pos = track.pos + track.last_v
+                    # self.motion_step_time.append(time.time()-s)
 
         for track in self.inactive_tracks.values():
             if len(track.last_pos) > 1:
                 self.motion_step(track)
 
     def get_motion_dist(self, detections, curr_it):
+        # s = time.time()
         act_pos = [track.pos for track in self.tracks.values()]
         inact_pos = [track.pos for track in curr_it.values()]
         pos = torch.from_numpy(np.asarray(act_pos + inact_pos))
         det_pos = torch.from_numpy(np.asarray(
             [t['bbox'] for t in detections]))
-        iou = bbox_overlaps(det_pos, pos)
+        iou = bbox_overlaps(det_pos, pos) 
         iou = 1 - iou
+        # self.motion_distance_time.append(time.time()-s)
         return iou
 
-    def combine_motion_appearance(self, iou, dist):
+    def combine_motion_appearance(self, iou, dist, detections):
         # init distances
         dist_emb = copy.deepcopy(dist)
         if type(iou) != np.ndarray:
@@ -603,10 +699,24 @@ class BaseTracker():
 
         # weighted of threshold
         if self.motion_model_cfg['ioa_threshold'] == 'sum':
+            # print(dist_emb, dist_iou)
             dist = (dist_emb + dist_iou)*0.5
+        
+        elif 'sum' in self.motion_model_cfg['ioa_threshold']:
+            alpha = float(self.motion_model_cfg['ioa_threshold'].split('_')[-1])
+            dist = ((1-alpha)*dist_emb + alpha*dist_iou)
+        
+        elif 'height' in self.motion_model_cfg['ioa_threshold']:
+            h = np.array([np.abs(d['bbox'][2]-d['bbox'][0]) for d in detections])
+            h = h/self.frame_size[0]
+            h = np.tile(np.expand_dims(h, axis=1), (1, dist_emb.shape[1]))
+            dist = (h*dist_emb + (1-h)*dist_iou)
 
         elif self.motion_model_cfg['ioa_threshold'] == 'motion':
             dist = dist_iou
+        
+        elif self.motion_model_cfg['ioa_threshold'] == 'appearance':
+            dist = dist_emb
 
         elif self.motion_model_cfg['ioa_threshold'] == 'SeperateAssignment':
             dist = [dist_emb, dist_iou]

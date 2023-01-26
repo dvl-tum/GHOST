@@ -42,7 +42,6 @@ class Birds(torch.utils.data.Dataset):
                 self.ys.append(self.map[y])
             self.im_paths.append(os.path.join(root, 'images', '{:05d}'.format(
                 int(paths[i].split('_')[0])), paths[i]))
-
         self.transform = self.get_transform(sz_crop=sz_crop)
 
     def get_transform(self, sz_crop):
@@ -52,6 +51,9 @@ class Birds(torch.utils.data.Dataset):
         elif self.trans == 'bot':
             trans = utils.make_transform_bot(
                 is_train=not self.eval_reid, sz_crop=sz_crop)
+        elif self.trans == 'heavy':
+            trans = utils.make_transform_heavy(
+                    is_train=not self.eval_reid, sz_crop=sz_crop)
 
         return trans
 

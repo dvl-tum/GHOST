@@ -33,7 +33,18 @@ def init_args():
     parser.add_argument('--act', type=float, default=0.70000001)
     parser.add_argument('--inact', type=float, default=0.7)
     parser.add_argument('--det_file', type=str, default='qdtrack.txt')
-
+    parser.add_argument('--only_pedestrian', type=int, default=1)
+    parser.add_argument('--inact_thresh', type=int, default=50)
+    parser.add_argument('--ioa_threshold', type=str, default='sum')
+    parser.add_argument('--store_feats', type=int, default=0)
+    parser.add_argument('--store_dist', type=int, default=0)
+    parser.add_argument('--eval_bb', type=int, default=0)
+    parser.add_argument('--do_inact', type=int, default=1)
+    parser.add_argument('--splits', type=str, default="mot20_test")
+    parser.add_argument('--len_thresh', type=int, default=0)
+    parser.add_argument('--new_track_conf', type=float, default=0.6)
+    parser.add_argument('--unconfirmed', type=float, default=0)
+    parser.add_argument('--last_n_frames', type=int, default=100000000)
     return parser.parse_args()
 
 
@@ -50,6 +61,18 @@ def main_track(args):
         config['tracker']['inact_reid_thresh'] = args.inact
         config['tracker']['thresh'] = args.thresh
         config['dataset']['det_file'] = args.det_file
+        config['dataset']['only_pedestrian'] = args.only_pedestrian
+        # config['dataset']['splits'] = args.splits
+        config['tracker']['inact_thresh'] = args.inact_thresh
+        config['tracker']['motion_config']['ioa_threshold'] = args.ioa_threshold
+        config['tracker']['store_feats'] = args.store_feats
+        config['tracker']['store_dist'] = args.store_dist
+        config['tracker']['eval_bb'] = args.eval_bb
+        config['tracker']['avg_inact']['do'] = args.do_inact
+        config['tracker']['length_thresh'] = args.len_thresh
+        config['tracker']['new_track_thresh'] = args.new_track_conf
+        config['tracker']['unconfirmed'] = args.unconfirmed
+        config['tracker']['motion_config']['last_n_frames'] = args.last_n_frames
         logger.info(config)
         
         manager = Manager(

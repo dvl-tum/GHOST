@@ -11,6 +11,10 @@ from src.eval_track_eval import evaluate_track_eval
 from src.eval_track_eval_bdd import evaluate_track_eval_bdd
 import pandas as pd
 import json
+import sys
+sys.path.append('/usr/wiss/seidensc/Documents/fast-reid')
+from tools.train_net import get_model
+
 
 classes = [
     'pedestrian',
@@ -102,26 +106,34 @@ class Manager():
         # get tracking files
         i = 0
         
-        for seq in self.loaders[mode]:
+        for j, seq in enumerate(self.loaders[mode]):
             # first = feed sequence data through backbon and update statistics
             # before tracking
+            
+            logger.info(f"Sequence {j}/{len(self.loaders[mode])}")
             if first:
                 self.reset_for_first(seq, i)
                 i += 1
 
             # get gt bbs corresponding to detections for oracle evaluations
             if 'bdd' not in self.dataset_cfg['splits'] and 'test' not in \
-                    self.dataset_cfg['splits']:
+                    self.dataset_cfg['splits'] and 'dance' not in self.dataset_cfg['splits']:
                 self.get_corresponding_gt(seq, corresponding_gt)
 
             self.tracker.encoder = self.encoder
             self.tracker.track(seq[0], log=log)
             
             names.append(seq[0].name)
-        
+
         # manually set experiment if already generated bbs
-        # self.tracker.experiment = 'byte_dets_0.851840_evalBB:0_mv_avg0.9:0.85:last_frame:0.8InactPat:10000000ConfThresh:-0.6'
-        
+        # self.tracker.experiment = 'byte_dets_0.851840_evalBB:0_each_sample2:0.85:last_frame:0.77MM:1sum0.30.30.3InactPat:50ConfThresh:-0.6'
+        # self.tracker.experiment = 'qdbdd' #'bytebdd'
+        # self.tracker.experiment = 'dets_bdd_byte_0.851840_evalBB:0_each_sample2:0.8:last_frame:0.9MM:1sum_0.40.30.30.3InactPat:50ConfThresh:0.35'
+        # self.tracker.experiment = 'converted_byte_original'
+        # self.tracker.experiment = 'converted_with_our_reid'
+        # self.tracker.experiment = 'converted_with_our_reid_thresh'
+
+
         if log:
             logger.info(self.tracker.experiment)
 
@@ -160,7 +172,8 @@ class Manager():
             torchreid.utils.load_pretrained_weights(
                 encoder, 'resnet50_market_xent.pth.tar')
             self.sz_embed = None
-
+        elif self.net_type == "IBN":
+            encoder = get_model()
         else:
             # own trained network
             encoder, self.sz_embed = net.load_net(
@@ -184,6 +197,7 @@ class Manager():
                     seqs,
                     dataset_cfg,
                     self.dir,
+                    net_type=self.reid_net_cfg['encoder_params']['net_type'],
                     dev=self.device)
                 loaders[mode] = dataset
             elif mode == 'train':
@@ -233,6 +247,30 @@ class Manager():
             gt_path=osp.join(self.dataset_cfg['mot_dir'], self.dir),
             log=log
         )
+        hota = sum(output_res['MotChallenge2DBox'][self.tracker.experiment]['COMBINED_SEQ']['pedestrian']["HOTA"]['HOTA'])/len(output_res['MotChallenge2DBox'][self.tracker.experiment]['COMBINED_SEQ']['pedestrian']["HOTA"]['HOTA'])
+        idf1 = output_res['MotChallenge2DBox'][self.tracker.experiment]['COMBINED_SEQ']['pedestrian']["Identity"]['IDF1']
+        mota = output_res['MotChallenge2DBox'][self.tracker.experiment]['COMBINED_SEQ']['pedestrian']["CLEAR"]['MOTA']
+
+        from csv import writer
+ 
+        with open(self.dataset_cfg['splits'] + '.txt', 'a') as f:
+            line = [self.tracker_cfg['avg_inact']['proxy'], self.tracker_cfg['avg_inact']['num']] if self.tracker_cfg['avg_inact']['do'] else ['last', 0]
+            line += [self.tracker_cfg['act_reid_thresh']]
+            line += [self.tracker_cfg['inact_reid_thresh']]
+            line += [self.tracker_cfg['motion_config']['ioa_threshold']]
+            line += [self.tracker_cfg['eval_bb']]
+            line += [hota, mota, idf1]
+
+            # Pass this file object to csv.writer()
+            # and get a writer object
+            writer_object = writer(f)
+        
+            # Pass the list as an argument into
+            # the writerow()
+            writer_object.writerow(line)
+        
+            # Close the file object
+            f.close()
 
         return output_res, output_msg
 
@@ -244,6 +282,31 @@ class Manager():
             gt_path='/storage/user/seidensc/datasets/DanceTrack/val',
             log=log
         )
+        
+        hota = sum(output_res['MotChallenge2DBox'][self.tracker.experiment]['COMBINED_SEQ']['pedestrian']["HOTA"]['HOTA'])/len(output_res['MotChallenge2DBox'][self.tracker.experiment]['COMBINED_SEQ']['pedestrian']["HOTA"]['HOTA'])
+        idf1 = output_res['MotChallenge2DBox'][self.tracker.experiment]['COMBINED_SEQ']['pedestrian']["Identity"]['IDF1']
+        mota = output_res['MotChallenge2DBox'][self.tracker.experiment]['COMBINED_SEQ']['pedestrian']["CLEAR"]['MOTA']
+
+        from csv import writer
+ 
+        with open(self.dataset_cfg['splits'] + '.txt', 'a') as f:
+            line = [self.tracker_cfg['avg_inact']['proxy'], self.tracker_cfg['avg_inact']['num']] if self.tracker_cfg['avg_inact']['do'] else ['last', 0]
+            line += [self.tracker_cfg['act_reid_thresh']]
+            line += [self.tracker_cfg['inact_reid_thresh']]
+            line += [self.tracker_cfg['motion_config']['ioa_threshold']]
+            line += [self.tracker_cfg['eval_bb']]
+            line += [hota, mota, idf1]
+
+            # Pass this file object to csv.writer()
+            # and get a writer object
+            writer_object = writer(f)
+        
+            # Pass the list as an argument into
+            # the writerow()
+            writer_object.writerow(line)
+        
+            # Close the file object
+            f.close()
 
         return output_res, output_msg
 
@@ -262,6 +325,7 @@ class Manager():
         files = os.listdir(os.path.join('out', self.tracker.experiment))
         os.makedirs(os.path.join('out', self.tracker.experiment + '_orig'), exist_ok=True)
         for seq in files:
+            print(seq)
             if seq[-4:] == 'json':
                 continue
             if oracle_files:
@@ -272,23 +336,28 @@ class Manager():
                     seq_df['frame'] = seq_df['frame'].apply(make_frame)
                 else:
                     seq_df = pd.read_csv(os.path.join('out', self.tracker.experiment, seq), names=col_names, index_col=False)
+            elif self.tracker.experiment == 'bytebdd':
+                seq_df = pd.read_csv(os.path.join('out', self.tracker.experiment, seq), names=col_names_short, index_col=False)
             else:
                 seq_df = pd.read_csv(os.path.join('out', self.tracker.experiment, seq), names=col_names, index_col=False)
+            
+            assert len(os.listdir('/storage/slurm/seidensc/datasets/BDD100/bdd100k/images/track/val/' + seq)) >= seq_df['frame'].unique().shape[0], seq
 
             if 'qdtrack' not in self.tracker.experiment and oracle_files:
-                seq_df = seq_df[seq_df['conf'] > 0.4] 
+                seq_df = seq_df[seq_df['conf'] > 0.4]
 
             det_list = list()
-
             for frame in seq_df['frame'].unique():
                 frame_dict = dict()
                 frame_df = seq_df[seq_df['frame'] == frame]
                 frame_dict['name'] = seq + "-" + f"{frame:07d}.jpg"
                 labels_list = list()
+
                 for idx, row in frame_df.iterrows():
                     labels_dict = dict()
                     labels_dict['id'] = row['id']
                     labels_dict['category'] = classes[int(row['label'])]
+
                     if labels_dict['category'] not in classes_for_eval.keys():
                         continue
                     labels_dict['box2d'] = {
@@ -298,7 +367,6 @@ class Manager():
                         'y2': row['bb_top'] + row['bb_height']
                     }
                     labels_list.append(labels_dict)
-
                 frame_dict['labels'] = labels_list
                 det_list.append(frame_dict)
 
