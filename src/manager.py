@@ -107,7 +107,7 @@ class Manager():
         i = 0
         
         for j, seq in enumerate(self.loaders[mode]):
-            # first = feed sequence data through backbon and update statistics
+            '''# first = feed sequence data through backbon and update statistics
             # before tracking
             
             logger.info(f"Sequence {j}/{len(self.loaders[mode])}")
@@ -121,7 +121,7 @@ class Manager():
                 self.get_corresponding_gt(seq, corresponding_gt)
 
             self.tracker.encoder = self.encoder
-            self.tracker.track(seq[0], log=log)
+            self.tracker.track(seq[0], log=log)'''
             
             names.append(seq[0].name)
 
@@ -132,6 +132,7 @@ class Manager():
         # self.tracker.experiment = 'converted_byte_original'
         # self.tracker.experiment = 'converted_with_our_reid'
         # self.tracker.experiment = 'converted_with_our_reid_thresh'
+        self.tracker.experiment = 'lin_mot_true_false_false_0.8_0.8_0.7'
 
 
         if log:

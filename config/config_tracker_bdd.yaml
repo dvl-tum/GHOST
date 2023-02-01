@@ -3,7 +3,7 @@ dataset:
   det_dir: "/storage/slurm/seidensc/datasets/BDD100/bdd100k-models/det/mot_files"
   det_file: "bdd100k.txt" #"tracktor_prepr_det.txt" #"center_track.txt" #"qdtrack.txt" # "CenterTrack.txt" #"CenterTrackPub.txt" #"CSTrack.txt" #"FairMOT.txt" #"JDE.txt" #"TraDeS.txt" #"TransTrack.txt"  #"tmoh.txt" #
   detector: ""
-  splits: "bdd100k_debug" #"bdd100k_test" #"bdd100k" #"mot17_split_1" #"mot17_split_2" #"mot17_split_3" #"mot17_train_test"
+  splits: "bdd100k" #"bdd100k_test" #"bdd100k" #"mot17_split_1" #"mot17_split_2" #"mot17_split_3" #"mot17_train_test"
   validation_set: 0
   validation_set_gt: 0
   half_train_set_gt: 0
@@ -23,7 +23,8 @@ reid_net:
     name: 'Market'
     num_classes: 2820 #751
   encoder_params:
-    pretrained_path: 'ReID/BDD_models/0.975resnet50_BDDCropReduced.pth' #'ReID/market_models/0.8518408551068883resnet50_Market.pth' #'ReID/market_models/Market_Heavy.pth'
+    pretrained_path: 'ReID/market_models/0.8518408551068883resnet50_Market.pth' #'ReID/market_models/Market_Heavy.pth'
+    # BDD Model: 'ReID/BDD_models/0.975resnet50_BDDCropReduced.pth' 
     # Model M: 'ReID/market_models/0.8518408551068883resnet50_Market.pth'
     # Split 3: 'ReID/models/MOT_models/same_epochs_for_decay/0.8947368421052632resnet50_MOT17.pth'
     # Split 2: 'ReID/models/MOT_models/same_epochs_for_decay/0.9523809523809523resnet50_MOT17.pth'

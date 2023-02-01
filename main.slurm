@@ -14,7 +14,7 @@
 source activate allreid_tv
 
 
-python main_track.py --config_path config/config_tracker.yaml --act 0.7 --inact 0.7 --do_inact 1 --inact_thresh 50 --ioa_threshold sum_0.6 --eval_bb 0 --store_feats 0 --store_dist 0 --det_file byte_val.txt --thresh 0.5 --new_track_conf 0.55 --last_n_frames 90
+python main_track.py --config_path config/config_tracker.yaml --act 0.7 --inact 0.8 --do_inact 1 --inact_thresh 50 --ioa_threshold sum_0.6 --eval_bb 0 --store_feats 0 --store_dist 0 --det_file byte_val.txt --thresh 0.5 --new_track_conf 0.55 --last_n_frames 90
 
 
 

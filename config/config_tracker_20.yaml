@@ -3,7 +3,7 @@ dataset:
   det_dir: "/storage/slurm/seidensc/datasets/MOT/MOT20"
   det_file: "tracktor_prepr_det.txt"   # bytetrack_text_MOT20.txt  # bytetrack_train_MOT20.txt
   detector: ""
-  splits: "mot20_train_debug" #"mot20_train_test" #"mot20_test" #"mot20_train_test" #"mot20_test"
+  splits: "mot20_train_test" #"mot20_train_test" #"mot20_test" #"mot20_train_test" #"mot20_test"
   validation_set: 0
   validation_set_gt: 0
   half_train_set_gt: 0
@@ -35,7 +35,7 @@ reid_net:
 
 tracker:
   kalman: 0
-  visualize: 1
+  visualize: 0
   store_dist: 0
   store_feats: 0
   save_embeddings_by_id: 0
