@@ -12,4 +12,4 @@
 #SBATCH --time=40:00:00
 
 source activate allreid_tv
-python train.py
+python tools/train.py

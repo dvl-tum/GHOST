@@ -181,7 +181,6 @@ class ResNet(nn.Module):
         self.layer4 = self._make_layer(block, 512, layers[3], stride=2,
                                        dilate=replace_stride_with_dilation[2])
         if pool == 'avg':
-            print("Using avg pool")
             self.avgpool = nn.AdaptiveAvgPool2d((1, 1))
         else:
             self.avgpool = nn.AdaptiveMaxPool2d((1, 1))
@@ -191,7 +190,7 @@ class ResNet(nn.Module):
         else:
             self.red = nn.Linear(512 * block.expansion, int((
                 512 * block.expansion)/red))
-            print("reduce output dimension resnet by {}".format(red))
+
         if self.neck:
             self.bottleneck = nn.BatchNorm1d(int((512 * block.expansion)/red))
             self.bottleneck.bias.requires_grad_(False)  # no shift
