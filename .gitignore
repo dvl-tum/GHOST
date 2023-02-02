@@ -14,4 +14,10 @@ tracking_wo_bnw
 *.tar
 slurm_files
 ReID/models
+ReID/datasets
+ReID/runs
 ReID/results
+distances/
+features/
+histograms/
+histograms_features/
