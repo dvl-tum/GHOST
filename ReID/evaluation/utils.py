@@ -3,8 +3,6 @@ import torch
 import logging
 import numpy as np
 
-logger = logging.getLogger('GNNReID.Evaluator')
-
 class Evaluator():
     def __init__(self, output_test_enc='norm'):
         self.output_test = output_test_enc
@@ -15,7 +13,6 @@ class Evaluator():
         model_is_training = model.training
         model.eval()
 
-        logger.info('evaluate using only backbone')
         features, labels, camids = self.predict_reid_features_bb(
             model, dataloader, add_dist)
 
@@ -56,10 +53,6 @@ class Evaluator():
                 else:
                     _, fc7 = model(
                         X, output_option=self.output_test, val=True)
-
-                # this accounts for FPN features (4 features per samp)
-                if type(fc7) == list:
-                    fc7 = torch.cat(fc7, dim=1)
                 
                 # add features to dict, labels and camid only for MOT17
                 for path, out in zip(P, fc7):

@@ -1,39 +1,38 @@
-mode: "train" #train/test/hyper_search/pretraining #train_spatialatt_batchwise_queryguided     #queryguided == evaluation in qg setting
+mode: "train" 
 application: "reid"
 visualize: 0
 
-models:
-  freeze_bb: 0
-  encoder_params:
-    pretrained_path: "no" #"models/0.8422818791946308neck_resnet50_Market.pth" #"models/QG_redLRtwice/0.8187919463087249neck_resnet50_Market.pth" #"0.7818791946308725neck_resnet50_Market.pth" #"models/0.8590604026845637neck_resnet50_Market.pth" #"models/0.8422818791946308neck_resnet50_Market.pth" 
-    net_type: "resnet50" #"resnet50FPN"
-    neck: 0
-    add_distractors: 0
-    red: 4
-    pool: 'max'
+encoder:
+  pretrained_path: "no" 
+  net_type: "resnet50"
+  neck: 0
+  add_distractors: 0
+  red: 4
+  pool: 'max'
 
 dataset:
-  dataset_path: "/storage/slurm/seidensc/datasets/Market-1501-v15.09.15"
+  dataset_path: "datasets/Market-1501-v15.09.15"
   dataset_short: "Market"
   num_classes: 751
   split: "no"
   trans: "norm"
-  bssampling: "no" #"NumberSampler"
+  bssampling: "no" 
   rand_scales: 0
   nb_workers: 4
   add_distractors: 0
-  sz_crop: [384, 128] #[256, 128]
+  sz_crop: [384, 128]
 
 train_params:
   store_every: 0
   milestones: [31, 51]
-  num_classes_iter: 7 #12 #70 #32 #70 #12 #4 #12 #9 #4 #6 #4 #5 #6 #5
-  num_elements_class: 3 #7 #5 #5 #5 #7 #8 #8 #4 #5 #8 #10 #7 #4 #7
-  lr: 0.00011067818445868948 #0.00013587037826354756 #0.00036683239911604993 #9.448566599801139e-05 #1.376644731109111e-05 #6.672588679081452e-05 #9.448566599801139e-05 #0.0004871615200618273 #4.5222376053155144e-07 #0.00022408468425015623 #0.0001366386597351265 #4.5222376053155144e-07 #1.350099421230439e-07 #9.448566599801139e-05 #5.002815035521046e-05 #0.0002
-  weight_decay: 2.376601518887915e-15 #1.2285532321358998e-14 #2.551918610962277e-09 #2.3714181045620526e-15 #1.8239498271581914e-11 #4.034721886446752e-15 #2.3714181045620526e-15 #1.2186224600118486e-09 #8.400668756748539e-14 #5.6870794872598566e-08 #4.468275237300557e-12 #8.400668756748539e-14 #6.60890902155426e-11 #2.3714181045620526e-15 #3.109630777839333e-14 #4.863656728256105e-07
+  lr_reduction: [0.1, 0.1]
+  num_classes_iter: 7 
+  num_elements_class: 3 
+  lr: 0.00011067818445868948 
+  weight_decay: 2.376601518887915e-15 
   num_epochs: 70
   is_apex: 0
-  temperatur: 0.1111111111111 #0.4589056016487666 #0.1111111111111 #0.2 #0.6968750970069256 #0.1605494911629317 #0.6968750970069256 #0.2
+  temperatur: 0.1111111111111 
   output_train_enc: "plain"
   loss_fn:
     fns: "lsce"
