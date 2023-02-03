@@ -22,11 +22,7 @@ reid_net:
     name: 'Market'
     num_classes: 2820 #751
   encoder_params:
-    pretrained_path: 'ReID/market_models/0.8518408551068883resnet50_Market.pth'
-    # Model M: 'ReID/market_models/0.8518408551068883resnet50_Market.pth'
-    # Split 3: 'ReID/models/MOT_models/same_epochs_for_decay/0.8947368421052632resnet50_MOT17.pth'
-    # Split 2: 'ReID/models/MOT_models/same_epochs_for_decay/0.9523809523809523resnet50_MOT17.pth'
-    # SPlit 1: 'ReID/models/MOT_models/same_epochs_for_decay/0.9203539823008849resnet50_MOT17.pth'
+    pretrained_path: 'ReID/trained_models/market_models/resnet50_Market.pth'
     net_type: "resnet50" # "IBN" #
     add_distractors: 0
     neck: 0
