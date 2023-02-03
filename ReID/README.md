@@ -46,4 +46,9 @@ If you want to run a 50-50 split, i.e., splitting each of the sequences along th
 The trained networks will be stored to ```checkpoints/```.
 
 ## Trained netoworks
-The trained networks on Market dataset can be downloaded from [here](https://vision.in.tum.de/webshare/u/seidensc/ReIDModels.zip). Please extract them into ```trained_models/```.
+The trained networks on Market dataset and MOT17 can be downloaded from [here](https://vision.in.tum.de/webshare/u/seidensc/trained_reid_models.zip). Please simply extract them here, i.e., ```AllReID/ReID/``` so that the structure is 
+* AllReID
+    * ReID
+        * trained_models
+            * market_models
+            * MOT_models
