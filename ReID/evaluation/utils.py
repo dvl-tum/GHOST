@@ -1,6 +1,5 @@
 from . import calc_mean_average_precision
 import torch
-import logging
 import numpy as np
 
 class Evaluator():
@@ -17,7 +16,6 @@ class Evaluator():
             model, dataloader, add_dist)
 
         if len(camids):
-            logger.info("Using MOT17 - use camids and labels from dataset")
             qc = np.array([camids[k] for k in query])
             gc = np.array([camids[k] for k in gallery])
             qi = np.array([labels[k] for k in query])

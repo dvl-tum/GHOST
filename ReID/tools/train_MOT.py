@@ -7,7 +7,7 @@ import time
 import os.path as osp
 import os
 import utils.utils as utils
-from .utils.trainer import Trainer 
+from utils.trainer import Trainer 
 
 
 logger = logging.getLogger('GNNReID')
@@ -40,35 +40,17 @@ def main(args):
         config = yaml.load(f, Loader=yaml.FullLoader)
 
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-    logger.info('Switching to device {}'.format(device))
 
-    save_folder_results = 'search_results'
-    utils.make_dir(save_folder_results)
     save_folder_nets = 'search_results_net'
     utils.make_dir(save_folder_nets)
     
-    splits = [['split_S4', 'split_S11'], ['split_S5', 'split_S9'], ['split_S2', 'split_S10', 'split_S13']]
-    weights = ['models/0.8634204275534442resnet50_Market.pth',
-               'models/0.8634204275534442resnet50_Market.pth',
-               'models/0.8634204275534442resnet50_Market.pth']
-
+    splits = ['split_1', 'split_2', 'split_3']
     
-    '''splits = [['50-50-1+split_S4', '50-50-1+split_S11', '50-50-1+split_S5', '50-50-1+split_S9', '50-50-1+split_S2', '50-50-1+split_S10', '50-50-1+split_S13'],
-              ['50-50-2+split_S4', '50-50-2+split_S11', '50-50-2+split_S5', '50-50-2+split_S9', '50-50-2+split_S2', '50-50-2+split_S10', '50-50-2+split_S13']]
-    weights = ['0.9625resnet50_MOT17.pth',
-               '0.9541284403669725resnet50_MOT17.pth']'''
-    for split, w in zip(splits, weights):
-        print('#########', w, '#########')
-        for s in split:
-            config['mode'] = 'test'
-            config['dataset']['split'] = s
-            config['models']['encoder_params']['pretrained_path'] = w
-            print(s, w)
-            print(config)
-
-            trainer = Trainer(config, save_folder_nets, save_folder_results, device,
-                            timer=time.time())
-            trainer.train()
+    for s in splits:
+        config['dataset']['split'] = s
+        trainer = Trainer(config, save_folder_nets, device,
+                        timer=time.time())
+        trainer.train()
 
 
 if __name__ == '__main__':

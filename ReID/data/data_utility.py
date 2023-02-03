@@ -3,15 +3,15 @@ import data
 import torch
 from collections import defaultdict
 from .combine_sampler import CombineSampler
-from .MOTdata import get_sequence_class
+# from .MOTdata import MOTReIDDataset
 import numpy as np
 import os
 
 
 def create_loaders(
         dataset_config, num_classes_iter, num_elements_class):
-
-    if dataset_config.dataset_path != 'MOT17':
+    
+    if dataset_config.dataset_short != 'MOT17':
         # get dataset
         labels, paths = data.load_data(
             root=dataset_config.dataset_path,
@@ -20,14 +20,18 @@ def create_loaders(
         # combine paths and labels of query and gallery
         labels_ev, paths_ev, query, gallery = \
             combine_query_gallery(labels, paths, dataset_config.dataset_path)
+        # train labels and paths
+        labels_tr = labels['bounding_box_train']
+        paths_tr = paths['bounding_box_train']
+
     else:
-        labels = paths = labels_ev = paths_ev = query = gallery = None
+        labels_tr = paths_tr = labels_ev = paths_ev = query = gallery = None
 
     # get train loader
     dl_tr = get_train_dataloader(
         dataset_config,
-        labels['bounding_box_train'],
-        paths['bounding_box_train'],
+        labels_tr,
+        paths_tr,
         num_classes_iter,
         num_elements_class)
 
@@ -44,16 +48,23 @@ def create_loaders(
 
 def get_train_dataloader(dataset_config, labels, paths, nci, nec):
     # get dataset
-    if dataset_config.dataset_path == 'MOT17':
-        Dataset = get_sequence_class(split=dataset_config.split)
-        Dataset = Dataset(mode='train')
+    if dataset_config.dataset_short == 'MOT17':
+        # Dataset = get_sequence_class(split=dataset_config.split)
+        Dataset = data.MOTReIDDataset(
+            root=dataset_config.dataset_path,
+            split=dataset_config.split,
+            mode='train',
+            trans=dataset_config.trans,
+            rand_scales=dataset_config.rand_scales,
+            sz_crop=dataset_config.sz_crop)
     else:
-        Dataset = data.Birds(root=dataset_config.dataset_path,
-                                labels=labels,
-                                paths=paths,
-                                trans=dataset_config.trans,
-                                rand_scales=dataset_config.rand_scales,
-                                sz_crop=dataset_config.sz_crop)
+        Dataset = data.ReIDDataset(
+            root=dataset_config.dataset_path,
+            labels=labels,
+            paths=paths,
+            trans=dataset_config.trans,
+            rand_scales=dataset_config.rand_scales,
+            sz_crop=dataset_config.sz_crop)
 
     # get sampler
     ddict = defaultdict(list)
@@ -94,11 +105,18 @@ def get_train_dataloader(dataset_config, labels, paths, nci, nec):
 
 def get_val_dataloader(dataset_config, labels_ev, paths_ev):
     # get dataset
-    if dataset_config.dataset_path == 'MOT17':
-        dataset_ev = get_sequence_class(split=dataset_config.split)
-        dataset_ev = dataset_ev(mode='test')
+    if dataset_config.dataset_short == 'MOT17':
+        # dataset_ev = get_sequence_class(split=dataset_config.split)
+        dataset_ev = data.MOTReIDDataset(
+            root=dataset_config.dataset_path,
+            split=dataset_config.split,
+            mode='test',
+            trans=dataset_config.trans,
+            rand_scales=dataset_config.rand_scales,
+            sz_crop=dataset_config.sz_crop,
+            eval_reid=True)
     else:
-        dataset_ev = data.Birds(
+        dataset_ev = data.ReIDDataset(
             root=dataset_config.dataset_path,
             labels=labels_ev,
             paths=paths_ev,

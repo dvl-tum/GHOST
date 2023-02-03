@@ -2,18 +2,16 @@ mode: "train" #train/test/hyper_search/pretraining
 application: "reid"
 visualize: 0
 
-models:
-  freeze_bb: 0
-  encoder_params:
-    pretrained_path: "0.8518408551068883resnet50_Market.pth" #"models/0.8634204275534442resnet50_Market.pth" 
-    net_type: "resnet50" #"resnet50FPN"
-    neck: 0
-    add_distractors: 0
-    red: 4
-    pool: 'max'
+encoder:
+  pretrained_path: "no" #"models/0.8634204275534442resnet50_Market.pth" 
+  net_type: "resnet50" #"resnet50FPN"
+  neck: 0
+  add_distractors: 0
+  red: 4
+  pool: 'max'
 
 dataset:
-  dataset_path: "MOT17"
+  dataset_path: "datasets/MOT17_ReID"
   dataset_short: "MOT17"
   split: 'split_1'
   num_classes: 751

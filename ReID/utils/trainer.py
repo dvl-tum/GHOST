@@ -31,18 +31,17 @@ ch = logging.StreamHandler()
 ch.setLevel(logging.DEBUG)
 ch.setFormatter(formatter)
 
-os.makedirs('log_out', exist_ok=True)
-fh = logging.FileHandler(os.path.join('log_out', 'train_reid.txt'))
-fh.setLevel(logging.DEBUG)
-fh.setFormatter(formatter)
-
 logger.addHandler(ch)
-logger.addHandler(fh)
 
 
 class Trainer():
-    def __init__(self, config, save_folder_nets, save_folder_results,
-                 device, timer, write=True):
+    def __init__(
+            self,
+            config,
+            save_folder_nets,
+            device,
+            timer,
+            write=True):
         
         # configs
         self.config = config
@@ -53,7 +52,6 @@ class Trainer():
 
         self.device = device
         logger.info('Switching to device {}...'.format(device))
-        self.save_folder_results = save_folder_results
         self.save_folder_nets = save_folder_nets
 
         # file name for intermediate results
