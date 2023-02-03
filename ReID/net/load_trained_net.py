@@ -1,5 +1,4 @@
 import torch
-import os
 from .resnet import resnet18, resnet34, resnet50, resnet101, resnet152
 import torch.nn as nn
 from .utils import weights_init_kaiming, weights_init_classifier
