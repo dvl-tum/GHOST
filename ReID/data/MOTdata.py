@@ -10,9 +10,9 @@ import json
 import math
 import random
 
-import PIL.Image
 import os
 from data.ReIDdata import ReIDDataset, pil_loader
+from zipfile import ZipFile
 
 
 split_dict = {'split_1': {'train': (2, 5, 9, 10, 13), 'test': (4, 11)},
@@ -43,6 +43,9 @@ class MOTReIDDataset(ReIDDataset):
             trans=None,
             sz_crop=[128, 64],
             eval_reid=False):
+        
+        # check if zip file extracted
+        self.extract_zip(root)
         
         self.img_dir = os.path.join(root, 'images')
         if seq_names is None:
@@ -211,6 +214,21 @@ class MOTReIDDataset(ReIDDataset):
         df = df.merge(ids_df)
 
         return df
+    
+    @staticmethod
+    def extract_zip(root):
+        # check if root directory alredy extracted
+        if not osp.isdir(root):
+            # check if zip file there
+            check_zip = root + '.zip'
+            if not os.path.isfile(check_zip) and not os.path.isdir(root):
+                path = 'https://vision.in.tum.de/webshare/u/seidensc/MOT17_ReID.zip'
+                assert False, f'Please download dataset from {path} into dataset/...'
+
+            # extract zip file
+            print("Extracting zip file...")
+            with ZipFile(check_zip) as z:
+                z.extractall(os.path.dirname(check_zip))
 
     def __getitem__(self, index):
         # 'path', 'reid_id', 'cam_id'
