@@ -1,20 +1,49 @@
 
-# About
+# ReID netowrk
 
-This repository contains a PyTorch implementation of [`The Group Loss for Deep Metric Learning`] https://arxiv.org/abs/1912.00385.
+This part of the repository contains code to train a ReID network on Market-1501 dataset as well as on MOT17 files.
 
-The same parameters are used as described in the paper. 
+## Get datasets
 
-# PyTorch version
+Market dataset:
+Download Market-1501 dataset from [here](https://drive.google.com/file/d/0B8-rUzbwVRk0c054eEozWG9COHM/view) and put zip file into datasets.
 
-We use torch 1.1 and torchvision 0.2. While the training and inference should be able to be done correctly with the newer versions of the libraries, be aware that at times the network trained with torch > 1.2 might diverge or reach lower results.
+MOT17 ReID dataset:
+Download dataset from [here](https://vision.in.tum.de/webshare/u/seidensc/MOT17_ReID.zip) and put zip file into datasets.
 
-We also support half-precision training via Nvidia Apex. 
+## Train
+To train on Market-1501 or MOT17 ReID dataset run:
+```
+tools/train.py
+```
 
-# Reproducing Results
+or 
+```
+tools/train_MOT.py
+```
 
-As in the paper we support training in 3 datasets: CUB-200-2011, CARS 196 and Stanford Online Products. Simply provide the path to the dataset in train.py and declare what dataset you want to use for the training. Training on some other dataset should be straightforwars as long as you structure the dataset in the same way as those three datasets.
+The latter will run on three different splits of MOT17 Sequences on default:
 
-The majority of experiments are done in inception with batch normalization. We provide support for the entire family of resnet and densenets. Simply define the type of the network you want to use in train.py.
+* split_1
+    * train: (2, 5, 9, 10, 13)
+    * test: (4, 11)
+* split_2
+    * train: (2, 4, 11, 10, 13)
+    * test: (5, 9)
+* split_3
+    * train: (4, 5, 9, 11)
+    * test': (2, 10, 13)
 
-In order to train and test the network run file train.py
+If you want to run a 50-50 split, i.e., splitting each of the sequences along the time dimension change config.dataset.split to 50-50. Then it train on the following splits:
+
+* 50-50-1
+    * train: 50-50-1
+    * test: 50-50-2
+* 50-50-2
+    * train: 50-50-2
+    * test: 50-50-1
+
+The trained networks will be stored to ```checkpoints/```.
+
+## Trained netoworks
+The trained networks on Market dataset can be downloaded from [here](https://vision.in.tum.de/webshare/u/seidensc/ReIDModels.zip). Please extract them into ```trained_models/```.

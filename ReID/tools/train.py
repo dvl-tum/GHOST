@@ -22,7 +22,7 @@ def main(args):
 
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     
-    save_folder_nets = 'search_results_net'
+    save_folder_nets = 'checkpoints'
     utils.make_dir(save_folder_nets)
 
     trainer = Trainer(config, save_folder_nets, device,

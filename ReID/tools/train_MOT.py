@@ -9,22 +9,6 @@ import os
 import utils.utils as utils
 from utils.trainer import Trainer 
 
-
-logger = logging.getLogger('GNNReID')
-logger.setLevel(logging.INFO)
-formatter = logging.Formatter('%(asctime)s - %(message)s')
-
-ch = logging.StreamHandler()
-ch.setLevel(logging.DEBUG)
-ch.setFormatter(formatter)
-
-fh = logging.FileHandler('train_reid.txt')
-fh.setLevel(logging.DEBUG)
-fh.setFormatter(formatter)
-
-logger.addHandler(ch)
-logger.addHandler(fh)
-
 warnings.filterwarnings("ignore")
 
 
@@ -41,10 +25,13 @@ def main(args):
 
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
-    save_folder_nets = 'search_results_net'
+    save_folder_nets = 'checkpoints'
     utils.make_dir(save_folder_nets)
     
-    splits = ['split_1', 'split_2', 'split_3']
+    if config['dataset']['split'] == 'split_into_three':
+        splits = ['split_1', 'split_2', 'split_3']
+    else:
+        splits = ['50-50-1', '50-50-2']
     
     for s in splits:
         config['dataset']['split'] = s
