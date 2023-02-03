@@ -1,9 +1,10 @@
+ 
 dataset:
   mot_dir: "/storage/user/seidensc/datasets/DanceTrack" # mot17_test_FRCNN
   det_dir: "/storage/user/seidensc/datasets/DanceTrack"
   det_file: "byte_out.txt" #"tracktor_prepr_det.txt" #"center_track.txt" #"qdtrack.txt" # "CenterTrack.txt" #"CenterTrackPub.txt" #"CSTrack.txt" #"FairMOT.txt" #"JDE.txt" #"TraDeS.txt" #"TransTrack.txt"  #"tmoh.txt" #
   detector: ""
-  splits: "dance_val_debug" #"mot17_split_1" #"mot17_split_2" #"mot17_split_3" #"mot17_train_test"
+  splits: "dance_val" #"mot17_split_1" #"mot17_split_2" #"mot17_split_3" #"mot17_train_test"
   validation_set: 0
   validation_set_gt: 0
   half_train_set_gt: 0
@@ -12,8 +13,8 @@ dataset:
   save_oracle: 1
   gt_training_min_vis: 0
   drop_unassigned: 0
-  sz_crop: [384, 128] #[256, 128]
   fixed_aspect_ratio: 0
+  sz_crop: [384, 128] #[256, 128]
 
 reid_net:
   mode: 'hyper_search'
@@ -31,7 +32,7 @@ reid_net:
 
 tracker:
   kalman: 0
-  visualize: 1
+  visualize: 0
   store_dist: 0
   store_feats: 0
   save_embeddings_by_id: 0
@@ -44,8 +45,8 @@ tracker:
   assign_separately: 0
   mode: "eval" #"hyper_search" #"eval" 
   random_patches_several_frames: 0
-  several_frames: 0
   every_frame_several_frames: 0
+  several_frames: 0
   random_patches: 0
   random_patches_first: 0
   running_mean_seq: 0
