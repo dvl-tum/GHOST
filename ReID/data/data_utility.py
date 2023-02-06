@@ -6,7 +6,8 @@ from .combine_sampler import CombineSampler
 # from .MOTdata import MOTReIDDataset
 import numpy as np
 import os
-
+from data.MOTdata import MOTReIDDataset
+from data.ReIDdata import ReIDDataset 
 
 def create_loaders(
         dataset_config, num_classes_iter, num_elements_class):
@@ -50,7 +51,7 @@ def get_train_dataloader(dataset_config, labels, paths, nci, nec):
     # get dataset
     if dataset_config.dataset_short == 'MOT17':
         # Dataset = get_sequence_class(split=dataset_config.split)
-        Dataset = data.MOTReIDDataset(
+        Dataset = MOTReIDDataset(
             root=dataset_config.dataset_path,
             split=dataset_config.split,
             mode='train',
@@ -58,7 +59,7 @@ def get_train_dataloader(dataset_config, labels, paths, nci, nec):
             rand_scales=dataset_config.rand_scales,
             sz_crop=dataset_config.sz_crop)
     else:
-        Dataset = data.ReIDDataset(
+        Dataset = ReIDDataset(
             root=dataset_config.dataset_path,
             labels=labels,
             paths=paths,
@@ -107,7 +108,7 @@ def get_val_dataloader(dataset_config, labels_ev, paths_ev):
     # get dataset
     if dataset_config.dataset_short == 'MOT17':
         # dataset_ev = get_sequence_class(split=dataset_config.split)
-        dataset_ev = data.MOTReIDDataset(
+        dataset_ev = MOTReIDDataset(
             root=dataset_config.dataset_path,
             split=dataset_config.split,
             mode='test',
@@ -116,7 +117,7 @@ def get_val_dataloader(dataset_config, labels_ev, paths_ev):
             sz_crop=dataset_config.sz_crop,
             eval_reid=True)
     else:
-        dataset_ev = data.ReIDDataset(
+        dataset_ev = ReIDDataset(
             root=dataset_config.dataset_path,
             labels=labels_ev,
             paths=paths_ev,

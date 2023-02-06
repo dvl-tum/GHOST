@@ -47,9 +47,13 @@ def load_net(nb_classes, net_type, neck=0, pretrained_path=None, red=1,
                 pretrained_path, map_location=torch.device('cpu'))
         else:
             state_dict = torch.load(pretrained_path)
-
-        model_state_dict = state_dict['model_state_dict']
-        optimizer_state_dict = state_dict['optimizer_state_dict']
+        
+        if 'model_state_dict' in state_dict.keys():
+            model_state_dict = state_dict['model_state_dict']
+            optimizer_state_dict = state_dict['optimizer_state_dict']
+        else:
+            model_state_dict = state_dict
+            optimizer_state_dict = None
 
         model_state_dict = {k: v for k, v in model_state_dict.items()
             if 'fc' not in k.split('.') and 'fc_person' not in k.split('.')}
