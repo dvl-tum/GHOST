@@ -177,7 +177,7 @@ class Manager():
             encoder = get_model()
         else:
             # own trained network
-            encoder, self.sz_embed = net.load_net(
+            encoder, self.sz_embed, _ = net.load_net(
                 self.reid_net_cfg['trained_on']['num_classes'],
                 **self.reid_net_cfg['encoder_params'])
 

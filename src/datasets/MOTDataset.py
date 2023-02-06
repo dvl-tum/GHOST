@@ -3,7 +3,7 @@ import os.path as osp
 import PIL.Image as Image
 from torchvision.transforms import ToTensor
 from torchvision import transforms
-from ReID.dataset.utils import make_transform_bot, make_transfor_obj_det, make_transform_IBN
+from ReID.data.utils import make_transform_bot, make_transfor_obj_det, make_transform_IBN
 from torch.utils.data import Dataset
 import pandas as pd
 import torch
