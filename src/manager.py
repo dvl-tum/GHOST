@@ -5,7 +5,6 @@ from data.splits import _SPLITS
 from .tracker import Tracker
 from src.datasets.TrackingDataset import TrackingDataset
 import logging
-from collections import OrderedDict
 import torchreid
 from src.eval_track_eval import evaluate_track_eval
 from src.eval_track_eval_bdd import evaluate_track_eval_bdd
@@ -44,29 +43,29 @@ classes_for_eval = {
     'motorcycle': 10,
     'bicycle': 11}
 
-col_names=[
-        'frame',
-        'id',
-        'bb_left',
-        'bb_top',
-        'bb_width',
-        'bb_height',
-        'conf',
-        '?',
-        'label',
-        'vis']
+col_names = [
+    'frame',
+    'id',
+    'bb_left',
+    'bb_top',
+    'bb_width',
+    'bb_height',
+    'conf',
+    '?',
+    'label',
+    'vis']
 
-col_names_short =[
-        'frame',
-        'id',
-        'bb_left',
-        'bb_top',
-        'bb_width',
-        'bb_height',
-        'conf',
-        # '?',
-        'label',
-        'vis']
+col_names_short = [
+    'frame',
+    'id',
+    'bb_left',
+    'bb_top',
+    'bb_width',
+    'bb_height',
+    'conf',
+    # '?',
+    'label',
+    'vis']
 
 frames = {'JDE': [299, 524, 418, 262, 326, 449, 368],
           'CSTrack': [298, 523, 417, 261, 325, 448, 368],
@@ -96,44 +95,25 @@ class Manager():
         self.loaders = self._get_loaders(dataset_cfg)
         self._get_models()
 
-    def _train(self):
-        raise NotImplementedError
-
-    def _evaluate(self, mode='val', first=False, log=True):
+    def _evaluate(self, first=False, log=True):
         names = list()
-        corresponding_gt = OrderedDict()
 
         # get tracking files
         i = 0
-        
-        for j, seq in enumerate(self.loaders[mode]):
-            '''# first = feed sequence data through backbon and update statistics
+
+        for j, seq in enumerate(self.loaders):
+            # first = feed sequence data through backbon and update statistics
             # before tracking
-            
-            logger.info(f"Sequence {j}/{len(self.loaders[mode])}")
+
+            logger.info(f"Sequence {j}/{len(self.loaders)}")
             if first:
                 self.reset_for_first(seq, i)
                 i += 1
 
-            # get gt bbs corresponding to detections for oracle evaluations
-            if 'bdd' not in self.dataset_cfg['splits'] and 'test' not in \
-                    self.dataset_cfg['splits'] and 'dance' not in self.dataset_cfg['splits']:
-                self.get_corresponding_gt(seq, corresponding_gt)
-
             self.tracker.encoder = self.encoder
-            self.tracker.track(seq[0], log=log)'''
-            
+            self.tracker.track(seq[0], log=log)
+
             names.append(seq[0].name)
-
-        # manually set experiment if already generated bbs
-        # self.tracker.experiment = 'byte_dets_0.851840_evalBB:0_each_sample2:0.85:last_frame:0.77MM:1sum0.30.30.3InactPat:50ConfThresh:-0.6'
-        # self.tracker.experiment = 'qdbdd' #'bytebdd'
-        # self.tracker.experiment = 'dets_bdd_byte_0.851840_evalBB:0_each_sample2:0.8:last_frame:0.9MM:1sum_0.40.30.30.3InactPat:50ConfThresh:0.35'
-        # self.tracker.experiment = 'converted_byte_original'
-        # self.tracker.experiment = 'converted_with_our_reid'
-        # self.tracker.experiment = 'converted_with_our_reid_thresh'
-        self.tracker.experiment = 'lin_mot_true_false_false_0.8_0.8_0.7'
-
 
         if log:
             logger.info(self.tracker.experiment)
@@ -147,22 +127,16 @@ class Manager():
             _, _ = self.eval_track_eval_dance(log)
         else:
             _, _ = self.eval_track_eval(log)
-        
+
         return mota, idf1
 
     def _get_models(self):
         self._get_encoder()
-        weight = self.reid_net_cfg['encoder_params']['pretrained_path'].split(
-            '/')[-1][:8] if self.reid_net_cfg['encoder_params']['net_type'][
-                :8] == 'resnet50' and self.reid_net_cfg['encoder_params'][
-                    'net_type'][:8] != 'resnet50_analysis' else ''
         self.tracker = Tracker(self.tracker_cfg, self.encoder,
                                net_type=self.net_type,
                                output=self.reid_net_cfg['output'],
-                               weight=weight,
                                data=self.dataset_cfg['det_file'],
-                               device=self.device,
-                               train_cfg=self.cfg['train'])
+                               device=self.device)
 
     def _get_encoder(self):
         self.net_type = self.reid_net_cfg['encoder_params']['net_type']
@@ -184,28 +158,20 @@ class Manager():
         self.encoder = encoder.to(self.device)
 
     def _get_loaders(self, dataset_cfg):
-        # Initialize datasets
-        loaders = dict()
         # get loaders for test / val mode of current split
-        for mode in _SPLITS[dataset_cfg['splits']].keys():
-            seqs = _SPLITS[dataset_cfg['splits']][mode]['seq']
-            self.dir = _SPLITS[dataset_cfg['splits']][mode]['dir']
+        seqs = _SPLITS[dataset_cfg['splits']]['test']['seq']
+        self.dir = _SPLITS[dataset_cfg['splits']]['test']['dir']
 
-            # tracking dataset
-            if mode != 'train':
-                dataset = TrackingDataset(
-                    dataset_cfg['splits'],
-                    seqs,
-                    dataset_cfg,
-                    self.dir,
-                    net_type=self.reid_net_cfg['encoder_params']['net_type'],
-                    dev=self.device)
-                loaders[mode] = dataset
-            elif mode == 'train':
-                print('currently no train mode implemented :)')
-                pass
+        # tracking dataset
+        dataset = TrackingDataset(
+            dataset_cfg['splits'],
+            seqs,
+            dataset_cfg,
+            self.dir,
+            net_type=self.reid_net_cfg['encoder_params']['net_type'],
+            dev=self.device)
 
-        return loaders
+        return dataset
 
     def reset_for_first(self, seq, i):
         experiment = self.tracker.experiment
@@ -223,23 +189,6 @@ class Manager():
         self.tracker.track(seq[0], first=True)
         self.encoder.eval()
 
-    def get_corresponding_gt(self, seq, corresponding_gt):
-        df = seq[0].corresponding_gt
-        df = df.drop(['bb_bot', 'bb_right'], axis=1)
-        df = df.rename(
-            columns={
-                "frame": "FrameId",
-                "id": "Id",
-                "bb_left": "X",
-                "bb_top": "Y",
-                "bb_width": "Width",
-                "bb_height": "Height",
-                "conf": "Confidence",
-                "label": "ClassId",
-                "vis": "Visibility"})
-        df = df.set_index(['FrameId', 'Id'])
-        corresponding_gt[seq[0].name] = df
-
     def eval_track_eval(self, log=True, dir='val'):
         output_res, output_msg = evaluate_track_eval(
             dir=self.dir,
@@ -248,30 +197,6 @@ class Manager():
             gt_path=osp.join(self.dataset_cfg['mot_dir'], self.dir),
             log=log
         )
-        hota = sum(output_res['MotChallenge2DBox'][self.tracker.experiment]['COMBINED_SEQ']['pedestrian']["HOTA"]['HOTA'])/len(output_res['MotChallenge2DBox'][self.tracker.experiment]['COMBINED_SEQ']['pedestrian']["HOTA"]['HOTA'])
-        idf1 = output_res['MotChallenge2DBox'][self.tracker.experiment]['COMBINED_SEQ']['pedestrian']["Identity"]['IDF1']
-        mota = output_res['MotChallenge2DBox'][self.tracker.experiment]['COMBINED_SEQ']['pedestrian']["CLEAR"]['MOTA']
-
-        from csv import writer
- 
-        with open(self.dataset_cfg['splits'] + '.txt', 'a') as f:
-            line = [self.tracker_cfg['avg_inact']['proxy'], self.tracker_cfg['avg_inact']['num']] if self.tracker_cfg['avg_inact']['do'] else ['last', 0]
-            line += [self.tracker_cfg['act_reid_thresh']]
-            line += [self.tracker_cfg['inact_reid_thresh']]
-            line += [self.tracker_cfg['motion_config']['ioa_threshold']]
-            line += [self.tracker_cfg['eval_bb']]
-            line += [hota, mota, idf1]
-
-            # Pass this file object to csv.writer()
-            # and get a writer object
-            writer_object = writer(f)
-        
-            # Pass the list as an argument into
-            # the writerow()
-            writer_object.writerow(line)
-        
-            # Close the file object
-            f.close()
 
         return output_res, output_msg
 
@@ -280,34 +205,9 @@ class Manager():
             dir=self.dir,
             tracker=self.tracker,
             dataset_cfg=self.dataset_cfg,
-            gt_path='/storage/user/seidensc/datasets/DanceTrack/val',
+            gt_path=osp.join(self.dataset_cfg['mot_dir'], self.dir),
             log=log
         )
-        
-        hota = sum(output_res['MotChallenge2DBox'][self.tracker.experiment]['COMBINED_SEQ']['pedestrian']["HOTA"]['HOTA'])/len(output_res['MotChallenge2DBox'][self.tracker.experiment]['COMBINED_SEQ']['pedestrian']["HOTA"]['HOTA'])
-        idf1 = output_res['MotChallenge2DBox'][self.tracker.experiment]['COMBINED_SEQ']['pedestrian']["Identity"]['IDF1']
-        mota = output_res['MotChallenge2DBox'][self.tracker.experiment]['COMBINED_SEQ']['pedestrian']["CLEAR"]['MOTA']
-
-        from csv import writer
- 
-        with open(self.dataset_cfg['splits'] + '.txt', 'a') as f:
-            line = [self.tracker_cfg['avg_inact']['proxy'], self.tracker_cfg['avg_inact']['num']] if self.tracker_cfg['avg_inact']['do'] else ['last', 0]
-            line += [self.tracker_cfg['act_reid_thresh']]
-            line += [self.tracker_cfg['inact_reid_thresh']]
-            line += [self.tracker_cfg['motion_config']['ioa_threshold']]
-            line += [self.tracker_cfg['eval_bb']]
-            line += [hota, mota, idf1]
-
-            # Pass this file object to csv.writer()
-            # and get a writer object
-            writer_object = writer(f)
-        
-            # Pass the list as an argument into
-            # the writerow()
-            writer_object.writerow(line)
-        
-            # Close the file object
-            f.close()
 
         return output_res, output_msg
 
@@ -319,33 +219,23 @@ class Manager():
             dataset_cfg=self.dataset_cfg,
             log=log
         )
+        self.MOT2BDDTest()
 
         return output_res, output_msg
 
-    def MOT2BDD(self, oracle_files=False):
+    def MOT2BDD(self):
         files = os.listdir(os.path.join('out', self.tracker.experiment))
-        os.makedirs(os.path.join('out', self.tracker.experiment + '_orig'), exist_ok=True)
+        os.makedirs(os.path.join(
+            'out', self.tracker.experiment + '_orig'), exist_ok=True)
         for seq in files:
-            print(seq)
             if seq[-4:] == 'json':
                 continue
-            if oracle_files:
-                if 'qdtrack' not in self.tracker.experiment:
-                    seq_df = pd.read_csv(os.path.join('out', self.tracker.experiment, seq, 'bdd100k.txt'), names=col_names_short, index_col=False)
-                    def make_frame(i):
-                        return int(i.split('-')[-1])
-                    seq_df['frame'] = seq_df['frame'].apply(make_frame)
-                else:
-                    seq_df = pd.read_csv(os.path.join('out', self.tracker.experiment, seq), names=col_names, index_col=False)
-            elif self.tracker.experiment == 'bytebdd':
-                seq_df = pd.read_csv(os.path.join('out', self.tracker.experiment, seq), names=col_names_short, index_col=False)
-            else:
-                seq_df = pd.read_csv(os.path.join('out', self.tracker.experiment, seq), names=col_names, index_col=False)
-            
-            assert len(os.listdir('/storage/slurm/seidensc/datasets/BDD100/bdd100k/images/track/val/' + seq)) >= seq_df['frame'].unique().shape[0], seq
 
-            if 'qdtrack' not in self.tracker.experiment and oracle_files:
-                seq_df = seq_df[seq_df['conf'] > 0.4]
+            seq_df = pd.read_csv(os.path.join(
+                'out', self.tracker.experiment, seq), names=col_names, index_col=False)
+
+            assert len(os.listdir('/storage/slurm/seidensc/datasets/BDD100/bdd100k/images/track/val/' + seq)
+                       ) >= seq_df['frame'].unique().shape[0], seq
 
             det_list = list()
             for frame in seq_df['frame'].unique():
@@ -374,11 +264,72 @@ class Manager():
             with open(os.path.join('out', self.tracker.experiment, seq + '.json'), 'w') as f:
                 json.dump(det_list, f)
 
-            if oracle_files:
-                import shutil
-                os.rename(os.path.join('out', self.tracker.experiment, seq), os.path.join('out', self.tracker.experiment + '_orig', seq))
-            else:
-                os.rename(os.path.join('out', self.tracker.experiment, seq), os.path.join('out', self.tracker.experiment + '_orig', seq))
-            
+            os.rename(os.path.join('out', self.tracker.experiment, seq),
+                      os.path.join('out', self.tracker.experiment + '_orig', seq))
 
+    def MOT2BDDTest(self):
 
+        out_orig = os.path.join('out', self.tracker.experiment + '_orig')
+        out_subm = 'bdd_for_submission'
+        os.makedirs(out_subm, exist_ok=True)
+        image_dir = osp.join(
+            os.dirname(self.dataset_cfg['mot_dir']),
+            'images',
+            'track',
+            self.dir)
+
+        col_names = [
+            'frame', 'id', 'bb_left', 'bb_top', 'bb_width',
+            'bb_height', 'conf', '?', 'label', 'vis']
+
+        BDD_NAME_MAPPING = {
+            1: "pedestrian", 2: "rider", 3: "car", 4: "truck",
+            5: "bus", 6: "train", 7: "motorcycle", 8: "bicycle"}
+
+        count = 0
+        for seq in os.listdir(out_orig):
+            if 'json' in seq:
+                continue
+
+            if seq in os.listdir(image_dir):
+                count += 1
+                df = pd.read_csv(os.path.join(out_orig, seq),
+                                 names=col_names, index_col=False)
+
+                df['label'] = df['label'].values + np.ones(df.shape[0])
+
+                final_out = df.sort_values(by=['frame', 'id'])
+                sequence_name = seq
+                output_file_path = os.path.join(out_subm, seq + '.json')
+
+                det_list = list()
+                # Find the max frame
+                df = df.reset_index()
+                max_frame = int(
+                    sorted(os.listdir(image_dir + '/' + seq))[-1][:-4][-4:])
+                for frame in range(1, max_frame+1):
+                    frame_dict = dict()
+                    frame_df = final_out[final_out['frame'] == frame]
+                    frame_dict['name'] = sequence_name + '/' + \
+                        sequence_name + "-" + f"{frame:07d}.jpg"
+                    frame_dict['index'] = int(frame - 1)
+                    labels_list = list()
+                    for idx, row in frame_df.iterrows():
+                        labels_dict = dict()
+                        labels_dict['id'] = row['id']
+                        labels_dict['score'] = row['conf']
+                        labels_dict['category'] = BDD_NAME_MAPPING[int(
+                            row['label'])]
+                        labels_dict['box2d'] = {
+                            'x1': row['bb_left'],
+                            'x2': row['bb_left'] + row['bb_width'],
+                            'y1': row['bb_top'],
+                            'y2': row['bb_top'] + row['bb_height']
+                        }
+                        labels_list.append(labels_dict)
+
+                    frame_dict['labels'] = labels_list
+                    det_list.append(frame_dict)
+
+                with open(output_file_path, 'w') as f:
+                    json.dump(det_list, f)

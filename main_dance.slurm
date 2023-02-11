@@ -12,7 +12,22 @@
 #SBATCH --time=120:00:00
 
 source activate allreid_tv
-python main_track.py --thresh 0.6 --act 0.8 --inact 0.9 --inact_thresh 50 --ioa_threshold sum_0.4 --do_inact 0 --eval_bb 0 --store_feats 0 --store_dist 0 --det_file byte_dets.txt --config_path config/config_tracker_danceV.yaml --new_track_conf 0.6 --len_thresh 0 --unconfirmed 0 --last_n_frames 5
+python tools/main_track.py \
+    --det_conf 0.6 \
+    --act 0.8 \
+    --inact 0.9 \
+    --inact_patience 50 \
+    --combi sum_0.4 \
+    --do_inact 0 \
+    --eval_bb 0 \
+    --store_feats 0 \
+    --det_file byte_dets.txt \
+    --config_path config/config_tracker_dance.yaml \
+    --splits dance_val \
+    --new_track_conf 0.6 \
+    --len_thresh 0 \
+    --unconfirmed 0 \
+    --last_n_frames 5
 
 
 
