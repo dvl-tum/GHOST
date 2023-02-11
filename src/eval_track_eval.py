@@ -3,7 +3,6 @@ import argparse
 import os.path as osp
 
 
-
 def get_dict(mot_dir, detectors):
     if "MOT17" in mot_dir and detectors != 'all':
         seq_length = {
@@ -16,11 +15,11 @@ def get_dict(mot_dir, detectors):
             'MOT17-02-FRCNN': None, 'MOT17-04-FRCNN': None,
             'MOT17-05-FRCNN': None, 'MOT17-09-FRCNN': None,
             'MOT17-10-FRCNN': None, 'MOT17-11-FRCNN': None,
-            'MOT17-13-FRCNN': None, 
+            'MOT17-13-FRCNN': None,
             'MOT17-02-DPM': None, 'MOT17-04-DPM': None,
             'MOT17-05-DPM': None, 'MOT17-09-DPM': None,
             'MOT17-10-DPM': None, 'MOT17-11-DPM': None,
-            'MOT17-13-DPM': None, 
+            'MOT17-13-DPM': None,
             'MOT17-02-SDP': None, 'MOT17-04-SDP': None,
             'MOT17-05-SDP': None, 'MOT17-09-SDP': None,
             'MOT17-10-SDP': None, 'MOT17-11-SDP': None,
@@ -69,6 +68,7 @@ def setup_trackeval():
 
 
 def evaluate_track_eval(dir, tracker, dataset_cfg, gt_path, log=True):
+    # set config
     eval_config, dataset_config, metrics_config = setup_trackeval()
 
     dataset_config['GT_FOLDER'] = gt_path
@@ -78,7 +78,8 @@ def evaluate_track_eval(dir, tracker, dataset_cfg, gt_path, log=True):
     dataset_config['PRINT_CONFIG'] = False
     eval_config['PRINT_CONFIG'] = False
     if 'Dance' not in gt_path:
-        dataset_config['SEQ_INFO'] = get_dict(dataset_cfg['mot_dir'], dataset_cfg['detector'])
+        dataset_config['SEQ_INFO'] = get_dict(
+            dataset_cfg['mot_dir'], dataset_cfg['detector'])
     else:
         if 'debug' in dataset_cfg['splits']:
             dataset_config['SEQMAP_FILE'] = '/storage/user/seidensc/datasets/DanceTrack/val_seqmap_debug.txt'
@@ -113,4 +114,3 @@ def evaluate_track_eval(dir, tracker, dataset_cfg, gt_path, log=True):
     output_res, output_msg = evaluator.evaluate(dataset_list, metrics_list)
 
     return output_res, output_msg
-

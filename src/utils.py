@@ -6,6 +6,31 @@ import numpy as np
 
 logger = logging.getLogger('AllReIDTracker.Utils')
 
+mot_fps = {
+    'MOT17-13-SDP': 25,
+    'MOT17-11-SDP': 30,
+    'MOT17-10-SDP': 30,
+    'MOT17-09-SDP': 30,
+    'MOT17-05-SDP': 14,
+    'MOT17-02-SDP': 30,
+    'MOT17-04-SDP': 30,
+    'MOT17-13-DMP': 25,
+    'MOT17-11-DMP': 30,
+    'MOT17-10-DMP': 30,
+    'MOT17-09-DMP': 30,
+    'MOT17-05-DMP': 14,
+    'MOT17-02-DMP': 30,
+    'MOT17-04-DMP': 30,
+    'MOT17-13-FRCNN': 25,
+    'MOT17-11-FRCNN': 30,
+    'MOT17-10-FRCNN': 30,
+    'MOT17-09-FRCNN': 30,
+    'MOT17-05-FRCNN': 14,
+    'MOT17-02-FRCNN': 30,
+    'MOT17-04-FRCNN': 30,
+}
+
+
 def evaluate_mot_accums(accums, names, generate_overall=False):
     mh = mm.metrics.create()
     summary = mh.compute_many(
@@ -24,69 +49,71 @@ def evaluate_mot_accums(accums, names, generate_overall=False):
 
 
 def eval_metrics(X=None, y=None, X_g=None, y_g=None, topk=1, first_match_break=True, gallery_mask=None, dist=None):
-        # only compute dist if not precomputed
-        if dist is None:
-            X, y = X.cpu().numpy(), y.cpu().numpy()
-            if X_g is not None:
-                X_g, y_g = X_g.cpu().numpy(), y_g.cpu().numpy()
-            else:
-                X_g = X
-                y_g = y
-            dist = sklearn.metrics.pairwise.pairwise_distances(X, X_g)
-        
-        if type(dist) != np.ndarray:
-            dist = dist.cpu().numpy()
+    # only compute dist if not precomputed
+    if dist is None:
+        X, y = X.cpu().numpy(), y.cpu().numpy()
+        if X_g is not None:
+            X_g, y_g = X_g.cpu().numpy(), y_g.cpu().numpy()
+        else:
+            X_g = X
+            y_g = y
+        dist = sklearn.metrics.pairwise.pairwise_distances(X, X_g)
 
-        aps = []
-        ret = np.zeros(topk)
-        num_valid_queries = 0
-        #all_cmc = list()
-        for k in range(dist.shape[0]):
-            # map
-            if gallery_mask is not None:
-                valid_dist = dist[k][gallery_mask[k]]
-                valid_ys = y_g[gallery_mask[k]]
-                indices = np.argsort(valid_dist)
-            else:
-                valid_dist = dist[k]
-                valid_ys = y_g
-                indices = np.argsort(valid_dist)[1:]
+    if type(dist) != np.ndarray:
+        dist = dist.cpu().numpy()
 
-            y_true = (valid_ys[indices] == y[k])
-            y_score = -valid_dist[indices] 
+    aps = []
+    ret = np.zeros(topk)
+    num_valid_queries = 0
+    #all_cmc = list()
+    for k in range(dist.shape[0]):
+        # map
+        if gallery_mask is not None:
+            valid_dist = dist[k][gallery_mask[k]]
+            valid_ys = y_g[gallery_mask[k]]
+            indices = np.argsort(valid_dist)
+        else:
+            valid_dist = dist[k]
+            valid_ys = y_g
+            indices = np.argsort(valid_dist)[1:]
 
-            if not np.any(y_true): continue
+        y_true = (valid_ys[indices] == y[k])
+        y_score = -valid_dist[indices]
 
-            aps.append(average_precision_score(y_true, y_score))
+        if not np.any(y_true):
+            continue
 
-            # rank
-            index = np.nonzero(y_true)[0]#matches[k, :])[0]
+        aps.append(average_precision_score(y_true, y_score))
 
-            delta = 1. / len(index)
-            for j, i in enumerate(index):
-                if i - j >= topk: break
-                if first_match_break:
-                    ret[i - j] += 1
-                    break
-                ret[i - j] += delta
-            
-            #cmc = y_true.cumsum()
-            #cmc[cmc > 1] = 1
-            #all_cmc.append(cmc[:topk])        
-            
-            num_valid_queries += 1
+        # rank
+        index = np.nonzero(y_true)[0]  # matches[k, :])[0]
 
-        rank_1 = ret.cumsum() / num_valid_queries
+        delta = 1. / len(index)
+        for j, i in enumerate(index):
+            if i - j >= topk:
+                break
+            if first_match_break:
+                ret[i - j] += 1
+                break
+            ret[i - j] += delta
 
-        #all_cmc = np.asarray(all_cmc).astype(np.float32)
-        #all_cmc = all_cmc.sum(0) / num_valid_queries
-        #print(all_cmc)
-        
-        mAP = np.mean(aps)
+        #cmc = y_true.cumsum()
+        #cmc[cmc > 1] = 1
+        # all_cmc.append(cmc[:topk])
 
-        logger.info("Rank-1: {}, mAP: {}".format(rank_1, mAP))
+        num_valid_queries += 1
 
-        return rank_1, mAP, num_valid_queries
+    rank_1 = ret.cumsum() / num_valid_queries
+
+    #all_cmc = np.asarray(all_cmc).astype(np.float32)
+    #all_cmc = all_cmc.sum(0) / num_valid_queries
+    # print(all_cmc)
+
+    mAP = np.mean(aps)
+
+    logger.info("Rank-1: {}, mAP: {}".format(rank_1, mAP))
+
+    return rank_1, mAP, num_valid_queries
 
 
 def update(oids, hids, dists, indices, events, m):
@@ -119,14 +146,16 @@ def update(oids, hids, dists, indices, events, m):
                             TYPE = 'migrate'
                         elif hypo[tr_id] != t['id']:
                             TYPE = 'transfer'
-                    df = pd.DataFrame([[TYPE, t['id'], i, tr_id, t['iou'], t['bbox'][2]-t['bbox'][0], t['bbox'][3]-t['bbox'][1]]], columns=cols)
+                    df = pd.DataFrame([[TYPE, t['id'], i, tr_id, t['iou'], t['bbox']
+                                      [2]-t['bbox'][0], t['bbox'][3]-t['bbox'][1]]], columns=cols)
 
     #self.dirty_events = True
     oids = np.asarray(oids)
     oids_masked = np.zeros_like(oids, dtype=np.bool)
     hids = np.asarray(hids)
     hids_masked = np.zeros_like(hids, dtype=np.bool)
-    dists = np.atleast_2d(dists).astype(float).reshape(oids.shape[0], hids.shape[0]).copy()
+    dists = np.atleast_2d(dists).astype(float).reshape(
+        oids.shape[0], hids.shape[0]).copy()
 
     if frameid is None:
         assert self.auto_id, 'auto-id is not enabled'
@@ -206,8 +235,8 @@ def update(oids, hids, dists, indices, events, m):
             o = oids[i]
             h = hids[j]
             is_switch = (o in self.m and
-                            self.m[o] != h and
-                            abs(frameid - self.last_occurrence[o]) <= self.max_switch_time)
+                         self.m[o] != h and
+                         abs(frameid - self.last_occurrence[o]) <= self.max_switch_time)
             cat1 = 'SWITCH' if is_switch else 'MATCH'
             if cat1 == 'SWITCH':
                 if h not in self.hypHistory:
@@ -216,7 +245,7 @@ def update(oids, hids, dists, indices, events, m):
                     events.append(subcat, oids[i], hids[j], dists[i, j])
             # ignore the last condition temporarily
             is_transfer = (h in self.res_m and
-                            self.res_m[h] != o)
+                           self.res_m[h] != o)
             # is_transfer = (h in self.res_m and
             #                self.res_m[h] != o and
             #                abs(frameid - self.last_occurrence[o]) <= self.max_switch_time)
@@ -230,9 +259,11 @@ def update(oids, hids, dists, indices, events, m):
                 events.append(cat2, oids[i], hids[j], dists[i, j])
             if vf != '' and (cat1 != 'MATCH' or cat2 != 'MATCH'):
                 if cat1 == 'SWITCH':
-                    vf.write('%s %d %d %d %d %d\n' % (subcat[:2], o, self.last_match[o], self.m[o], frameid, h))
+                    vf.write('%s %d %d %d %d %d\n' % (
+                        subcat[:2], o, self.last_match[o], self.m[o], frameid, h))
                 if cat2 == 'TRANSFER':
-                    vf.write('%s %d %d %d %d %d\n' % (subcat[:2], h, self.hypHistory[h], self.res_m[h], frameid, o))
+                    vf.write('%s %d %d %d %d %d\n' % (
+                        subcat[:2], h, self.hypHistory[h], self.res_m[h], frameid, o))
             self.hypHistory[h] = frameid
             self.last_match[o] = frameid
             indices.append(frameid, next(eid))

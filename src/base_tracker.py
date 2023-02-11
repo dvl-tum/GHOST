@@ -1,9 +1,7 @@
 
 from collections import defaultdict
 import torch.nn as nn
-
 import torch
-# from tracking_wo_bnw.src.tracktor.utils import interpolate
 import os
 import numpy as np
 import os.path as osp
@@ -15,11 +13,10 @@ import matplotlib.pyplot as plt
 import matplotlib.colors as mcolors
 import random
 from src.tracking_utils import get_center, get_height, get_width,\
-    make_pos, warp_pos, bbox_overlaps, is_moving, frame_rate
+    make_pos, warp_pos, bbox_overlaps, is_moving, frame_rate, mot_fps, bisoftmax
 import cv2
 import copy
 from src.kalman import KalmanFilter
-import time
 
 
 logger = logging.getLogger('AllReIDTracker.BaseTracker')
@@ -32,11 +29,10 @@ class BaseTracker():
             encoder,
             net_type='resnet50',
             output='plain',
-            weight='No',
             data='tracktor_preprocessed_files.txt',
-            device='cpu',
-            train_cfg=None):
+            device='cpu'):
 
+        # initialize all variables
         self.kalman = tracker_cfg['kalman']
         if self.kalman:
             self.shared_kalman = KalmanFilter()
@@ -45,7 +41,6 @@ class BaseTracker():
             self.kalman_filter = None
 
         self.log = True
-        self.train_cfg = train_cfg
         self.device = device
         self.round1_float = lambda x: round(10 * x) / 10
 
@@ -56,12 +51,11 @@ class BaseTracker():
         self.motion_model_cfg = tracker_cfg['motion_config']
         self.output = output if not tracker_cfg['use_bism'] else 'norm'
 
-        self.inact_thresh = tracker_cfg['inact_thresh']
+        self.inact_patience = tracker_cfg['inact_patience']
         self.act_reid_thresh = tracker_cfg['act_reid_thresh']
         self.inact_reid_thresh = tracker_cfg['inact_reid_thresh']
         self.output_dir = tracker_cfg['output_dir']
         self.nan_first = tracker_cfg['nan_first']
-        self.scale_thresh_ioa = tracker_cfg['scale_thresh_ioa']
 
         self.warp_mode_dct = {
             'Translation': cv2.MOTION_TRANSLATION,
@@ -71,84 +65,74 @@ class BaseTracker():
         }
 
         self.data = data
-
-        self.get_name(weight)
+        # get experiment name
+        self.get_name()
         logger.info("Executing experiment {}...".format(self.experiment))
 
+        # make output dir
         os.makedirs(osp.join(self.output_dir, self.experiment), exist_ok=True)
+
+        # set in eval mode if wanted
         if self.tracker_cfg['eval_bb']:
             self.encoder.eval()
 
+        # if visualization of bounding boxes initliaze
         self.store_visualization = self.tracker_cfg['visualize']
         if self.store_visualization:
             self.init_vis()
 
-        self.store_dist = self.tracker_cfg['store_dist']
-        if self.store_dist:
-            self.distance_ = defaultdict(dict)
-        
+        # if store features for analysis initialize
         self.store_feats = self.tracker_cfg['store_feats']
         if self.store_feats:
             self.features_ = defaultdict(dict)
 
-        self.fps = {
-            'MOT17-13-SDP': 25,
-            'MOT17-11-SDP': 30,
-            'MOT17-10-SDP': 30,
-            'MOT17-09-SDP': 30,
-            'MOT17-05-SDP': 14,
-            'MOT17-02-SDP': 30,
-            'MOT17-04-SDP': 30,
-            'MOT17-13-DMP': 25,
-            'MOT17-11-DMP': 30,
-            'MOT17-10-DMP': 30,
-            'MOT17-09-DMP': 30,
-            'MOT17-05-DMP': 14,
-            'MOT17-02-DMP': 30,
-            'MOT17-04-DMP': 30,
-            'MOT17-13-FRCNN': 25,
-            'MOT17-11-FRCNN': 30,
-            'MOT17-10-FRCNN': 30,
-            'MOT17-09-FRCNN': 30,
-            'MOT17-05-FRCNN': 14,
-            'MOT17-02-FRCNN': 30,
-            'MOT17-04-FRCNN': 30,
-        }
-
-        '''self.motion_step_time = list()
-        self.motion_update_time = list()
-        self.reid_features_time = list()
-        self.motion_distance_time = list()
-        self.reid_distance_time = list()
-        self.hungarian_time = list()
-        self.assign_time = list()'''
-
+        self.fps = mot_fps
 
     def dist(self, x, y):
-        if self.tracker_cfg['distance'] == 'cosine':
-            return 1 - F.cosine_similarity(x[:, :, None], y.t()[None, :, :])
+        """
+        Compute distance using cosine distance or euclidean
+        or utilize bisoftmax as diatnce measures
+        """
+        if not self.tracker_cfg['use_bism']:
+            if self.tracker_cfg['distance'] == 'cosine':
+                dist = 1 - \
+                    F.cosine_similarity(x[:, :, None], y.t()[None, :, :])
+            else:
+                dist = F.pairwise_distance(x[:, :, None], y.t()[None, :, :])
+
+            return dist.cpu().numpy()
         else:
-            return F.pairwise_distance(x[:, :, None], y.t()[None, :, :])
+            dist = 1 - bisoftmax(x.cpu(), y.cpu())
+            return dist.numpy()
 
     def strfrac2float(self, x):
+        """
+        Convert number given as string to float
+        """
         if type(x) == int or type(x) == float:
             return x
         return float(x.split('/')[0]) / float(x.split('/')[-1])
 
     def get_features(self, frame):
+        """
+        Compute reid feature vectors
+        """
         # forward pass
         with torch.no_grad():
             if self.net_type == 'resnet50_analysis' or self.net_type == "IBN":
                 feats = self.encoder(frame)
                 feats = F.normalize(feats, p=2, dim=1)
             else:
-                # s = time.time()
                 _, feats = self.encoder(frame, output_option=self.output)
-                # self.reid_features_time.append(time.time()-s)
 
         return feats
 
     def make_results(self):
+        """
+        Get results dict: dictionary with 1 dictionary for every track:
+            {..., i: [x1,y1,x2,y2,label], ...}
+        i is track id
+        """
         results = defaultdict(dict)
         for i, ts in self.tracks.items():
             for im_index, bbox, label in zip(ts.past_im_indices, ts.bbox, ts.label):
@@ -156,20 +140,21 @@ class BaseTracker():
         return results
 
     def _remove_short_tracks(self, all_tracks):
+        """
+        Remove short tracks with len < len thresh (default = 0)
+        """
         tracks_new = dict()
         for k, v in all_tracks.items():
             if len(v) > self.tracker_cfg['length_thresh']:
                 tracks_new[k] = v
             else:
                 logger.info(len(v))
-        logger.info(f"Removed {len(all_tracks) - len(tracks_new)} short tracks")
+        logger.info(
+            f"Removed {len(all_tracks) - len(tracks_new)} short tracks")
         return tracks_new
 
     def write_results(self, output_dir, seq_name):
         """Write the tracks in the format for MOT16/MOT17 sumbission
-
-        all_tracks: dictionary with 1 dictionary for every track with {..., i:np.array([x1,y1,x2,y2]), ...} at key track_num
-
         Each file contains these lines:
         <frame>, <id>, <bb_left>, <bb_top>, <bb_width>, <bb_height>, <conf>, <x>, <y>, <z>
         """
@@ -202,111 +187,116 @@ class BaseTracker():
                          x2 - x1,
                          y2 - y1,
                          -1, -1, bb[4], -1])
-        print(set(frames))
 
-    def get_name(self, weight):
+    def get_name(self):
+        """
+        Get parameters and make of experiment name
+        """
         inact_avg = self.tracker_cfg['avg_inact']['proxy'] + str(
-            self.tracker_cfg['avg_inact']['num']) if self.tracker_cfg['avg_inact']['do'] else 'last_frame'
+            self.tracker_cfg['avg_inact']['num']) \
+            if self.tracker_cfg['avg_inact']['do'] else 'LastFrame'
         act_avg = self.tracker_cfg['avg_act']['proxy'] + str(
-            self.tracker_cfg['avg_act']['num']) if self.tracker_cfg['avg_act']['do'] else 'last_frame'
+            self.tracker_cfg['avg_act']['num']) \
+            if self.tracker_cfg['avg_act']['do'] else 'LastFrame'
         self.experiment = inact_avg + ':' + str(self.tracker_cfg['inact_reid_thresh']) + \
             ':' + act_avg + ':' + str(self.tracker_cfg['act_reid_thresh'])
-        
+
         if self.tracker_cfg['random_patches_several_frames']:
-            self.experiment += 'random_patches_several_frames:1'
+            self.experiment += 'RandomPatchesSeveralFrames:1'
         if self.tracker_cfg['several_frames']:
-            self.experiment += 'several_frames:1'
+            self.experiment += 'SeveralFrames:1'
         if self.tracker_cfg['random_patches']:
-            self.experiment += 'random_patches:1'
+            self.experiment += 'RandomPatches:1'
         if self.tracker_cfg['random_patches_first']:
-            self.experiment += 'random_patches_first:1'
+            self.experiment += 'RandomPatchesFirst:1'
         if self.tracker_cfg['running_mean_seq']:
-            self.experiment += 'running_mean_seq:1'
+            self.experiment += 'RunningMeanSeq:1'
         if self.tracker_cfg['first_batch']:
-            self.experiment += 'first_batch:1'
+            self.experiment += 'FirstBatch:1'
         if self.tracker_cfg['running_mean_seq_reset']:
-            self.experiment += 'running_mean_seq_reset:1'
+            self.experiment += 'RunningMeanSeqReset:1'
         if self.tracker_cfg['first_batch_reset']:
-            self.experiment += 'first_batch_reset:1'
+            self.experiment += 'FirstBatchReset:1'
         if self.tracker_cfg['every_frame_several_frames']:
-            self.experiment += 'every_frame_several_frames:1'
-        
-        self.experiment += 'lenthresh:' + str(self.tracker_cfg['length_thresh'])
-        self.experiment += 'newtrackthresh:' + str(self.tracker_cfg['new_track_thresh'])
-        self.experiment += 'unconfirmed:' + str(self.tracker_cfg['unconfirmed'])
-        self.experiment += 'lastnframes:' + str(self.motion_model_cfg['last_n_frames'])
+            self.experiment += 'EveryFrameSeveralFrames:1'
+
+        self.experiment += 'LenThresh:' + \
+            str(self.tracker_cfg['length_thresh'])
+        self.experiment += 'RemUnconf:' + str(self.tracker_cfg['unconfirmed'])
+        self.experiment += 'LastNFrames:' + \
+            str(self.motion_model_cfg['last_n_frames'])
 
         if self.tracker_cfg['use_bism']:
-            self.experiment += 'bism:1'
+            self.experiment += 'Bism:1'
 
         if self.tracker_cfg['nan_first']:
-            self.experiment += 'nanfirst:1'
+            self.experiment += 'NanFirst:1'
 
         if self.motion_model_cfg['motion_compensation']:
-            self.experiment += 'MCOM:1' # Only Moving
+            self.experiment += 'MCOM:1'  # Only Moving
 
         if self.motion_model_cfg['apply_motion_model']:
             self.experiment += 'MM:1'
             if self.tracker_cfg['kalman']:
                 self.experiment += 'Kalman'
             else:
-                self.experiment += str(self.motion_model_cfg['ioa_threshold'])
-
-                if str(self.motion_model_cfg['ioa_threshold']) == 'learned':
-                    train = '_'.join([str(v) for v in self.train_cfg.values()])
-                    self.experiment += train
-                else:
-                    self.experiment += str(self.round1_float(self.strfrac2float(self.motion_model_cfg['lambda_mot'])))
-                    self.experiment += str(self.round1_float(self.strfrac2float(self.motion_model_cfg['lambda_temp'])))
-                    self.experiment += str(self.round1_float(self.strfrac2float(self.motion_model_cfg['lambda_occ'])))
+                self.experiment += str(self.motion_model_cfg['combi'])
 
         self.experiment = '_'.join([self.data[:-4],
-                                    weight,
-                                    'evalBB:' + str(self.tracker_cfg['eval_bb']),
+                                    'evalBB:' +
+                                    str(self.tracker_cfg['eval_bb']),
                                     self.experiment])
 
-        self.experiment += 'InactPat:' + str(self.tracker_cfg['inact_thresh'])
-        self.experiment += 'ConfThresh:' + str(self.tracker_cfg['thresh'])
-
-        if self.log:
-            logger.info(self.experiment)
+        self.experiment += 'InactPat:' + \
+            str(self.tracker_cfg['inact_patience'])
+        self.experiment += 'DetConf:' + str(self.tracker_cfg['det_conf'])
+        self.experiment += 'NewTrackConf:' + \
+            str(self.tracker_cfg['new_track_conf'])
 
     def normalization_experiments(self, random_patches, frame, i, seq, k=10):
         '''
-
         Normalization experiments:
          * Reset bn stats and use random patches to update bn stats
-         * Reset bn stats and use random patches of the first frame to update bn stats
+         * Reset bn stats and use random patches of the first frame to 
+            update bn stats
          * Use running mean of bbs as bn stats
          * Reset bn stats and use running mean of bbs as bn stats
          * Use bbs of the first batch
          * Reset bn stats and use bbs of the first batch
-
+         * For every frame use stats of several frames
         '''
         # use random patches
         if self.tracker_cfg['random_patches'] or self.tracker_cfg['random_patches_first']:
             if i == 0:
-                which_frame = 'each frame' if self.tracker_cfg['random_patches'] else 'first frame'
+                which_frame = \
+                    'each frame' if self.tracker_cfg['random_patches'] else 'first frame'
                 if self.log:
                     logger.info(
                         "Using random patches of {}...".format(which_frame))
 
+            # either every frame of only first  frame
             if not self.tracker_cfg['random_patches_first'] or i == 0:
                 self.encoder.train()
                 for m in self.encoder.modules():
                     if isinstance(m, nn.BatchNorm2d):
                         m.reset_running_stats()
-                        m.momentum = 1  # means no running mean
+                        # means no running mean
+                        m.momentum = 1
+                # feed through network
                 with torch.no_grad():
                     _, _ = self.encoder(
                         random_patches, output_option=self.output)
-                self.encoder.eval()
+            # set to eval mode again
+            self.encoder.eval()
 
-        elif self.tracker_cfg['running_mean_seq'] or self.tracker_cfg['running_mean_seq_reset']:
+        # take the running mean of sequence for stats
+        elif self.tracker_cfg['running_mean_seq'] or \
+                self.tracker_cfg['running_mean_seq_reset']:
             if i == 0 and self.log:
                 logger.info("Using moving average of seq...")
 
             self.encoder.train()
+            # if reset stats then reset in first frame
             if self.tracker_cfg['running_mean_seq_reset'] and i == 0:
                 if self.log:
                     logger.info(
@@ -314,19 +304,27 @@ class BaseTracker():
                 for m in self.encoder.modules():
                     if isinstance(m, nn.BatchNorm2d):
                         m.reset_running_stats()
+                        # start from first stats
                         m.momentum = 1
                         m.first_batch_mean = True
+            # reset momentum
             elif self.tracker_cfg['running_mean_seq_reset'] and i == 1:
                 if self.log:
                     logger.info("Setting mometum to 0.1 again...")
                 for m in self.encoder.modules():
                     if isinstance(m, nn.BatchNorm2d):
+                        # update stats with momentum 0.1
                         m.momentum = 0.1
+            # feed through network
             with torch.no_grad():
                 _, _ = self.encoder(frame, output_option=self.output)
+
+            # set to eval mode again
             self.encoder.eval()
 
-        elif i == 0 and (self.tracker_cfg['first_batch'] or self.tracker_cfg['first_batch_reset']):
+        # take stats of first batch and reset
+        elif i == 0 and (self.tracker_cfg['first_batch'] or
+                         self.tracker_cfg['first_batch_reset']):
             if self.log:
                 logger.info("Runing first batch in train mode...")
 
@@ -335,13 +333,18 @@ class BaseTracker():
                 for m in self.encoder.modules():
                     if isinstance(m, nn.BatchNorm2d):
                         m.reset_running_stats()
-                        m.momentum = 1  # means no running mean, i.e., uses first batch wo initialization
+                        # means no running mean, i.e., uses first batch wo initialization
+                        m.momentum = 1
                 if self.log:
                     logger.info("Resetting BatchNorm statistics...")
+            # feed through network
             with torch.no_grad():
                 _, _ = self.encoder(frame, output_option=self.output)
+
+            # set to eval mode again
             self.encoder.eval()
-        
+
+         # take stats of several frames around current frame and reset
         elif self.tracker_cfg['every_frame_several_frames']:
             if i == 0:
                 if self.log:
@@ -355,7 +358,7 @@ class BaseTracker():
                     m.first_batch_mean = True
             # set model in train mode
             self.encoder.train()
-            
+
             # feed bounding boxes to adapt stats
             if i < k:
                 idxs = list(range(k))
@@ -364,26 +367,38 @@ class BaseTracker():
             else:
                 idxs = list(range(i, i+k))
             # feed k frames through encoder
-            for idx in idxs:
+            for n, idx in enumerate(idxs):
+                if n == 1:
+                    for m in self.encoder.modules():
+                        if isinstance(m, nn.BatchNorm2d):
+                            # update stats with momentum 0.1
+                            m.momentum = 0.1
                 frame = seq._get(idx, just_frame=True)
                 with torch.no_grad():
                     _, _ = self.encoder(frame, output_option=self.output)
+
             # set to eval mode again
             self.encoder.eval()
 
-    def normalization_before(self, seq, k=5, first=False):
+    def normalization_before(self, seq, k=15, first=False):
         '''
-        Run the first k frames in train mode
+        * Run whole dataset in train mode to get statistics first and 
+            then again in eval mode
+        * Run the first k frames in train mode and use ranom patches 
+            or bounding boxes of first k frames
         '''
+
+        # feeding whole sequence data first --> reset stats
         if first:
-            # logger.info('NOT resetting BatchNorm statistics...')
             if self.log:
                 logger.info('Resetting BatchNorm statistics...')
             for m in self.encoder.modules():
                 if isinstance(m, nn.BatchNorm2d):
                     m.reset_running_stats()
 
-        if self.tracker_cfg['random_patches_several_frames'] or self.tracker_cfg['several_frames']:
+        # if using random patches or several frames at the beginning
+        if self.tracker_cfg['random_patches_several_frames'] or \
+           self.tracker_cfg['several_frames']:
             what_input = 'bounding boxes' if self.tracker_cfg['several_frames'] else 'random patches'
             if self.log:
                 logger.info(
@@ -391,44 +406,58 @@ class BaseTracker():
                         k, what_input))
             self.encoder.train()
 
+            # feed those frames through backbone
             for i, (frame, _, _, _, _, _, _, random_patches,
                     _, _, _, _) in enumerate(seq):
+
+                # decide what to use
                 if what_input == 'random patches':
                     inp = random_patches
                 else:
                     inp = frame
+
                 with torch.no_grad():
                     _, _ = self.encoder(inp, output_option=self.output)
+
+                # only first k frames
                 if i >= k:
                     break
+
             self.encoder.eval()
             seq.random_patches = False
 
-    def setup_seq(self, seq=None, first=False, seq_name=None):
-        if seq_name is None and "MOT" in seq:
+    def setup_seq(self, seq=None, first=False):
+        """
+        Set up sequence:
+        * set sequence name
+        * initialize storage of features
+        * if thresholds should be adapted automatically, initalize this
+        * initialize track storage
+        * set backbone into evaluation mode if wanted
+        * set if random patches needed
+        * get if sequences moving and frame rate
+        """
+        # set sequ name
+        if "MOT" in seq:
             if len(seq.name.split('-')) > 2:
+                # remove '-' from name
                 self.seq = f"Sequence{int(seq.name.split('-')[1])}_" + \
                     seq.name.split('-')[2]
             else:
                 self.seq = f"Sequence{int(seq.name.split('-')[1])}"
-            seq_name = seq.name
-        elif seq_name is None:
-            self.seq = seq.name
-            seq_name = seq.name
+
         else:
-            self.seq = seq_name
+            self.seq = seq.name
 
-        self.seq_name = seq.name
-
-        # add distance dict for seq
-        if self.store_dist:
-            self.init_dist()
+        # add feature dict for seq
         if self.store_feats:
             self.init_feats()
 
+        # automatic thresh update
         self.thresh_every = True if self.act_reid_thresh == "every" else False
         self.thresh_tbd = True if self.act_reid_thresh == "tbd" else False
 
+        # initalize track storage
         self.tracks = defaultdict(list)
         self.inactive_tracks = defaultdict(list)
         self.mv_avg = dict()
@@ -444,20 +473,25 @@ class BaseTracker():
         if seq is not None:
             seq.random_patches = self.tracker_cfg['random_patches'] or self.tracker_cfg[
                 'random_patches_first'] or self.tracker_cfg['random_patches_several_frames']
-        self.is_moving = is_moving(seq_name)
-        self.frame_rate = frame_rate(seq_name)
+
+        # get if sequence si moving and frame rate
+        self.is_moving = is_moving(seq.name)
+        self.frame_rate = frame_rate(seq.name)
         if self.log:
             logger.info("Frame rate: {}".format(self.frame_rate))
 
     def reset_threshs(self):
-        self.act_reid_thresh = 'every' if self.thresh_every else self.act_reid_thresh
-        self.inact_reid_thresh = 'every' if self.thresh_every else self.inact_reid_thresh
-        self.act_reid_thresh = 'tbd' if self.thresh_tbd else self.act_reid_thresh
-        self.inact_reid_thresh = 'tbd' if self.thresh_tbd else self.inact_reid_thresh
+        self.act_reid_thresh = 'every' if self.thresh_every \
+            else self.act_reid_thresh
+        self.inact_reid_thresh = 'every' if self.thresh_every \
+            else self.inact_reid_thresh
+        self.act_reid_thresh = 'tbd' if self.thresh_tbd else \
+            self.act_reid_thresh
+        self.inact_reid_thresh = 'tbd' if self.thresh_tbd else \
+            self.inact_reid_thresh
 
     def update_thresholds(self, dist, num_active, num_inactive):
-        # update active threshold
-        # self.act_reid_thresh == 'tbd' only in frame 1
+        # compute threshold every frame or only in first frame if tbd
         if (self.act_reid_thresh == 'tbd' or self.thresh_every) and num_active > 0:
             act = np.atleast_2d(
                 np.array(
@@ -506,7 +540,7 @@ class BaseTracker():
             if tr_id not in self.id_to_col.keys():
                 self.id_to_col[tr_id] = self.color_list[self.col]
                 self.col += 1
-            
+
             d = copy.deepcopy(d)
             d['bbox'][0] = max(d['bbox'][0], 0)
             d['bbox'][1] = max(d['bbox'][1], 0)
@@ -558,31 +592,13 @@ class BaseTracker():
         self.col = 0
         self.round2 = lambda x: str(round(100 * x) / 100)
 
-    def init_dist(self):
-        self.distance_[self.seq]['inact_dist_same'] = list()
-        self.distance_[self.seq]['act_dist_same'] = list()
-        self.distance_[self.seq]['inact_dist_diff'] = list()
-        self.distance_[self.seq]['act_dist_diff'] = list()
-        self.distance_[self.seq]['active_inactive'] = list()
-        self.distance_[self.seq]['same_class_mat'] = list()
-        self.distance_[self.seq]['dist'] = list()
-
     def init_feats(self):
         self.features_[self.seq] = dict()
-        
-    @staticmethod
-    def plot_single_image(imgs, name):
-        import matplotlib.pyplot as plt
-
-        for i, img in enumerate(imgs):
-            img = img.permute(1, 2, 0)
-            figure, ax = plt.subplots(1)
-            figure.set_size_inches(img.shape[1] / 100, img.shape[0] / 100)
-            ax.imshow(np.asarray(img))
-            plt.savefig(str(i) + + name + '.png', dpi=100)
-            plt.close()
 
     def motion_compensation(self, whole_image, im_index):
+        """
+        compensate ego motion for bounding boxes
+        """
         # adapted from tracktor
         self.warp_matrix_nomr = None
         if im_index > 0:
@@ -608,16 +624,16 @@ class BaseTracker():
                         for i, pos in enumerate(track.last_pos):
                             if isinstance(pos, torch.Tensor):
                                 pos = pos.cpu().numpy()
-                            pos = np.squeeze(warp_pos(np.atleast_2d(pos), warp_matrix))
+                            pos = np.squeeze(
+                                warp_pos(np.atleast_2d(pos), warp_matrix))
                             track.last_pos[i] = pos
-                            # t.pos = clip_boxes(Variable(pos), blob['im_info'][0][:2]).data
 
         self.last_image = whole_image
 
     def motion_step(self, track):
-        # adapted from tracktor; no need for dt as it is always one frame and
-        # velocity is per frame and it is updated every frame
-        """Updates the given track's position by one step based on track.last_v"""
+        """
+        Updates the given track's position by one step based on track.last_v
+        """
         if self.motion_model_cfg['center_only']:
             center_new = get_center(track.pos) + track.last_v
             track.pos = make_pos(
@@ -628,29 +644,34 @@ class BaseTracker():
             track.pos = track.pos + track.last_v
 
     def motion(self, approximate=False):
+        """
+        Applies a simple linear motion model that considers the 
+        last n_steps steps.
+        """
         if self.i == 0:
             logger.info(f"Appriximating motion {approximate}...")
-        # adapted from tracktor
-        """Applies a simple linear motion model that considers the last n_steps steps."""
-        height = list()
+
+        # update active tracks
         for track in self.tracks.values():
             if len(track.last_pos) > 1:
-                # s = time.time()
-                last_pos = np.asarray(track.last_pos[-self.motion_model_cfg['last_n_frames']:])
-                frames = np.asarray(track.past_frames[-self.motion_model_cfg['last_n_frames']:])
+                last_pos = np.asarray(
+                    track.last_pos[-self.motion_model_cfg['last_n_frames']:])
+                frames = np.asarray(
+                    track.past_frames[-self.motion_model_cfg['last_n_frames']:])
 
                 # avg velocity between each pair of consecutive positions in
                 # t.last_pos
-                if self.motion_model_cfg['center_only']: 
+                if self.motion_model_cfg['center_only']:
                     if approximate:
                         vs = np.stack([get_center(p2) - get_center(p1)
-                                for p1, p2 in zip(last_pos, last_pos[1:])])
+                                       for p1, p2 in zip(last_pos, last_pos[1:])])
                     else:
                         dt = [p2 - p1 for p1, p2 in zip(frames, frames[1:])]
                         vs = np.stack([(get_center(p2) - get_center(p1))/t
-                                    for p1, p2, t in zip(last_pos, last_pos[1:], dt)])
-                    
+                                       for p1, p2, t in zip(last_pos, last_pos[1:], dt)])
+
                     track.update_v(vs.mean(axis=0))
+
                     # motion step
                     center_new = get_center(track.pos) + track.last_v
                     track.pos = make_pos(
@@ -658,129 +679,61 @@ class BaseTracker():
                         get_width(track.pos),
                         get_height(track.pos))
                 else:
-                    height.append((last_pos[:, 3]-last_pos[:, 1]).mean())
                     if approximate:
-                        vs = [p2 - p1 for p1, p2 in zip(last_pos, last_pos[1:])]
+                        vs = [p2 - p1 for p1,
+                              p2 in zip(last_pos, last_pos[1:])]
                     else:
-                        # dt = [f2 - f1 for f1, f2 in zip(frames, frames[1:])]
-                        # vs = np.stack([(p2 - p1)/t for p1, p2, t in zip(last_pos, last_pos[1:], dt)])
-                        vs = (last_pos[1:, ]-last_pos[:-1, ])/np.repeat(np.expand_dims((frames[1:]-frames[:-1]), 1), [4], axis=1)
+                        vs = (last_pos[1:, ]-last_pos[:-1, ])/np.repeat(
+                            np.expand_dims((frames[1:]-frames[:-1]), 1), [4], axis=1)
 
+                    # motion stepß
                     track.update_v(vs.mean(axis=0))
-                    # self.motion_update_time.append(time.time()-s)
-                    # motion step
-                    # s = time.time()
                     track.pos = track.pos + track.last_v
-                    # self.motion_step_time.append(time.time()-s)
 
+        # update for inactive tracks with last known dist
         for track in self.inactive_tracks.values():
             if len(track.last_pos) > 1:
                 self.motion_step(track)
 
     def get_motion_dist(self, detections, curr_it):
-        # s = time.time()
+        '''
+        Compute motion distance using IoU distance of bounding boxes
+        '''
         act_pos = [track.pos for track in self.tracks.values()]
         inact_pos = [track.pos for track in curr_it.values()]
         pos = torch.from_numpy(np.asarray(act_pos + inact_pos))
         det_pos = torch.from_numpy(np.asarray(
             [t['bbox'] for t in detections]))
-        iou = bbox_overlaps(det_pos, pos) 
+        iou = bbox_overlaps(det_pos, pos)
         iou = 1 - iou
-        # self.motion_distance_time.append(time.time()-s)
         return iou
 
-    def combine_motion_appearance(self, iou, dist, detections):
+    def combine_motion_appearance(self, iou, dist):
+        """
+        Combine appearance and motion distances
+        """
         # init distances
         dist_emb = copy.deepcopy(dist)
         if type(iou) != np.ndarray:
             dist_iou = iou.cpu().numpy()
-        else: 
+        else:
             dist_iou = iou
 
         # weighted of threshold
-        if self.motion_model_cfg['ioa_threshold'] == 'sum':
-            # print(dist_emb, dist_iou)
-            dist = (dist_emb + dist_iou)*0.5
-        
-        elif 'sum' in self.motion_model_cfg['ioa_threshold']:
-            alpha = float(self.motion_model_cfg['ioa_threshold'].split('_')[-1])
+        if 'sum' in self.motion_model_cfg['combi']:
+            alpha = float(self.motion_model_cfg['combi'].split('_')[-1])
             dist = ((1-alpha)*dist_emb + alpha*dist_iou)
-        
-        elif 'height' in self.motion_model_cfg['ioa_threshold']:
-            h = np.array([np.abs(d['bbox'][2]-d['bbox'][0]) for d in detections])
-            h = h/self.frame_size[0]
-            h = np.tile(np.expand_dims(h, axis=1), (1, dist_emb.shape[1]))
-            dist = (h*dist_emb + (1-h)*dist_iou)
-
-        elif self.motion_model_cfg['ioa_threshold'] == 'motion':
-            dist = dist_iou
-        
-        elif self.motion_model_cfg['ioa_threshold'] == 'appearance':
-            dist = dist_emb
-
-        elif self.motion_model_cfg['ioa_threshold'] == 'SeperateAssignment':
+        elif self.motion_model_cfg['combi'] == 'SeperateAssignment':
             dist = [dist_emb, dist_iou]
 
         return dist
 
     def add_feats_to_storage(self, detections):
+        """
+        Store features for anaylsis
+        """
         detections_to_save = copy.deepcopy(detections)
         for d in detections_to_save:
             d['bbox'] = d['bbox'].tolist()
             d['feats'] = d['feats'].tolist()
         self.features_[self.seq][self.frame_id] = detections_to_save
-
-    def add_dist_to_storage(self, gt_n, gt_t, num_active, num_inactive, dist):
-        # make at least 2d for mask computation
-        gt_n = np.atleast_2d(np.array(gt_n))
-        gt_t = np.atleast_2d(np.array(gt_t))
-        
-        # masks to remove unassigned bbs/tracks
-        keep_rows = gt_n != -1
-        keep_rows = keep_rows.squeeze()
-        keep_cols = gt_t != -1
-        keep_cols = keep_cols.squeeze()
-
-        # generate same class matrix
-        same = gt_t == gt_n.T
-
-        # generate active matrix
-        act = np.atleast_2d(
-            np.array(
-                [1] *
-                num_active +
-                [0] *
-                num_inactive)) == np.atleast_2d(
-            np.ones(
-                dist.shape[0])).T
-        
-        # Filter out
-        same = same[keep_rows, :]
-        act = act[keep_rows, :]
-        dist = dist[keep_rows, :]
-
-        # if there are rows left
-        if keep_rows.tolist():
-            # remove unnessecary 3rd dim
-            act = act[0] if len(act.shape) == 3 else act
-            dist = dist[0] if len(dist.shape) == 3 else dist
-            same = same[0] if len(same.shape) == 3 else same
-
-            # remove tracks with unassigned class
-            act = act[:, keep_cols]
-            dist = dist[:, keep_cols]
-            same = same[:, keep_cols]
-
-        self.distance_[self.seq]['inact_dist_same'].extend(
-            dist[same & ~act].tolist())
-        self.distance_[self.seq]['act_dist_same'].extend(
-            dist[same & act].tolist())
-        self.distance_[self.seq]['inact_dist_diff'].extend(
-            dist[~same & ~act].tolist())
-        self.distance_[self.seq]['act_dist_diff'].extend(
-            dist[~same & act].tolist())
-        self.distance_[self.seq]['active_inactive'].append(act.tolist())
-        self.distance_[self.seq]['same_class_mat'].append(same.tolist())
-        self.distance_[self.seq]['dist'].append(dist.tolist())
-
-

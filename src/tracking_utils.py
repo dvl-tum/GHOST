@@ -11,59 +11,29 @@ from cython_bbox import bbox_overlaps as bbox_ious
 import torch.nn.functional as F
 
 
-def add_dummy_bb(bbs, frame_size):
-    # frame_size = [H, B]
-    left = torch.clip(torch.min(bbs[:, 0]), min=None, max=-1)
-    top = torch.clip(torch.min(bbs[:, 1]), min=None, max=-1)
-    right = torch.clip(torch.min(bbs[:, 2]), min=frame_size[1]+1, max=None)
-    bottom = torch.clip(torch.min(bbs[:, 3]), min=frame_size[0]+1, max=None)
-
-    # make dummy foot position to ensure dummy bbs are in foreground
-    foot_position = bbs[:, 3]
-    dummy_bottom = torch.tensor([bottom, bottom, bottom, bottom])
-    foot_position = torch.cat([foot_position, dummy_bottom])
-
-    dummies = torch.tensor([
-        [left, 0, 0, frame_size[0]],
-        [0, top, frame_size[1], 0],
-        [frame_size[1], 0, right, frame_size[0]],
-        [0, frame_size[0], frame_size[1], bottom]
-    ])
-    bbs = torch.cat([bbs, dummies])
-
-    return bbs, foot_position
-
-
-def remove_intersection(ioa, inter_bbs, bottom_coord, bbs, areas):
-    # sorted indices of foot position, biggest first (foreground first)
-    sorted_bot = np.argsort(bottom_coord.numpy())
-    sorted_bot = np.flip(sorted_bot)
-    # from foreground to background
-    for i, index in enumerate(sorted_bot):
-        # foreground not occluded, second only occluded by foreground
-        if i == 0:
-            continue
-
-        # levels up to now are in front of current level
-        idx = sorted_bot[:i]
-        for j, (ioa_j, inter_bbs_j) in enumerate(zip(ioa, inter_bbs)):
-            
-            if ioa_j[index] == 0:
-                continue
-
-            idx_j = idx[ioa_j[idx] != 0]
-            inter, area, _, _ = _box_inter_area(
-                torch.from_numpy(inter_bbs_j[idx_j, :]),
-                torch.from_numpy(np.atleast_2d(inter_bbs_j[index, :])))
-
-            # changed area to areas[j]
-            ioa_inter = inter / np.atleast_2d(areas[j]).T
-            ioa[j, index] = np.clip(
-                ioa_j[index] - np.sum(np.squeeze(ioa_inter)),
-                a_min=0,
-                a_max=None)
-
-    return ioa
+mot_fps = {
+    'MOT17-13-SDP': 25,
+    'MOT17-11-SDP': 30,
+    'MOT17-10-SDP': 30,
+    'MOT17-09-SDP': 30,
+    'MOT17-05-SDP': 14,
+    'MOT17-02-SDP': 30,
+    'MOT17-04-SDP': 30,
+    'MOT17-13-DMP': 25,
+    'MOT17-11-DMP': 30,
+    'MOT17-10-DMP': 30,
+    'MOT17-09-DMP': 30,
+    'MOT17-05-DMP': 14,
+    'MOT17-02-DMP': 30,
+    'MOT17-04-DMP': 30,
+    'MOT17-13-FRCNN': 25,
+    'MOT17-11-FRCNN': 30,
+    'MOT17-10-FRCNN': 30,
+    'MOT17-09-FRCNN': 30,
+    'MOT17-05-FRCNN': 14,
+    'MOT17-02-FRCNN': 30,
+    'MOT17-04-FRCNN': 30,
+}
 
 
 def box_area(boxes):
@@ -82,28 +52,6 @@ def box_area(boxes):
     return (boxes[:, 2] - boxes[:, 0]) * (boxes[:, 3] - boxes[:, 1])
 
 
-def _box_inter_area(boxes1, boxes2):
-    area1 = box_area(boxes1)
-    area2 = box_area(boxes2)
-
-    lt = torch.max(boxes1[:, None, :2], boxes2[:, :2])  # [N,M,2]
-    rb = torch.min(boxes1[:, None, 2:], boxes2[:, 2:])  # [N,M,2]
-
-    wh = (rb - lt).clamp(min=0)  # [N,M,2]
-    inter = wh[:, :, 0] * wh[:, :, 1]  # [N,M]
-
-    # left, top, right, bot
-    inter_bbs = [
-        torch.max(boxes1[:, None, 0], boxes2[:, 0]),
-        torch.max(boxes1[:, None, 1], boxes2[:, 1]),
-        torch.min(boxes1[:, None, 2], boxes2[:, 2]),
-        torch.min(boxes1[:, None, 3], boxes2[:, 3])]
-    inter_bbs = torch.stack(inter_bbs, dim=0)
-    inter_bbs = inter_bbs.permute(1, 2, 0)
-
-    return inter.numpy(), area1.numpy(), area2.numpy(), inter_bbs.numpy()
-
-
 def bisoftmax(x, y):
     feats = torch.mm(x, y.t())/0.1
     d2t_scores = feats.softmax(dim=1)
@@ -114,7 +62,7 @@ def bisoftmax(x, y):
 
 def get_proxy(curr_it, mode='inact', tracker_cfg=None, mv_avg=None):
     feats = list()
-    avg = tracker_cfg['avg_' + mode]['num'] 
+    avg = tracker_cfg['avg_' + mode]['num']
     proxy = tracker_cfg['avg_' + mode]['proxy']
 
     if avg != 'all':
@@ -127,19 +75,19 @@ def get_proxy(curr_it, mode='inact', tracker_cfg=None, mv_avg=None):
         # take last bb only
         if proxy == 'last':
             f = it.past_feats[-1]
-        
+
         # take the first only
         elif avg == 'first':
             f = it.past_feats[0]
 
-        # moving average of features        
+        # moving average of features
         elif proxy == 'mv_avg':
             if i not in mv_avg.keys():
                 f = it.past_feats[-1]
             else:
-                f = mv_avg[i] * avg + it.past_feats[-1] * (1-avg) 
+                f = mv_avg[i] * avg + it.past_feats[-1] * (1-avg)
             mv_avg[i] = f
-        
+
         # take last bb with min intersection over area
         elif proxy == 'min_ioa':
             ioa = [t['ioa'] for t in it]
@@ -155,7 +103,8 @@ def get_proxy(curr_it, mode='inact', tracker_cfg=None, mv_avg=None):
             elif proxy == 'mode':
                 f = torch.mode(torch.stack(it.past_feats), dim=0)[0]
             elif proxy == 'meannorm':
-                f =  F.normalize(torch.mean(torch.stack(it.past_feats), dim=0), p=2, dim=0)
+                f = F.normalize(torch.mean(torch.stack(
+                    it.past_feats), dim=0), p=2, dim=0)
 
         # get proxy of last avg number of frames
         else:
@@ -166,17 +115,18 @@ def get_proxy(curr_it, mode='inact', tracker_cfg=None, mv_avg=None):
             elif proxy == 'mode':
                 f = torch.mode(torch.stack(it.past_feats[-avg:]), dim=0)[0]
             elif proxy == 'meannorm':
-                f =  F.normalize(torch.mean(torch.stack(it.past_feats[-avg:]), dim=0), p=2, dim=1)
-        
+                f = F.normalize(torch.mean(torch.stack(
+                    it.past_feats[-avg:]), dim=0), p=2, dim=1)
+
         feats.append(f)
-    
+
     if len(feats[0].shape) == 1:
         feats = torch.stack(feats)
     elif len(feats[0].shape) == 3:
         feats = torch.cat([f.unsqueeze(0) for f in feats], dim=0)
     elif len(feats) == 1:
         feats = feats
-    else: 
+    else:
         feats = torch.cat(feats, dim=0)
 
     return feats
@@ -243,28 +193,35 @@ def bbox_overlaps(boxes, query_boxes):
     if isinstance(boxes, np.ndarray):
         boxes = torch.from_numpy(boxes)
         query_boxes = torch.from_numpy(query_boxes)
-        out_fn = lambda x: x.numpy()  # If input is ndarray, turn the overlaps back to ndarray when return
+        # If input is ndarray, turn the overlaps back to ndarray when return
+        def out_fn(x): return x.numpy()
     else:
-        out_fn = lambda x: x
+        def out_fn(x): return x
 
-    box_areas = (boxes[:, 2] - boxes[:, 0] + 1) * (boxes[:, 3] - boxes[:, 1] + 1)
-    query_areas = (query_boxes[:, 2] - query_boxes[:, 0] + 1) * (query_boxes[:, 3] - query_boxes[:, 1] + 1)
+    box_areas = (boxes[:, 2] - boxes[:, 0] + 1) * \
+        (boxes[:, 3] - boxes[:, 1] + 1)
+    query_areas = (query_boxes[:, 2] - query_boxes[:, 0] + 1) * \
+        (query_boxes[:, 3] - query_boxes[:, 1] + 1)
 
-    iw = (torch.min(boxes[:, 2:3], query_boxes[:, 2:3].t()) - torch.max(boxes[:, 0:1],
-                                                                        query_boxes[:, 0:1].t()) + 1).clamp(min=0)
-    ih = (torch.min(boxes[:, 3:4], query_boxes[:, 3:4].t()) - torch.max(boxes[:, 1:2],
-                                                                        query_boxes[:, 1:2].t()) + 1).clamp(min=0)
+    iw = (torch.min(boxes[:, 2:3], query_boxes[:, 2:3].t(
+    )) - torch.max(boxes[:, 0:1], query_boxes[:, 0:1].t()) + 1).clamp(min=0)
+    ih = (torch.min(boxes[:, 3:4], query_boxes[:, 3:4].t(
+    )) - torch.max(boxes[:, 1:2], query_boxes[:, 1:2].t()) + 1).clamp(min=0)
     ua = box_areas.view(-1, 1) + query_areas.view(1, -1) - iw * ih
     overlaps = iw * ih / ua
     return out_fn(overlaps)
 
 
 def is_moving(seq, log=False):
-    print(seq)
-    if "MOT" not in seq:
+
+    if "MOT" not in seq and 'dance' not in seq:
         if log:
             print('Seqence is moving {}'.format(seq))
         return True
+    elif 'dance' in seq:
+        if log:
+            print('Seqence is not moving {}'.format(seq))
+        return False
     elif seq.split('-')[1] in ['13', '11', '10', '05', '14', '12', '07', '06']:
         if log:
             print('Seqence is moving {}'.format(seq))
@@ -276,6 +233,7 @@ def is_moving(seq, log=False):
     else:
         assert False, 'Seqence not valid {}'.format(seq)
 
+
 def frame_rate(seq):
     if 'dance' in seq:
         return 20
@@ -285,16 +243,6 @@ def frame_rate(seq):
         return 14
     else:
         return 25
-
-
-def tlwh_to_xyah(tlwh):
-    """Convert bounding box to format `(center x, center y, aspect ratio,
-    height)`, where the aspect ratio is `width / height`.
-    """
-    ret = np.asarray(tlwh).copy()
-    ret[:2] += ret[2:] / 2
-    ret[2] /= ret[3]
-    return ret
 
 
 def tlrb_to_xyah(tlrb):
@@ -310,7 +258,18 @@ def tlrb_to_xyah(tlrb):
 
 
 class Track():
-    def __init__(self, track_id, bbox, feats, im_index, gt_id, vis, conf, frame, label, kalman=False, kalman_filter=None):
+    def __init__(
+            self,
+            track_id,
+            bbox, feats,
+            im_index,
+            gt_id,
+            vis,
+            conf,
+            frame,
+            label,
+            kalman=False,
+            kalman_filter=None):
         self.kalman = kalman
         self.xyah = tlrb_to_xyah(copy.deepcopy(bbox))
         if self.kalman:
@@ -361,11 +320,12 @@ class Track():
         # labels of detections
         self.label = list()
         self.label.append(label)
-    
+
     def __len__(self):
         return len(self.last_pos)
 
-    def add_detection(self, bbox, feats, im_index, gt_id, vis, conf, frame, label):
+    def add_detection(
+            self, bbox, feats, im_index, gt_id, vis, conf, frame, label):
         # update all lists / states
         self.pos = bbox
         self.last_pos.append(bbox)
@@ -385,7 +345,7 @@ class Track():
         self.conf = conf
         self.past_frames.append(frame)
         self.label.append(label)
-        
+
         if self.kalman:
             self.mean, self.covariance = self.kalman_filter.update(
                 self.mean, self.covariance, tlrb_to_xyah(bbox))
@@ -426,13 +386,14 @@ def multi_predict(active, inactive, shared_kalman):
     inact = [v for v in inactive.values()]
     state.extend([0]*len(inact))
     stracks = act + inact
-    if len(stracks) > 0:        
+    if len(stracks) > 0:
         multi_mean = np.asarray([st.mean.copy() for st in stracks])
         multi_covariance = np.asarray([st.covariance for st in stracks])
         for i, (st, act) in enumerate(zip(stracks, state)):
             if act != 1:
                 multi_mean[i][7] = 0
-        multi_mean, multi_covariance = shared_kalman.multi_predict(multi_mean, multi_covariance)
+        multi_mean, multi_covariance = shared_kalman.multi_predict(
+            multi_mean, multi_covariance)
         for i, (mean, cov) in enumerate(zip(multi_mean, multi_covariance)):
             stracks[i].mean = mean
             stracks[i].covariance = cov

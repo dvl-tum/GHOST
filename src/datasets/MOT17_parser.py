@@ -2,10 +2,8 @@ import os.path as osp
 import os
 import pandas as pd
 from torchvision.ops import box_iou
-# from torch_geometric.data import Dataset, Data
 import numpy as np
 import torch
-from lapsolver import solve_dense
 from copy import deepcopy
 import logging
 
@@ -17,14 +15,16 @@ class MOTLoader():
     def __init__(self, sequence, dataset_cfg, dir, mode='eval'):
         self.dataset_cfg = dataset_cfg
         self.sequence = sequence
-        self.train_mode = self.dataset_cfg['half_train_set_gt'] or mode == 'train'
+        self.train_mode = self.dataset_cfg['half_train_set_gt']
 
         self.mot_dir = osp.join(dataset_cfg['mot_dir'], dir)
         self.det_dir = osp.join(dataset_cfg['det_dir'], dir)
         self.det_file = dataset_cfg['det_file']
 
-    def get_seqs(self, split='split-1', use_clear=True, assign_gt=False):
+    def get_seqs(self, split='split-1', assign_gt=False):
+        # iterate over sequences
         for s in self.sequence:
+            # get gt and detections
             gt_file = osp.join(self.mot_dir, s, 'gt', 'gt.txt')
             exist_gt = os.path.isfile(gt_file) and assign_gt
             if self.det_file == 'gt.txt':
@@ -37,27 +37,25 @@ class MOTLoader():
             self.get_dets(det_file, s)
             if exist_gt:
                 self.get_gt(gt_file)
+            
+            # keep unclipped version of bounding boxes
             self.dets_unclipped = deepcopy(self.dets)
             self.dets = self.clip_boxes_to_image(df=self.dets)
-
-            '''# clip gt for assignment
-            if exist_gt:
-                self.gt = self.clip_boxes_to_image(df=self.gt)'''
-
             self.dets.sort_values(by='frame', inplace=True)
             self.dets_unclipped.sort_values(by='frame', inplace=True)
 
             self.dets['detection_id'] = np.arange(self.dets.shape[0])
             if exist_gt:
-                if use_clear:
-                    self.assign_gt_clear(split)
-                else:
-                    self.assign_gt(split)
+                self.assign_gt_clear(split)
+
             self.dets.attrs.update(self.seq_info)
 
         return exist_gt
 
     def get_gt(self, gt_file):
+        """
+        Load ground truth detections
+        """
         if osp.exists(gt_file):
             self.gt = pd.read_csv(
                 gt_file,
@@ -85,6 +83,9 @@ class MOTLoader():
             self.gt = None
 
     def get_dets(self, det_file, s):
+        """
+        Load detections
+        """
         img_dir = osp.join(self.mot_dir, s, 'img1')
 
         if osp.exists(det_file):
@@ -118,12 +119,12 @@ class MOTLoader():
                 if type(i) == float:
                     i = int(i)
                 return osp.join(osp.join(img_dir, f"{i:06d}.jpg"))
-            
+
             def add_frame_path_dance(i):
                 if type(i) == float:
                     i = int(i)
                 return osp.join(osp.join(img_dir, f"{i:08d}.jpg"))
-            
+
             if 'Dance' in self.mot_dir:
                 add_frame_path = add_frame_path_dance
             else:
@@ -150,8 +151,6 @@ class MOTLoader():
         df['bb_left'] = np.maximum(df['bb_left'].values, 0).astype(int)
 
         # bottom and right
-        initial_bb_bot = df['bb_bot'].values.copy()
-        initial_bb_right = df['bb_right'].values.copy()
         df['bb_bot'] = np.minimum(img_height, df['bb_bot']).astype(int)
         df['bb_right'] = np.minimum(img_width, df['bb_right']).astype(int)
 
@@ -177,6 +176,19 @@ class MOTLoader():
 
         return df
 
+    @staticmethod
+    def checkConsecutive(l):
+        return sorted(l) == list(range(min(l), max(l) + 1))
+
+    @staticmethod
+    def make_consecutive(df):
+        labs = set(sorted(df['id'].values.tolist()))
+        lab_map = {l: i for i, l in enumerate(labs)}
+        new_labs = [lab_map[l] for l in df['id'].values]
+        df['id'] = new_labs
+        return df
+
+
     def assign_gt_clear(self, split='split-1'):
         if split == '50-50-1' or split == '50-50-2':
             test_data = pd.read_csv('test_data.csv')
@@ -197,29 +209,18 @@ class MOTLoader():
             'vis']
         self.corresponding_gt = pd.DataFrame(columns=cols)
 
-        def checkConsecutive(l):
-            return sorted(l) == list(range(min(l), max(l) + 1))
-
-        def make_consecutive(df):
-            labs = set(sorted(df['id'].values.tolist()))
-            lab_map = {l: i for i, l in enumerate(labs)}
-            new_labs = [lab_map[l] for l in df['id'].values]
-            df['id'] = new_labs
-            return df
-
-        if not checkConsecutive(
+        if not self.checkConsecutive(
                 set(sorted(self.dets['id'].values.tolist()))):
             print("non cosecutive dets")
 
-        if not checkConsecutive(set(sorted(self.gt['id'].values.tolist()))):
+        if not self.checkConsecutive(set(sorted(self.gt['id'].values.tolist()))):
             print("non cosecutive gt")
-            self.gt = make_consecutive(self.gt)
-            print("now consecutive: {}".format(checkConsecutive(
+            self.gt = self.make_consecutive(self.gt)
+            print("now consecutive: {}".format(self.checkConsecutive(
                 set(sorted(self.gt['id'].values.tolist())))))
 
         num_gt_ids = len(set(sorted(self.gt['id'].values.tolist())))
 
-        prev_tracker_id = np.nan * np.zeros(num_gt_ids)  # For scoring IDSW
         prev_timestep_tracker_id = np.nan * \
             np.zeros(num_gt_ids)  # For matching IDSW
         distractor_classes = [2, 7, 8, 12]
@@ -307,11 +308,11 @@ class MOTLoader():
             # set IDs and vis of assigned and unassigned
             self.dets.loc[assigned_detect_index, 'id'] = corresponding_id
             self.dets.loc[unassigned_detect_index,
-                             'id'] = -1  # False Positives
+                          'id'] = -1  # False Positives
 
             self.dets.loc[assigned_detect_index, 'vis'] = corresponding_vis
             self.dets.loc[unassigned_detect_index,
-                             'vis'] = -1  # False Positives
+                          'vis'] = -1  # False Positives
 
             # update prev timestep tracker id
             prev_timestep_tracker_id[:] = np.nan
@@ -321,101 +322,10 @@ class MOTLoader():
             self.dets = self.dets[self.dets['id'].isin(test_data_ids)]
         elif split == '50-50-2':
             self.dets = self.dets[~self.dets['id'].isin(test_data_ids)]
-        
-        if self.dataset_cfg['validation_set'] and not self.train_mode:
-            self.dets = self.dets[self.dets['frame'] >
-                                  self.dets['frame'].values.max() * 0.5]
-        elif self.dataset_cfg['validation_set'] and self.train_mode:
-            self.dets = self.dets[self.dets['frame'] <=
-                                  self.dets['frame'].values.max() * 0.5]
-
-        if self.dataset_cfg['drop_unassigned']:
-            mask = self.dets['id'] != -1
-            self.dets = self.dets[mask]
-
-    def assign_gt(self, split='split-1'):
-        if split == '50-50-1' or split == '50-50-2':
-            test_data = pd.read_csv('test_data.csv')
-            test_data = test_data[test_data['Sequence'] ==
-                                  '-'.join(self.sequence[0].split('-')[:-1])]
-            test_data_gt = self.gt.iloc[test_data['path'].values.tolist()]
-            test_data_ids = test_data_gt['id'].unique()
-
-        cols = [
-            'frame',
-            'id',
-            'bb_left',
-            'bb_top',
-            'bb_width',
-            'bb_height',
-            'conf',
-            'label',
-            'vis']
-        self.corresponding_gt = pd.DataFrame(columns=cols)
-        if len(set(self.dets['frame'].unique().tolist()).intersection(set(
-                self.gt['frame'].unique().tolist()))) < 0.75 * len(self.gt['frame'].unique().tolist()):
-            if np.min(self.dets['frame'].unique()) == 1:
-                max_f = np.max(self.gt['frame'].unique()) - \
-                    np.max(self.dets['frame'].unique())
-                self.gt['frame'] = self.gt['frame'] - max_f
-
-        if self.seq_info['has_gt']:
-            for frame in self.dets['frame'].unique():
-                # get df entries of current frame
-                frame_detects = self.dets[self.dets.frame == frame]
-                frame_gt = self.gt[self.gt.frame == frame]
-
-                # Compute IoU for each pair of detected / GT bounding box
-                iou_matrix = box_iou(torch.tensor(frame_detects[[
-                    'bb_top', 'bb_left', 'bb_bot', 'bb_right']].values),
-                    torch.tensor(frame_gt[[
-                    'bb_top', 'bb_left', 'bb_bot', 'bb_right']].values))
-                iou_matrix[iou_matrix <
-                           self.dataset_cfg['gt_assign_min_iou']] = 0  # np.nan
-                dist = 1 - iou_matrix
-                assigned_detects, corresponding_gt = solve_dense(dist)
-                unassigned_detect = np.array(
-                    list(set(range(frame_detects.shape[0])) - set(assigned_detects)))
-
-                # get indices of assigned and unassigned frames
-                assigned_detect_index = frame_detects.iloc[assigned_detects].index
-                unassigned_detect_index = frame_detects.iloc[unassigned_detect].index
-
-                # get IDs of assigned gt
-                self.corresponding_gt = self.corresponding_gt.append(
-                    frame_gt.iloc[corresponding_gt])
-                corresponding_id = frame_gt.iloc[corresponding_gt]['id'].values
-                corresponding_vis = frame_gt.iloc[corresponding_gt]['vis'].values
-
-                # set IDs and vis of assigned and unassigned
-                self.dets.loc[assigned_detect_index, 'id'] = corresponding_id
-                self.dets.loc[unassigned_detect_index,
-                              'id'] = -1  # False Positives
-
-                self.dets.loc[assigned_detect_index, 'vis'] = corresponding_vis
-                self.dets.loc[unassigned_detect_index,
-                              'vis'] = -1  # False Positives
-
-        if split == '50-50-1':
-            self.dets = self.dets[self.dets['id'].isin(test_data_ids)]
-        elif split == '50-50-2':
-            self.dets = self.dets[~self.dets['id'].isin(test_data_ids)]
 
         if self.dataset_cfg['validation_set']:
             self.dets = self.dets[self.dets['frame'] >
                                   self.dets['frame'].values.max() * 0.5]
-
-        # pd.set_option('display.max_columns', None)
-        # print(self.dets[self.dets['id'] == -1])
-        # self.dets[self.dets['id'] == -1].to_csv('unassigned_check.csv')
-
-        if self.dataset_cfg['drop_unassigned']:
-            mask = self.dets['id'] != -1
-            self.dets = self.dets[mask]
-            self.dets_unclipped = self.dets_unclipped[mask]
-
-        # print(self.dets.shape)il
-        # print(self.dets_unclipped.shape)
-        # print(self.dets)
-        # print(self.dets_unclipped)
-        # quit()
+        elif self.dataset_cfg['half_train_set_gt']:
+            self.dets = self.dets[self.dets['frame'] <=
+                                  self.dets['frame'].values.max() * 0.5]
