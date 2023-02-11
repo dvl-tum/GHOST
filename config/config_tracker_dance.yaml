@@ -6,15 +6,10 @@ dataset:
   detector: ""
   splits: "dance_val" #"mot17_split_1" #"mot17_split_2" #"mot17_split_3" #"mot17_train_test"
   validation_set: 0
-  validation_set_gt: 0
-  half_train_set_gt: 0
+  half_train_set_gt: 0 
   gt_assign_min_iou: 0.5
-  prepro_again: 1
-  save_oracle: 1
-  gt_training_min_vis: 0
-  drop_unassigned: 0
+  sz_crop: [384, 128]
   fixed_aspect_ratio: 0
-  sz_crop: [384, 128] #[256, 128]
 
 reid_net:
   mode: 'hyper_search'
@@ -33,20 +28,13 @@ reid_net:
 tracker:
   kalman: 0
   visualize: 0
-  store_dist: 0
   store_feats: 0
-  save_embeddings_by_id: 0
-  debug: 0
   use_bism: 0
-  pad_imgs: 0
   nan_first: 0
-  scale_thresh_ioa: 0
-  use_blur: 0
   assign_separately: 0
-  mode: "eval" #"hyper_search" #"eval" 
   random_patches_several_frames: 0
-  every_frame_several_frames: 0
   several_frames: 0
+  every_frame_several_frames: 0
   random_patches: 0
   random_patches_first: 0
   running_mean_seq: 0
@@ -55,11 +43,11 @@ tracker:
   first_batch_reset: 0
   first_all: 0
   eval_bb: 0
-  get_reid_performance: 0
-  oracle: 0
   act_reid_thresh: 0.7
   inact_reid_thresh: 0.75
-  inact_thresh: 50
+  det_conf: 0.6
+  new_track_conf: 0.6
+  inact_patience: 50
   output_dir: 'out' 
   avg_act:
     do: 0
@@ -79,28 +67,4 @@ tracker:
     termination_eps_mc: 0.00001
     apply_motion_model: 1
     center_only: 0
-    lambda_mot: 1/3
-    lambda_temp: 1/3
-    lambda_occ: 1/3
-    ioa_threshold: 'sum'
-    conf_threshold: 0.6
-    area_out_threshold: 1.0
-    num_occ_thresh: 100000
-    inter_threshold: 1.0
-    num_inter_thresh: 100000
-  active_proximity: 0
-  save_dataset: 0
-
-train:
-  num_epochs: 120
-  lr: 0.1
-  bs: 512
-  margin: 0.5
-  scale_loss: 100
-  path: 'weight_pred/dataset_weight_pred.json'
-  loss: 'l2'
-  input_dim: 5
-  weight: 10
-  wd: 0
-  optimizer: 'sgd'
-  load: 'weight_pred/weight_pred/0.50.1100l250sgdcheckpoint.tar' #'weight_pred/0.50.1100l2_weighted50sgdcheckpoint.tar' #'weight_pred/0.50.001100l250sgdcheckpoint.tar'
+    combi: 'sum'
