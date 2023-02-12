@@ -88,12 +88,6 @@ def get_proxy(curr_it, mode='inact', tracker_cfg=None, mv_avg=None):
                 f = mv_avg[i] * avg + it.past_feats[-1] * (1-avg)
             mv_avg[i] = f
 
-        # take last bb with min intersection over area
-        elif proxy == 'min_ioa':
-            ioa = [t['ioa'] for t in it]
-            ioa.reverse()
-            f = it.past_feats[-(ioa.index(min(ioa))+1)]
-
         # take all if all or number of features < avg
         elif avg == 'all' or len(it.past_feats) < avg:
             if proxy == 'mean':

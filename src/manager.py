@@ -13,6 +13,7 @@ import json
 import sys
 sys.path.append('/usr/wiss/seidensc/Documents/fast-reid')
 from tools.train_net import get_model
+import numpy as np
 
 
 classes = [
@@ -169,7 +170,9 @@ class Manager():
             dataset_cfg,
             self.dir,
             net_type=self.reid_net_cfg['encoder_params']['net_type'],
-            dev=self.device)
+            dev=self.device,
+            assign_gt=self.tracker_cfg['store_feats'])
+        # only assign gt if features should be stored
 
         return dataset
 
@@ -212,13 +215,13 @@ class Manager():
         return output_res, output_msg
 
     def eval_track_eval_bdd(self, log=True):
-        self.MOT2BDD()
+        '''self.MOT2BDD()
         output_res, output_msg = evaluate_track_eval_bdd(
             dir=self.dir,
             tracker=self.tracker,
             dataset_cfg=self.dataset_cfg,
             log=log
-        )
+        )'''
         self.MOT2BDDTest()
 
         return output_res, output_msg
@@ -273,7 +276,7 @@ class Manager():
         out_subm = os.path.join('bdd_for_submission', self.tracker.experiment)
         os.makedirs(out_subm, exist_ok=True)
         image_dir = osp.join(
-            os.dirname(self.dataset_cfg['mot_dir']),
+            self.dataset_cfg['mot_dir'],
             'images',
             'track',
             self.dir)
@@ -290,7 +293,7 @@ class Manager():
         for seq in os.listdir(out_orig):
             if 'json' in seq:
                 continue
-
+            
             if seq in os.listdir(image_dir):
                 count += 1
                 df = pd.read_csv(os.path.join(out_orig, seq),

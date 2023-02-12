@@ -72,7 +72,8 @@ def setup_trackeval():
 def evaluate_track_eval_bdd(dir, tracker, dataset_cfg, log=True):
     # set up config
     eval_config, dataset_config, metrics_config = setup_trackeval()
-    mot_dir = os.path.dirname(dataset_cfg['mot_dir'])
+    mot_dir = dataset_cfg['mot_dir']
+    print(mot_dir)
     gt_path = osp.join(mot_dir, 'labels', 'box_track_20', dir)
     dataset_config['GT_FOLDER'] = gt_path
     dataset_config['TRACKERS_FOLDER'] = 'out'
