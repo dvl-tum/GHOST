@@ -1,6 +1,7 @@
 dataset:
-  mot_dir: "/storage/slurm/seidensc/datasets/MOT/MOT20" 
-  det_dir: "/storage/slurm/seidensc/datasets/MOT/MOT20"
+  mot_dir: "datasets/MOT20"
+  gt_dir: "datasets/MOT20"
+  det_dir: "datasets/detections_GHOST/MOT20"
   det_file: "tracktor_prepr_det.txt"
   detector: ""
   splits: "mot20_train_test" 

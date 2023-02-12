@@ -1,10 +1,11 @@
  
 dataset:
-  mot_dir: "/storage/user/seidensc/datasets/DanceTrack" # mot17_test_FRCNN
-  det_dir: "/storage/user/seidensc/datasets/DanceTrack"
-  det_file: "byte_out.txt" #"tracktor_prepr_det.txt" #"center_track.txt" #"qdtrack.txt" # "CenterTrack.txt" #"CenterTrackPub.txt" #"CSTrack.txt" #"FairMOT.txt" #"JDE.txt" #"TraDeS.txt" #"TransTrack.txt"  #"tmoh.txt" #
+  mot_dir: "datasets/DanceTrack"
+  gt_dir: "datasets/DanceTrack"
+  det_dir: "datasets/detections_GHOST/DanceTrack"
+  det_file: "byte_out.txt" 
   detector: ""
-  splits: "dance_val" #"mot17_split_1" #"mot17_split_2" #"mot17_split_3" #"mot17_train_test"
+  splits: "dance_val"
   validation_set: 0
   half_train_set_gt: 0 
   gt_assign_min_iou: 0.5

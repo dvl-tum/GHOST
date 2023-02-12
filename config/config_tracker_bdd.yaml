@@ -1,9 +1,10 @@
 dataset:
-  mot_dir: "/storage/slurm/seidensc/datasets/BDD100/bdd100k/mot_files_gt" # mot17_test_FRCNN
-  det_dir: "/storage/slurm/seidensc/datasets/BDD100/bdd100k-models/det/mot_files"
-  det_file: "bdd100k.txt" #"tracktor_prepr_det.txt" #"center_track.txt" #"qdtrack.txt" # "CenterTrack.txt" #"CenterTrackPub.txt" #"CSTrack.txt" #"FairMOT.txt" #"JDE.txt" #"TraDeS.txt" #"TransTrack.txt"  #"tmoh.txt" #
+  mot_dir: "datasets/bdd100k"
+  gt_dir: "datasets/detections_GHOST/bdd100k"
+  det_dir: "datasets/detections_GHOST/bdd100k"
+  det_file: "bdd100k.txt" 
   detector: ""
-  splits: "bdd100k" #"bdd100k_test" #"bdd100k" #"mot17_split_1" #"mot17_split_2" #"mot17_split_3" #"mot17_train_test"
+  splits: "bdd100k" 
   validation_set: 0
   half_train_set_gt: 0 
   gt_assign_min_iou: 0.5
@@ -42,20 +43,20 @@ tracker:
   first_batch_reset: 0
   first_all: 0
   eval_bb: 0
-  act_reid_thresh: 0.7 #0.71 #0.67 #0.675 #0.7 #0.665 #0.75 #0.7 
-  inact_reid_thresh: 0.7000001 #0.75 #0.73 #0.74 #0.75 #0.72 #0.54 #0.375  # 'act_reid_thresh': 0.9642701307721346, 'inact_reid_thresh': 0.7423529287840127
+  act_reid_thresh: 0.7
+  inact_reid_thresh: 0.7000001 
   det_conf: 0.35
   new_track_conf: 0.45
-  inact_patience: 50 #10000000
+  inact_patience: 50 
   output_dir: 'out' 
   avg_act:
     do: 0
-    num: 0.95 #'uniform_2' #60 #10 #4 #20 #'all'
-    proxy: 'min_ioa' #'mv_avg' #'min_ioa' #'frames_gnn' #'frames_gnn' #'frames_gnn' #'mode'
+    num: 0.95 
+    proxy: 'min_ioa' 
   avg_inact: 
     do: 1
-    num: 2 #'uniform_2' #'mean' #'uniform_4' #10 #4 #20 #'all'  # each_sample: 1=min, 2=avg, 3=max, 4=0.5*(min+max)
-    proxy: 'each_sample' #'frames_gnn' #'60' #'frames_gnn' #'frames_gnn' #'mode'
+    num: 2 
+    proxy: 'each_sample' 
   h_w_thresh: 1000000
   length_thresh: 2
   distance: 'cosine'

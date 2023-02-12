@@ -1,6 +1,7 @@
 dataset:
-  mot_dir: "/storage/slurm/seidensc/datasets/MOT/MOT17" 
-  det_dir: "/storage/slurm/seidensc/datasets/MOT/MOT17Labels"
+  mot_dir: "datasets/MOT17"
+  gt_dir: "datasets/MOT17"
+  det_dir: "datasets/detections_GHOST/MOT17"
   det_file: "qdtrack.txt"  # byte_val.txt # bytetrack_text.txt
   detector: "FRCNN" # "all"
   splits: "mot17_train_test" #"debug_train_test" #"mot17_test" #"mot17_train_test"

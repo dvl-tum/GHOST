@@ -14,13 +14,13 @@
 source activate allreid_tv
 python tools/main_track.py \
     --det_conf 0.35 \
-    --act 0.7 \
+    --act 0.9 \
     --inact 0.8 \
     --inact_patience 50 \
     --combi sum_0.4 \
     --eval_bb 0 \
     --store_feats 0 \
-    --det_file dets_bdd_byte.txt \
+    --det_file byte_dets.txt \
     --config_path config/config_tracker_bdd.yaml\
      --split bdd100k_val \
      --only_pedestrian 0 \
