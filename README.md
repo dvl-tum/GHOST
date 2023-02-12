@@ -1,4 +1,13 @@
-# Simple Cues Repository
+# GHOST Tracker
+This is the official repository of [Simple Cues Lead to a Strong Multi-Object Tracker](https://arxiv.org/abs/2206.04656).
+
+## Git Repo
+To set up this repository follow the following steps
+```
+git clone https://github.com/dvl-tum/GHOST.git
+cd AllReID
+git clone https://github.com/dvl-tum/TrackEvalForGHOST.git
+```
 
 ## Environment
 Download anaconcda and create conda evironment using env_from_history.yml file by:
@@ -104,8 +113,12 @@ You can define the following parameters directly in the bash file:
  For others, like data paths, please refer directly to the config files in ```config/```.
 
 
- ### BDD test submission
- If you want to submit to BDD server, please utilize the corresponding experiment directory in the ```bdd_for_submission``` directory that is directly generated.
+ ### Test submission
+ For the test submissions please adapt the split in the configuration parameters to the corresponding splits (```data/splits.py```). 
+ #### MOT17, MOT20, DanceTrack
+ For submission please zip the files in the corresponding output directories and submit to the test servers of [MOT17, MOT20](https://motchallenge.net/instructions/), [DanceTrack](https://codalab.lisn.upsaclay.fr/competitions/5830).
+ #### BDD
+ If you want to submit to [BDD server](https://eval.ai/web/challenges/challenge-page/1836/overview), please utilize the corresponding experiment directory in the ```bdd_for_submission``` directory that is directly generated, zip the files directly (not the directory), and upload under Submit to the server.
 
  ### Using distance computations
  If you want to use different distance computations than the current proxy distance computation, you have to change the ```avg_act``` and ```avg_inact``` sections in the config files the following for other proxy distances:
