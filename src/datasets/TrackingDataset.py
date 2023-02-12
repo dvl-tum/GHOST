@@ -357,6 +357,9 @@ class Sequence():
 
         return res, dets, ids, vis, random_patches, img_for_det.to(
             self.device), conf, label
+    
+    def __len__(self):
+        return self.num_frames
 
     def __iter__(self):
         self.frames = self.dets['frame'].unique()

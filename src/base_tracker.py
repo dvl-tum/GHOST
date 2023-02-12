@@ -73,7 +73,7 @@ class BaseTracker():
         os.makedirs(osp.join(self.output_dir, self.experiment), exist_ok=True)
 
         # set in eval mode if wanted
-        if self.tracker_cfg['eval_bb']:
+        if not self.tracker_cfg['on_the_fly']:
             self.encoder.eval()
 
         # if visualization of bounding boxes initliaze
@@ -243,8 +243,8 @@ class BaseTracker():
                 self.experiment += str(self.motion_model_cfg['combi'])
 
         self.experiment = '_'.join([self.data[:-4],
-                                    'evalBB:' +
-                                    str(self.tracker_cfg['eval_bb']),
+                                    'OnTheFly:' +
+                                    str(self.tracker_cfg['on_the_fly']),
                                     self.experiment])
 
         self.experiment += 'InactPat:' + \
@@ -464,7 +464,7 @@ class BaseTracker():
         self.id = 0
 
         # set backbone into evaluation mode
-        if self.tracker_cfg['eval_bb'] and not first:
+        if not self.tracker_cfg['on_the_fly'] and not first:
             self.encoder.eval()
         elif first and self.log:
             logger.info('Feeding sequence data before tracking once')

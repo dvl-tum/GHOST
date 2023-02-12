@@ -20,7 +20,7 @@ class BDDLoader(MOTLoader):
         self.only_pedestrian = dataset_cfg['only_pedestrian']
         self.train_mode = self.dataset_cfg['half_train_set_gt'] or mode == 'train'
 
-        self.mot_dir = osp.join(dataset_cfg['mot_dir'], dir)
+        self.mot_dir = osp.join(dataset_cfg['mot_dir'])
         self.gt_dir = osp.join(dataset_cfg['gt_dir'], dir)
         self.det_dir = osp.join(dataset_cfg['det_dir'], dir)
         self.det_file = dataset_cfg['det_file']
@@ -139,13 +139,13 @@ class BDDLoader(MOTLoader):
                     osp.join(img_dir, s + '-' + f"{i:07d}.jpg"))
 
             self.dets['frame_path'] = self.dets['frame'].apply(add_frame_path)
-
+    
     def get_seq_info(self, s):
         """
         Get MOT17 like sequence info
         """
         seq_info = dict()
-        path = os.path.join(os.path.dirname(self.mot_dir), 'images', 'track', self.dir, s)
+        path = os.path.join(self.mot_dir, 'images', 'track', self.dir, s)
         first_img = os.listdir(path)[0]
         img = matplotlib.image.imread(os.path.join(path, first_img))
         seq_info['name'] = s

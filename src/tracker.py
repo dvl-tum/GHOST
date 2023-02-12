@@ -54,7 +54,7 @@ class Tracker(BaseTracker):
         self.prev_frame = 0
         i = 0
         # iterate over frames
-        for frame_data in tqdm(seq):
+        for frame_data in tqdm(seq, total=len(seq)):
             frame, path, boxes, gt_ids, vis, \
                 random_patches, whole_im, conf, label = frame_data
             # log if in training mode
@@ -435,7 +435,7 @@ class Tracker(BaseTracker):
         for k in keys:
             if k not in active_tracks:
                 unconfirmed = len(
-                    self.tracks[k]) >= 2 if self.tracker_cfg['unconfirmed'] else True
+                    self.tracks[k]) >= 2 if self.tracker_cfg['remove_unconfirmed'] else True
                 if unconfirmed:
                     self.inactive_tracks[k] = self.tracks[k]
                     self.inactive_tracks[k].inactive_count = 0

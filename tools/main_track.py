@@ -38,12 +38,12 @@ def init_args():
     parser.add_argument('--combi', type=str, default='sum')
     parser.add_argument('--store_feats', type=int, default=0)
     parser.add_argument('--store_dist', type=int, default=0)
-    parser.add_argument('--eval_bb', type=int, default=0)
+    parser.add_argument('--on_the_fly', type=int, default=0)
     parser.add_argument('--do_inact', type=int, default=1)
     parser.add_argument('--splits', type=str, default="mot20_test")
     parser.add_argument('--len_thresh', type=int, default=0)
     parser.add_argument('--new_track_conf', type=float, default=0.6)
-    parser.add_argument('--unconfirmed', type=float, default=0)
+    parser.add_argument('--remove_unconfirmed', type=float, default=0)
     parser.add_argument('--last_n_frames', type=int, default=100000000)
     return parser.parse_args()
 
@@ -66,11 +66,11 @@ def main_track(args):
     config['tracker']['motion_config']['combi'] = args.combi
     config['tracker']['store_feats'] = args.store_feats
     config['tracker']['store_dist'] = args.store_dist
-    config['tracker']['eval_bb'] = args.eval_bb
+    config['tracker']['on_the_fly'] = args.on_the_fly
     config['tracker']['avg_inact']['do'] = args.do_inact
     config['tracker']['length_thresh'] = args.len_thresh
     config['tracker']['new_track_conf'] = args.new_track_conf
-    config['tracker']['unconfirmed'] = args.unconfirmed
+    config['tracker']['remove_unconfirmed'] = args.remove_unconfirmed
     config['tracker']['motion_config']['last_n_frames'] = args.last_n_frames
     logger.info(config)
 

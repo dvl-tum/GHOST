@@ -270,7 +270,7 @@ class Manager():
     def MOT2BDDTest(self):
 
         out_orig = os.path.join('out', self.tracker.experiment + '_orig')
-        out_subm = 'bdd_for_submission'
+        out_subm = os.path.join('bdd_for_submission', self.tracker.experiment)
         os.makedirs(out_subm, exist_ok=True)
         image_dir = osp.join(
             os.dirname(self.dataset_cfg['mot_dir']),
