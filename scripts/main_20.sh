@@ -1,6 +1,6 @@
 #!/bin/sh
 python tools/main_track.py \
-    --det_file bytetrack_train_MOT20.txt \
+    --det_file yolox_dets.txt \
     --splits mot20_train \
     --config_path config/config_tracker_20.yaml \
     --det_conf 0.45 \

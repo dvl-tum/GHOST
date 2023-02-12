@@ -8,7 +8,7 @@ python tools/main_track.py \
     --do_inact 0 \
     --on_the_fly 1 \
     --store_feats 0 \
-    --det_file byte_dets.txt \
+    --det_file yolox_dets.txt \
     --config_path config/config_tracker_dance.yaml \
     --splits dance_val \
     --new_track_conf 0.6 \

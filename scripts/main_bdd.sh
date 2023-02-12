@@ -7,7 +7,7 @@ python tools/main_track.py \
     --combi sum_0.4 \
     --on_the_fly 1 \
     --store_feats 0 \
-    --det_file byte_dets.txt \
+    --det_file yolox_dets.txt \
     --config_path config/config_tracker_bdd.yaml\
      --split bdd100k_val \
      --only_pedestrian 0 \
