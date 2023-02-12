@@ -46,10 +46,10 @@ name_dict = {
 def init_args():
     parser = argparse.ArgumentParser(description='AllReID tracker')
     parser.add_argument('--dir_name', type=str,
-                        default='features/center_track_features',
+                        default='features',
                         help='Input feature path')
     parser.add_argument('--save_dir', type=str,
-                        default='histograms_features/center_track_features',
+                        default='histograms_features',
                         help='Output feature path')
     parser.add_argument('--plot_seq_plots', type=bool, default=True)
     parser.add_argument('--inact', type=bool, default=True)
@@ -145,8 +145,6 @@ def main():
 
     paths = os.listdir(args.dir_name)
     os.makedirs(args.save_dir, exist_ok=True)
-    all_act = dict()
-    all_inact = dict()
     bins_for_hist = np.arange(0, 1.3, 0.01)
     patience = 50
     proxys = ['mean', 'mv_avg', 'each', 'median', 'mode', 'last', 'eachmedian']
@@ -164,7 +162,7 @@ def main():
                 BB = splitted[2]
                 dets = splitted[0]
 
-            logger.info(f'PROXY {proxy}, dir {a}, PATH {path}')
+            logger.info(f'PROXY {proxy}, dir {args.dir_name}, PATH {path}')
             save_name = '_'.join([dets, BB, proxy, str(patience)])
             logger.info(save_name)
 
@@ -172,7 +170,7 @@ def main():
             os.makedirs(osp.join(args.save_dir, save_name), exist_ok=True)
 
             # load data
-            with open(osp.join(args.load_dir, path)) as json_file:
+            with open(osp.join(args.dir_name, path)) as json_file:
                 data = json.load(json_file)
 
             # set variable keys
@@ -235,8 +233,10 @@ def main():
                     active_ids_new = list()
                     to_add_feats = dict()
                     to_add_time = dict()
+                    gt_ids = list()
                     # iterate over detections
                     for det in detections:
+                        gt_ids.append(det['gt_id'])
                         # ignore bounding boxes that were not matched to any gt bb
                         if det['gt_id'] == -1:
                             continue
@@ -245,6 +245,7 @@ def main():
 
                         # if we already have features for current detection
                         if det['gt_id'] in id_feature_dict.keys():
+                            print(det['gt_id'], det['gt_id'] in active_ids, det['gt_id'] in list(id_feature_dict.keys()))
                             # for active take last detection to get dist and add to dist dict
                             if det['gt_id'] in active_ids:
                                 last_feat = id_feature_dict[det['gt_id']][-1]
@@ -322,7 +323,6 @@ def main():
                         dists_all[kp].extend(v)
                         kpv = np.array(v)
                         seq_dict[k][kp] = kpv
-
                         # density=True --> converts histogram in PDF
                         n, _, _ = plt.hist(
                             kpv, bins_for_hist, facecolor=colors[kp], alpha=0.75, density=True)
@@ -341,6 +341,7 @@ def main():
                     act_diff = values_hist_['act_dist_diff']
                     v_act_same = values_orig_['act_dist_same']
                     v_act_diff = values_orig_['act_dist_diff']
+
                 quant, thresh = get_intersection(
                     act_diff, act_same, v_act_same, v_act_diff)
                 plt.scatter(quant[100], 0, marker='*', color='red', s=400)
@@ -359,18 +360,25 @@ def main():
                     inact_diff = values_hist_['inact_dist_diff']
                     v_inact_same = values_orig_['inact_dist_same']
                     v_inact_diff = values_orig_['inact_dist_diff']
-                    quant, thresh = get_intersection(
-                        inact_diff, inact_same, v_inact_same, v_inact_diff)
+
+                    if len(v_inact_same):
+                        quant, thresh = get_intersection(
+                            inact_diff, inact_same, v_inact_same, v_inact_diff)
+                    else:
+                        quant, thresh = get_intersection(
+                            inact_diff, np.zeros(inact_same.shape), [10.0], v_inact_diff)
+
                     plt.scatter(quant[100], 0, marker='^', color='red', s=400)
                     plt.scatter(thresh, 0, marker='^', color='blue', s=400)
-                    # intersection_points_inact.append(inter_point)
-                    # intersection_vals_inact.append(inter_value)
                     intersection_quant_inact.append(quant[100])
                     intersection_guillem_inact.append(thresh)
                     quantilles_inact.append(quant)
 
                     # SEQUENCE: compute emd between inactive tracks and detections of same and different class histograms
-                    emd_inact.append(emd(v_inact_same, v_inact_diff))
+                    if len(v_inact_same):
+                        emd_inact.append(emd(v_inact_same, v_inact_diff))
+                    else:
+                        emd_inact.append(emd([10.0], v_inact_diff))
 
                     # legend for plots
                     leg = ['intersect act', 'intersect inact',] + [name_dict[k] for k in kps]
@@ -425,7 +433,7 @@ def main():
                 quantilles_act.append(quant)
 
                 # OVERALL: compute emd between active tracks and detections of same and different class histograms
-                emd_act.append(emd(act_same, act_diff, v_act_same, v_act_diff))
+                emd_act.append(emd(v_act_same, v_act_diff))
 
                 # OVERALL: compute intersection points and quantilles / using qualtilles
                 # between inactive tracks and detections of same and different classes
@@ -434,8 +442,14 @@ def main():
                     inact_same = values_hist_['inact_dist_same']
                     v_inact_same = values_orig_['inact_dist_same']
                     v_inact_diff = values_orig_['inact_dist_diff']
-                    quant, thresh = get_intersection(
-                        inact_diff, inact_same, v_inact_same, v_inact_diff)
+                    
+                    if len(v_inact_same):
+                        quant, thresh = get_intersection(
+                            inact_diff, inact_same, v_inact_same, v_inact_diff)
+                    else:
+                        quant, thresh = get_intersection(
+                            inact_diff, np.zeros(inact_same.shape), [10.0], v_inact_diff)
+                    
                     quants.append(quant[100])
                     plt.scatter(quant[100], 0, marker='^', color='red', s=400)
                     plt.scatter(thresh, 0, marker='^', color='blue', s=400)
@@ -444,8 +458,10 @@ def main():
                     quantilles_inact.append(quant)
 
                     # OVERALL: compute emd between inactive tracks and detections of same and different class histograms
-                    emd_inact.append(emd(inact_same, inact_diff,
-                                    v_inact_same, v_inact_diff))
+                    if len(v_inact_same):
+                        emd_inact.append(emd(v_inact_same, v_inact_diff))
+                    else:
+                        emd_inact.append(emd([10.0], v_inact_diff))
 
                 # legends for overall plot
                 if args.only_sd:
@@ -466,7 +482,7 @@ def main():
                                 add + 'Sequences' + path + '.png'))
                 plt.close()
 
-            # Compute EMD BETWEEN SEQS histograms
+            '''# Compute EMD BETWEEN SEQS histograms
             emd_between = defaultdict(list)
             add = 'only_sd' if args.only_sd else ""
             for _, kpv1 in seq_dict.items():
@@ -474,9 +490,9 @@ def main():
                 list_ = [l1, l2, l3, l4]
                 for _, kpv2 in seq_dict.items():
                     for i, k in enumerate(kpv1.keys()):
-                        list_[i].append(emd(None, None, kpv1[k], kpv2[k]))
+                        list_[i].append(emd(kpv1[k], kpv2[k]))
                 for i, k in enumerate(kpv1.keys()):
-                    emd_between[k].append(list_[i])
+                    emd_between[k].append(list_[i])'''
 
             logger.info("inter act")
             logger.info(intersection_quant_act)
@@ -671,14 +687,6 @@ def main():
                     kp], alpha=0.75, zorder=-1)
                 bins_[kp] = n
 
-            all_act[path.split('_')[0]] = round((c-b)*1000)/1000
-            all_inact[path.split('_')[0]] = round((a-0.5*b)*1000)/1000
-
-            kps = [
-                'Inactive/Same',
-                'Active/Same',
-                'Inactive/Different',
-                'Active/Different']
             if args.only_sd:
                 plt.legend(['intersect'] + [name_dict[k] for k in kps], loc='upper right', fontsize=26)
             else:
