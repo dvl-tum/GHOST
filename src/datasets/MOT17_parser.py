@@ -18,6 +18,7 @@ class MOTLoader():
         self.train_mode = self.dataset_cfg['half_train_set_gt']
 
         self.mot_dir = osp.join(dataset_cfg['mot_dir'], dir)
+        self.gt_dir = osp.join(dataset_cfg['gt_dir'], dir)
         self.det_dir = osp.join(dataset_cfg['det_dir'], dir)
         self.det_file = dataset_cfg['det_file']
 
@@ -25,7 +26,7 @@ class MOTLoader():
         # iterate over sequences
         for s in self.sequence:
             # get gt and detections
-            gt_file = osp.join(self.mot_dir, s, 'gt', 'gt.txt')
+            gt_file = osp.join(self.gt_dir, s, 'gt', 'gt.txt') 
             exist_gt = os.path.isfile(gt_file) and assign_gt
             if self.det_file == 'gt.txt':
                 det_file = osp.join(self.det_dir, s, 'gt', self.det_file)

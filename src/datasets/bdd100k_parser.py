@@ -21,6 +21,7 @@ class BDDLoader(MOTLoader):
         self.train_mode = self.dataset_cfg['half_train_set_gt'] or mode == 'train'
 
         self.mot_dir = osp.join(dataset_cfg['mot_dir'], dir)
+        self.gt_dir = osp.join(dataset_cfg['gt_dir'], dir)
         self.det_dir = osp.join(dataset_cfg['det_dir'], dir)
         self.det_file = dataset_cfg['det_file']
         self.dir = dir
@@ -29,8 +30,8 @@ class BDDLoader(MOTLoader):
         # iterate over sequences
         for s in self.sequence:
             # get gt and detections
-            gt_file = osp.join(self.mot_dir, s, 'gt_bdd100k.txt')
-            det_file = osp.join(self.det_dir, s, self.det_file)
+            gt_file = osp.join(self.gt_dir, s, 'gt', 'gt_bdd100k.txt')
+            det_file = osp.join(self.det_dir, s, 'det', self.det_file)
             self.get_seq_info(s)
             exist_gt = self.seq_info['has_gt'] and assign_gt
             self.get_dets(det_file, s)
@@ -98,8 +99,7 @@ class BDDLoader(MOTLoader):
             self.gt = None
 
     def get_dets(self, det_file, s):
-        path = os.path.dirname(os.path.dirname(self.mot_dir))
-        img_dir = os.path.join(path, 'images', 'track', self.dir, s)
+        img_dir = os.path.join(self.mot_dir, 'images', 'track', self.dir, s)
         if osp.exists(det_file):
             names = [
                 'frame',
@@ -145,8 +145,7 @@ class BDDLoader(MOTLoader):
         Get MOT17 like sequence info
         """
         seq_info = dict()
-        path = os.path.dirname(os.path.dirname(self.mot_dir))
-        path = os.path.join(path, 'images', 'track', self.dir, s)
+        path = os.path.join(os.path.dirname(self.mot_dir), 'images', 'track', self.dir, s)
         first_img = os.listdir(path)[0]
         img = matplotlib.image.imread(os.path.join(path, first_img))
         seq_info['name'] = s

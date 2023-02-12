@@ -194,7 +194,7 @@ class Manager():
             dir=self.dir,
             tracker=self.tracker,
             dataset_cfg=self.dataset_cfg,
-            gt_path=osp.join(self.dataset_cfg['mot_dir'], self.dir),
+            gt_path=osp.join(self.dataset_cfg['gt_dir'], self.dir),
             log=log
         )
 
@@ -205,7 +205,7 @@ class Manager():
             dir=self.dir,
             tracker=self.tracker,
             dataset_cfg=self.dataset_cfg,
-            gt_path=osp.join(self.dataset_cfg['mot_dir'], self.dir),
+            gt_path=osp.join(self.dataset_cfg['gt_dir'], self.dir),
             log=log
         )
 
