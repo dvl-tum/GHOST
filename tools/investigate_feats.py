@@ -245,7 +245,6 @@ def main():
 
                         # if we already have features for current detection
                         if det['gt_id'] in id_feature_dict.keys():
-                            print(det['gt_id'], det['gt_id'] in active_ids, det['gt_id'] in list(id_feature_dict.keys()))
                             # for active take last detection to get dist and add to dist dict
                             if det['gt_id'] in active_ids:
                                 last_feat = id_feature_dict[det['gt_id']][-1]
@@ -344,8 +343,7 @@ def main():
 
                 quant, thresh = get_intersection(
                     act_diff, act_same, v_act_same, v_act_diff)
-                plt.scatter(quant[100], 0, marker='*', color='red', s=400)
-                plt.scatter(thresh, 0, marker='*', color='blue', s=400)
+                plt.scatter(thresh, 0, marker='*', color='red', s=400)
                 intersection_quant_act.append(quant[100])
                 intersection_guillem_act.append(thresh)
                 quantilles_act.append(quant)
@@ -368,8 +366,7 @@ def main():
                         quant, thresh = get_intersection(
                             inact_diff, np.zeros(inact_same.shape), [10.0], v_inact_diff)
 
-                    plt.scatter(quant[100], 0, marker='^', color='red', s=400)
-                    plt.scatter(thresh, 0, marker='^', color='blue', s=400)
+                    plt.scatter(thresh, 0, marker='^', color='red', s=400)
                     intersection_quant_inact.append(quant[100])
                     intersection_guillem_inact.append(thresh)
                     quantilles_inact.append(quant)
@@ -425,9 +422,8 @@ def main():
 
                 quant, thresh = get_intersection(
                     act_diff, act_same, v_act_same, v_act_diff)
-                quants = [quant[100]]
-                plt.scatter(quant[100], 0, marker='*', color='red', s=400)
-                plt.scatter(thresh, 0, marker='*', color='blue', s=400)
+                threshs = [thresh]
+                plt.scatter(thresh, 0, marker='*', color='red', s=400)
                 intersection_quant_act.append(quant[100])
                 intersection_guillem_act.append(thresh)
                 quantilles_act.append(quant)
@@ -450,9 +446,8 @@ def main():
                         quant, thresh = get_intersection(
                             inact_diff, np.zeros(inact_same.shape), [10.0], v_inact_diff)
                     
-                    quants.append(quant[100])
-                    plt.scatter(quant[100], 0, marker='^', color='red', s=400)
-                    plt.scatter(thresh, 0, marker='^', color='blue', s=400)
+                    threshs.append(thresh)
+                    plt.scatter(thresh, 0, marker='^', color='red', s=400)
                     intersection_quant_inact.append(quant[100])
                     intersection_guillem_inact.append(thresh)
                     quantilles_inact.append(quant)
@@ -673,9 +668,9 @@ def main():
                     'diff'
                 ]
             bins_ = dict()
-            plt.scatter(quants[0], 0, marker='*', color='red', s=800, zorder=1)
+            plt.scatter(threshs[0], 0, marker='*', color='red', s=800, zorder=1)
             if not args.only_sd:
-                plt.scatter(quants[1], 0, marker='v', color='red', s=800, zorder=1)
+                plt.scatter(threshs[1], 0, marker='v', color='red', s=800, zorder=1)
             for i, kp in enumerate(_kps):
                 dists = dists_all[kp]
                 kps.append(kp)
