@@ -26,7 +26,7 @@ class BDDLoader(MOTLoader):
         self.det_file = dataset_cfg['det_file']
         self.dir = dir
 
-    def get_seqs(self, split='split-1', assign_gt=False):
+    def get_seqs(self, split='split-1', assign_gt=True):
         # iterate over sequences
         for s in self.sequence:
             # get gt and detections

@@ -33,8 +33,11 @@ class TrackingDataset():
             datastorage='data',
             net_type='resnet50',
             dev=None,
-            add_detector=True):
+            add_detector=True,
+            assign_gt=False):
+
         self.device = dev
+        self.assign_gt = assign_gt
 
         self.split = split
         if add_detector:
@@ -88,7 +91,7 @@ class TrackingDataset():
                 loader = BDDLoader([seq], self.dataset_cfg, self.dir)
             else:
                 loader = MOTLoader([seq], self.dataset_cfg, self.dir)
-            exist_gt = loader.get_seqs()
+            exist_gt = loader.get_seqs(self.assign_gt)
             dets = loader.dets
             dets_unclipped = loader.dets_unclipped
 

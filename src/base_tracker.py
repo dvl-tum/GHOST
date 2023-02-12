@@ -222,7 +222,7 @@ class BaseTracker():
 
         self.experiment += 'LenThresh:' + \
             str(self.tracker_cfg['length_thresh'])
-        self.experiment += 'RemUnconf:' + str(self.tracker_cfg['unconfirmed'])
+        self.experiment += 'RemUnconf:' + str(self.tracker_cfg['remove_unconfirmed'])
         self.experiment += 'LastNFrames:' + \
             str(self.motion_model_cfg['last_n_frames'])
 

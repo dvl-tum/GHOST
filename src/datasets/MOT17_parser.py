@@ -22,7 +22,7 @@ class MOTLoader():
         self.det_dir = osp.join(dataset_cfg['det_dir'], dir)
         self.det_file = dataset_cfg['det_file']
 
-    def get_seqs(self, split='split-1', assign_gt=False):
+    def get_seqs(self, split='split-1', assign_gt=True):
         # iterate over sequences
         for s in self.sequence:
             # get gt and detections
@@ -48,7 +48,6 @@ class MOTLoader():
             self.dets['detection_id'] = np.arange(self.dets.shape[0])
             if exist_gt:
                 self.assign_gt_clear(split)
-
             self.dets.attrs.update(self.seq_info)
 
         return exist_gt
@@ -103,7 +102,6 @@ class MOTLoader():
                     'label',
                     'vis',
                     '?'])
-
             self.dets['bb_left'] -= 1  # Coordinates are 1 based
             self.dets['bb_top'] -= 1
             self.dets['bb_right'] = (
