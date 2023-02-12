@@ -209,20 +209,12 @@ def bbox_overlaps(boxes, query_boxes):
 def is_moving(seq, log=False):
 
     if "MOT" not in seq and 'dance' not in seq:
-        if log:
-            print('Seqence is moving {}'.format(seq))
         return True
     elif 'dance' in seq:
-        if log:
-            print('Seqence is not moving {}'.format(seq))
         return False
     elif seq.split('-')[1] in ['13', '11', '10', '05', '14', '12', '07', '06']:
-        if log:
-            print('Seqence is moving {}'.format(seq))
         return True
     elif seq.split('-')[1] in ['09', '04', '02', '08', '03', '01']:
-        if log:
-            print('Seqence is not moving {}'.format(seq))
         return False
     else:
         assert False, 'Seqence not valid {}'.format(seq)

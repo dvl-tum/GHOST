@@ -59,7 +59,7 @@ class Tracker(BaseTracker):
                 random_patches, whole_im, conf, label = frame_data
             # log if in training mode
             if i == 0:
-                print(f'Network in training mode: {self.encoder.training}')
+                logger.info(f'Network in training mode: {self.encoder.training}')
             self.i = i
 
             # batch norm experiments II on the fly

@@ -477,8 +477,6 @@ class BaseTracker():
         # get if sequence si moving and frame rate
         self.is_moving = is_moving(seq.name)
         self.frame_rate = frame_rate(seq.name)
-        if self.log:
-            logger.info("Frame rate: {}".format(self.frame_rate))
 
     def reset_threshs(self):
         self.act_reid_thresh = 'every' if self.thresh_every \
