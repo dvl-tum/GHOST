@@ -11,8 +11,6 @@ from src.eval_track_eval_bdd import evaluate_track_eval_bdd
 import pandas as pd
 import json
 import sys
-sys.path.append('/usr/wiss/seidensc/Documents/fast-reid')
-from tools.train_net import get_model
 import numpy as np
 
 
@@ -141,20 +139,10 @@ class Manager():
 
     def _get_encoder(self):
         self.net_type = self.reid_net_cfg['encoder_params']['net_type']
-        if self.net_type == 'resnet50_analysis':
-            # get pretrained resnet 50 from torchreid
-            encoder = torchreid.models.build_model(
-                name='resnet50', num_classes=1000)
-            torchreid.utils.load_pretrained_weights(
-                encoder, 'resnet50_market_xent.pth.tar')
-            self.sz_embed = None
-        elif self.net_type == "IBN":
-            encoder = get_model()
-        else:
-            # own trained network
-            encoder, self.sz_embed, _ = net.load_net(
-                self.reid_net_cfg['trained_on']['num_classes'],
-                **self.reid_net_cfg['encoder_params'])
+        # own trained network
+        encoder, self.sz_embed, _ = net.load_net(
+            self.reid_net_cfg['trained_on']['num_classes'],
+            **self.reid_net_cfg['encoder_params'])
 
         self.encoder = encoder.to(self.device)
 
