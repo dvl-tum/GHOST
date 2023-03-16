@@ -65,7 +65,7 @@ datasets/
 ```
 
 ##  ReID Setup 
-Download our pretrained ReID [weights](https://vision.in.tum.de/webshare/u/seidensc/GHOST/MOT17_ReID.zip) and extract them into ```ReID/trained_models``` so that in the end the data structure looks like the the following:
+Download our pretrained ReID [weights](https://vision.in.tum.de/webshare/u/seidensc/GHOST/trained_reid_models.zip) and extract them into ```ReID/trained_models``` so that in the end the data structure looks like the the following:
 ```
 ReID/
     * trained_models
