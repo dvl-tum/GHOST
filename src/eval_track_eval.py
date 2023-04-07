@@ -1,4 +1,4 @@
-from TrackEvalForAllReID import trackeval
+from TrackEvalForGHOST import trackeval
 import argparse
 import os.path as osp
 
