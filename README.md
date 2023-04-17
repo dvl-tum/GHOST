@@ -5,7 +5,7 @@ This is the official repository of [Simple Cues Lead to a Strong Multi-Object Tr
 To set up this repository follow the following steps
 ```
 git clone https://github.com/dvl-tum/GHOST.git
-cd AllReID
+cd GHOST
 git clone https://github.com/dvl-tum/TrackEvalForGHOST.git
 ```
 
