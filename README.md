@@ -76,6 +76,7 @@ ReID/
             * split2_resnet50_MOT17.pth
             * split3_resnet50_MOT17.pth
 ```
+The final model that we use is market_models/resnet50_Market.pth.
 
 ## Tracking
 To run our tracker run on MOT17 private detections run:
