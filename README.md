@@ -78,6 +78,14 @@ ReID/
 ```
 The final model that we use is market_models/resnet50_Market.pth.
 
+To re-train the ReID model on Market-1501 or MOT17, we provide the dataset structures we used for [Market](https://vision.in.tum.de/webshare/u/seidensc/GHOST/Market-1501-v15.09.15.zip) and [MOT17](https://vision.in.tum.de/webshare/u/seidensc/GHOST/MOT17_ReID.zip). Please unzip them into the following structure:
+```
+ReID/
+    * datasets
+        * MOT17_ReID
+        * Market-1501-v15.09.15
+```
+
 ## Tracking
 To run our tracker run on MOT17 private detections run:
 ```
